@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "on-the-fly-models"
+version = "0.1.0"
+description = "Generate task-specific models on-the-fly by predicting their weights from data"
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "datasets",
+    "matplotlib",
+]
+
+[tool.setuptools.packages.find]
+exclude = ["data*", "notebooks*", "tests*"]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.0",
+    "pytest>=8.0",
+    "ruff>=0.11",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 99
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["on_the_fly_models"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
