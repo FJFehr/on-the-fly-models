@@ -1,7 +1,6 @@
 """Download the 1D-ARC dataset and convert it to a HuggingFace Dataset."""
 
 import json
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
