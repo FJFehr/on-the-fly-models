@@ -124,6 +124,30 @@ def plot_category_length_stats(ds, save_path: str = "data/arc_1d_category_length
     ax.tick_params(axis="y", labelsize=12)
     for spine in ("top", "right"):
         ax.spines[spine].set_visible(False)
+
+    # Add headroom for labels and place per-category totals above each box
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 1.25)
+    for i, cat_lens in enumerate(data):
+        cat_total = cat_lens.sum() * 2  # input + output
+        ax.text(
+            i + 1, ymax * 1.02, f"{cat_total / 1000:.1f}K",
+            ha="center", va="bottom", fontsize=10, rotation=90,
+        )
+
+    # Grand total in the top right
+    grand_total = input_lens.sum() * 2
+    ax.text(
+        0.99,
+        0.97,
+        f"Total: {grand_total / 1000:.1f}K tokens",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=13,
+        fontweight="bold",
+    )
+
     fig.tight_layout()
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
