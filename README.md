@@ -1,5 +1,8 @@
 # on-the-fly-models
+
 Generate task-specific models on-the-fly by predicting their weights from data, enabling efficient generalisation with minimal training.
+
+The idea: instead of training a separate model per task, a **hyper-model** learns to predict the weights of a small **target model** given only a handful of input/output examples. We use the [1D-ARC](https://github.com/khalil-research/1D-ARC) dataset as our testbed.
 
 ## Setup
 
@@ -9,25 +12,60 @@ uv sync --python 3.12 --managed-python
 
 ## Data
 
-### 1D-ARC dataset
+### Building the 1D-ARC dataset
 
-Download and convert the [1D-ARC](https://github.com/khalil-research/1D-ARC) dataset into a HuggingFace Dataset stored locally under `data/arc_1d/`:
+Download and convert the 1D-ARC dataset into a task-level HuggingFace `DatasetDict` with stratified `train`/`dev`/`test` splits (80/10/10):
 
 ```bash
 uv run python build_arc_1d.py
 ```
 
-Each row contains `task_category`, `task_id`, `split` (train/test), `example_idx`, `input`, and `output` fields.
+Each record is one complete ARC task (3 support examples + 1 query) that always stays together in the same split. Fields: `task_category`, `task_id`, `sequence_length`, `support_inputs`, `support_outputs`, `query_input`, `query_output`.
+
+**Simplified dataset** — binarised sequences (0/non-zero), padded to length 33, restricted to 7 simple categories:
+
+```bash
+uv run python build_arc_1d.py --simple
+```
+
+**Holdout category** — reserve an entire category for out-of-distribution evaluation:
+
+```bash
+uv run python build_arc_1d.py --holdout-category 1d_mirror
+```
 
 ### Visualisation
 
-Render a sample input/output pair using the standard ARC colour palette:
+**Task grids** — render tasks using the standard ARC colour palette (support examples + masked query):
 
 ```bash
-uv run python visualise_data.py
+uv run python visualise_tasks.py --data-dir data/arc_1d --split train
 ```
 
-Saves an example plot to `data/arc_1d_example.png`.
+Useful flags: `--task-category`, `--task-id`, `--max-tasks`, `--first-per-category`.
+
+**Sequence-length boxplots** — grouped by category and split, with token counts:
+
+```bash
+uv run python eda_arc_1d_boxplots.py --data-dir data/arc_1d
+```
+
+## Models
+
+The `models/` directory contains the two planned architectures:
+
+- **target-model** — a simple MLP that performs the 1D transformation for a single task.
+- **hyper-model** — a Hypermixer-style network that predicts the target model's weights from support examples.
+
+Training entrypoint: `train.py` (scaffolding).
+
+## Tests
+
+```bash
+uv run pytest
+```
+
+Tests cover data pipeline correctness: no task leakage across splits, correct split ratios, stratification, holdout isolation, and per-task validation.
 
 ## Agentic workflow
 
