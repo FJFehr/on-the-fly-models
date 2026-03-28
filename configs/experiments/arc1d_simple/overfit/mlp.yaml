@@ -1,0 +1,22 @@
+_base_: configs/base/arc1d_simple.yaml
+task: overfit
+model: mlp
+experiment_name: ${data}_${task}_${model}
+task_categories:
+  - 1d_move_1p
+task_ids:
+  - 8
+train_source: train_query_pairs
+val_source: train_query_pairs
+test_source: train_query_pairs
+overfit_single_batch: true
+batch_size: 1
+learning_rate: 0.01
+weight_decay: 0.0
+max_steps: 50
+hidden_dim: 64
+num_layers: 1
+use_skip_connections: false
+max_logged_val_examples: 1
+max_logged_val_examples_per_category: 1
+log_val_examples_every_n_epochs: 1

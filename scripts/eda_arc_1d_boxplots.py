@@ -8,6 +8,8 @@ from datasets import Dataset, DatasetDict, load_from_disk
 from matplotlib import pyplot as plt
 from matplotlib.patches import Patch
 
+from visualisation import format_task_category
+
 DEFAULT_SPLITS = ("train", "dev", "test")
 SPLIT_SHADES = {
     "train": 0.55,
@@ -20,31 +22,6 @@ TICK_FONT_SIZE = 15
 LEGEND_FONT_SIZE = 15
 TOKEN_FONT_SIZE = 12
 TOTAL_FONT_SIZE = 15
-TASK_CATEGORY_DISPLAY_NAMES = {
-    "1d_move_1p": "Move 1 Pixel",
-    "1d_move_2p": "Move 2 Pixels",
-    "1d_move_3p": "Move 3 Pixels",
-    "1d_move_dp": "Move Dynamic",
-    "1d_move_2p_dp": "Move 2 Pixels Towards",
-    "1d_fill": "Fill",
-    "1d_padded_fill": "Padded Fill",
-    "1d_hollow": "Hollow",
-    "1d_flip": "Flip",
-    "1d_mirror": "Mirror",
-    "1d_denoising_1c": "Denoise",
-    "1d_denoising_mc": "Denoise Multicolor",
-    "1d_pcopy_1c": "Pattern Copy",
-    "1d_pcopy_mc": "Pattern Copy Multicolor",
-    "1d_recolor_oe": "Recolor by Odd Even",
-    "1d_recolor_cnt": "Recolor by Size",
-    "1d_recolor_cmp": "Recolor by Size Comparison",
-    "1d_scale_dp": "Scaling",
-}
-
-
-def format_task_category(category: str) -> str:
-    normalized_category = category.removeprefix("dataset/")
-    return TASK_CATEGORY_DISPLAY_NAMES.get(normalized_category, normalized_category)
 
 
 def parse_args() -> argparse.Namespace:
@@ -78,7 +55,8 @@ def validate_task_dataset(data: Dataset | DatasetDict) -> DatasetDict:
     required_columns = {"task_category", "sequence_length"}
     for split_name in DEFAULT_SPLITS:
         if split_name not in data:
-            msg = f"Missing required split {split_name!r}. Available splits: {', '.join(data.keys())}"
+            available = ", ".join(data.keys())
+            msg = f"Missing required split {split_name!r}. Available: {available}"
             raise ValueError(msg)
         if not required_columns.issubset(data[split_name].column_names):
             msg = f"Split {split_name!r} is missing required task columns: {required_columns}"
@@ -88,10 +66,7 @@ def validate_task_dataset(data: Dataset | DatasetDict) -> DatasetDict:
 
 
 def blend_color(color: tuple[float, float, float], amount: float) -> tuple[float, float, float]:
-    if amount >= 0:
-        target = np.array([1.0, 1.0, 1.0])
-    else:
-        target = np.array([0.0, 0.0, 0.0])
+    target = np.array([1.0, 1.0, 1.0]) if amount >= 0 else np.array([0.0, 0.0, 0.0])
     base = np.array(color)
     return tuple(base + (target - base) * abs(amount))
 

@@ -1,11 +1,19 @@
+"""High-signal tests for ARC1D dataset construction.
+
+These tests focus on the data contracts that would invalidate experiments if
+they regressed: keeping whole tasks together, respecting holdout categories,
+rejecting malformed tasks, and preserving grouped support/query structure.
+"""
+
 from collections import Counter
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 import pytest
 
-
-MODULE_PATH = Path(__file__).resolve().parents[1] / "build_arc_1d.py"
+# ``build_arc_1d.py`` is a script rather than an importable package module, so
+# load it explicitly for direct access to its pure helper functions.
+MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "build_arc_1d.py"
 MODULE_SPEC = spec_from_file_location("build_arc_1d", MODULE_PATH)
 assert MODULE_SPEC is not None
 assert MODULE_SPEC.loader is not None
@@ -38,6 +46,12 @@ def get_task_lengths(dataset) -> Counter:
 
 
 def test_build_dataset_dict_splits_whole_tasks_without_leakage():
+    """Verify task-level splitting keeps each task in exactly one split.
+
+    This is the critical anti-leakage check for the dataset builder. A task
+    appearing in more than one split would invalidate downstream evaluation.
+    """
+
     dataset_dict = build_dataset_dict(make_tasks("cat_a"), seed=0)
 
     assert set(dataset_dict.keys()) == {"train", "dev", "test"}
@@ -62,6 +76,12 @@ def test_build_dataset_dict_splits_whole_tasks_without_leakage():
 
 
 def test_build_dataset_dict_places_holdout_category_in_separate_split():
+    """Verify a configured holdout category is completely isolated from training.
+
+    The holdout split is the project's cleanest out-of-distribution check, so
+    the entire category must move together and never remain in train/dev/test.
+    """
+
     tasks = make_tasks("cat_a") + make_tasks("cat_b")
     dataset_dict = build_dataset_dict(tasks, holdout_category="cat_b", seed=0)
 
@@ -75,6 +95,12 @@ def test_build_dataset_dict_places_holdout_category_in_separate_split():
 
 
 def test_validate_task_examples_rejects_inconsistent_task_lengths():
+    """Verify malformed ARC tasks fail fast before dataset creation.
+
+    Mixed sequence lengths inside one task would break assumptions made by the
+    data pipeline and models, so the builder should reject them immediately.
+    """
+
     train_examples = [
         {"input": [[0] * 10], "output": [[1] * 10]},
         {"input": [[0] * 10], "output": [[1] * 10]},
@@ -87,6 +113,13 @@ def test_validate_task_examples_rejects_inconsistent_task_lengths():
 
 
 def test_build_dataset_dict_preserves_grouped_examples():
+    """Verify the builder preserves the full support/query structure per task.
+
+    The suite already checks split allocation; this test protects the task
+    record shape itself so later consumers still receive three support pairs and
+    one query pair with the expected lengths.
+    """
+
     dataset_dict = build_dataset_dict(make_tasks("cat_a"), seed=0)
 
     for dataset in dataset_dict.values():

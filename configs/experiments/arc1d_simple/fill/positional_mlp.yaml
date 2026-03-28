@@ -1,0 +1,6 @@
+_base_: configs/base/arc1d_simple.yaml
+task: fill
+model: positional_mlp
+hidden_dim: 64
+num_layers: 1
+use_skip_connections: false
