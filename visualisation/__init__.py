@@ -15,6 +15,7 @@ from visualisation.arc import (
     figure_to_wandb_image,
     format_task_category,
     render_task_figure,
+    render_task_prediction_figure,
     render_val_example_figure,
 )
 
@@ -22,5 +23,6 @@ __all__ = [
     "figure_to_wandb_image",
     "format_task_category",
     "render_task_figure",
+    "render_task_prediction_figure",
     "render_val_example_figure",
 ]

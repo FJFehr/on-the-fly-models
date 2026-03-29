@@ -188,6 +188,54 @@ def render_val_example_figure(
     return fig
 
 
+def render_task_prediction_figure(
+    support_inputs: list[list[int]],
+    support_targets: list[list[int]],
+    support_predictions: list[list[int]],
+    query_input: list[int],
+    query_target: list[int],
+    query_prediction: list[int],
+    task_category: str,
+    task_id: int,
+    query_exact_match: bool | None = None,
+    title: str | None = None,
+) -> plt.Figure:
+    """Render all task examples as 4 columns with input/target/prediction stacked."""
+    example_columns = [
+        ("Support 1", support_inputs[0], support_targets[0], support_predictions[0]),
+        ("Support 2", support_inputs[1], support_targets[1], support_predictions[1]),
+        ("Support 3", support_inputs[2], support_targets[2], support_predictions[2]),
+        ("Query", query_input, query_target, query_prediction),
+    ]
+    sequence_length = max(
+        max(len(input_sequence), len(target_sequence), len(prediction_sequence))
+        for _, input_sequence, target_sequence, prediction_sequence in example_columns
+    )
+    panel_width = max(sequence_length * 0.55, 4.0)
+    fig, axes = plt.subplots(3, 4, figsize=(panel_width * 4.2, 6.4))
+
+    for column_index, (
+        column_label,
+        input_sequence,
+        target_sequence,
+        prediction_sequence,
+    ) in enumerate(
+        example_columns
+    ):
+        draw_sequence(axes[0, column_index], input_sequence, f"{column_label} Input")
+        draw_sequence(axes[1, column_index], target_sequence, f"{column_label} Target")
+        draw_sequence(axes[2, column_index], prediction_sequence, f"{column_label} Prediction")
+
+    if title is None:
+        title = f"{format_task_category(task_category)} | task_id={task_id}"
+        if query_exact_match is not None:
+            title += f" | query_exact_match={query_exact_match}"
+
+    fig.suptitle(title, fontsize=18, fontweight="bold", y=0.98)
+    fig.subplots_adjust(top=0.88, hspace=0.65, wspace=0.15)
+    return fig
+
+
 def figure_to_wandb_image(fig: plt.Figure, caption: str | None = None) -> wandb.Image:
     image = wandb.Image(fig, caption=caption)
     plt.close(fig)

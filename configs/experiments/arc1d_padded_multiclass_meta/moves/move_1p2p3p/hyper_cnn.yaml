@@ -1,0 +1,25 @@
+_base_: configs/experiments/arc1d_padded_multiclass_meta/base.yaml
+name: hyper_cnn
+
+task_categories:
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_3p
+
+experiment_name: ${data}_move_1p2p3p_${name}
+
+hyper_model:
+  task_encoder_hidden_dim: 64
+  task_encoder_num_heads: 4
+  task_encoder_num_layers: 3
+
+target_model:
+  cnn:
+    hidden_channels: 16
+    kernel_size: 3
+    num_layers: 2
+    use_skip_connections: true
+
+training:
+  loss_on_support: true
+  loss_on_query: true

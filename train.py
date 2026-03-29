@@ -29,10 +29,11 @@ import os
 
 import lightning as pl
 import torch
-import wandb
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import Callback, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf
+
+import wandb
 
 # Import the registries — these map config string keys to classes
 from data_modules import DATA_REGISTRY
@@ -40,8 +41,47 @@ from models import MODEL_REGISTRY
 from visualisation import figure_to_wandb_image, render_val_example_figure
 
 
+class StopOnMetricThreshold(Callback):
+    """Stop training once a monitored validation metric reaches a threshold."""
+
+    def __init__(self, monitor: str, threshold: float, mode: str = "max") -> None:
+        super().__init__()
+        if mode not in {"max", "min"}:
+            msg = f"Unsupported mode {mode!r}. Expected 'max' or 'min'."
+            raise ValueError(msg)
+
+        self.monitor = monitor
+        self.threshold = threshold
+        self.mode = mode
+
+    def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if trainer.sanity_checking:
+            return
+
+        metric = trainer.callback_metrics.get(self.monitor)
+        if metric is None:
+            return
+
+        current_value = float(metric.detach().cpu())
+        reached_threshold = (
+            current_value >= self.threshold
+            if self.mode == "max"
+            else current_value <= self.threshold
+        )
+
+        if reached_threshold:
+            trainer.should_stop = True
+            print(
+                f"Stopping early because {self.monitor} reached "
+                f"{current_value:.6f} (threshold {self.threshold:.6f})."
+            )
+
+
 def write_results_file(
-    output_path: str, checkpoint_path: str | None, test_results: list[dict]
+    output_path: str,
+    checkpoint_path: str | None,
+    val_results: list[dict],
+    test_results: list[dict],
 ) -> None:
     """Write final evaluation results to a plain-text file in the run directory."""
     results_path = os.path.join(output_path, "results.txt")
@@ -52,12 +92,19 @@ def write_results_file(
     else:
         lines.append("checkpoint: none")
 
+    if val_results:
+        lines.append("validation_metrics:")
+        for metric_name, metric_value in sorted(val_results[0].items()):
+            lines.append(f"{metric_name}: {metric_value}")
+    else:
+        lines.append("validation_metrics: none")
+
     if test_results:
-        lines.append("metrics:")
+        lines.append("test_metrics:")
         for metric_name, metric_value in sorted(test_results[0].items()):
             lines.append(f"{metric_name}: {metric_value}")
     else:
-        lines.append("metrics: none")
+        lines.append("test_metrics: none")
 
     with open(results_path, "w", encoding="utf-8") as results_file:
         results_file.write("\n".join(lines) + "\n")
@@ -116,7 +163,7 @@ def log_hard_val_examples(model, datamodule, output_path, wandb_logger=None, num
 
     wandb_payload = {}
     for idx, ex in enumerate(hard_examples):
-        num_wrong = sum(1 for t, p in zip(ex["target"], ex["prediction"]) if t != p)
+        num_wrong = sum(1 for t, p in zip(ex["target"], ex["prediction"], strict=True) if t != p)
         seq_len = len(ex["target"])
         caption = (
             f"{ex['task_category']}:{ex['task_id']} | "
@@ -130,7 +177,10 @@ def log_hard_val_examples(model, datamodule, output_path, wandb_logger=None, num
             prediction_sequence=ex["prediction"],
         )
 
-        filename = f"hard_{idx}_{ex['task_category']}_{ex['task_id']}_acc{ex['position_accuracy']:.2f}.png"
+        filename = (
+            f"hard_{idx}_{ex['task_category']}_{ex['task_id']}"
+            f"_acc{ex['position_accuracy']:.2f}.png"
+        )
         fig.savefig(os.path.join(hard_dir, filename), dpi=150, bbox_inches="tight")
 
         wandb_payload[f"hard_example_{idx}"] = figure_to_wandb_image(fig, caption=caption)
@@ -147,6 +197,103 @@ def log_hard_val_examples(model, datamodule, output_path, wandb_logger=None, num
         f"Logged {len(hard_examples)} hard validation examples "
         f"({len(wrong_examples)} total failures) to {hard_dir}"
     )
+
+
+class MetaTaskVisualizationCallback(Callback):
+    """Meta-model specific task-level visualization logging during validation."""
+
+    def __init__(self, output_path: str, wandb_logger=None):
+        super().__init__()
+        self.output_path = output_path
+        self.wandb_logger = wandb_logger
+
+    def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if trainer.sanity_checking:
+            return
+        if not getattr(pl_module, "supports_task_visualization", False):
+            return
+        if not getattr(pl_module, "log_task_examples", False):
+            return
+        every_n_epochs = getattr(pl_module, "log_task_examples_every_n_epochs", 1)
+        if every_n_epochs < 1:
+            return
+        if trainer.current_epoch % every_n_epochs != 0:
+            return
+
+        datamodule = trainer.datamodule
+        train_task_ids = pl_module.select_representative_task_records_from_dataset(
+            datamodule.train_dataset,
+            split_name="train",
+            limit=pl_module.num_periodic_train_task_examples,
+        )
+        val_task_ids = pl_module.select_representative_task_records_from_dataset(
+            datamodule.val_dataset,
+            split_name="val",
+            limit=pl_module.num_periodic_val_task_examples,
+        )
+        pl_module.log_task_gallery(
+            split_name="train",
+            records=pl_module.collect_task_records_from_dataset_by_task_ids(
+                datamodule.train_dataset,
+                train_task_ids,
+            ),
+            output_path=self.output_path,
+            wandb_logger=self.wandb_logger,
+            key_prefix="train_task",
+        )
+        pl_module.log_task_gallery(
+            split_name="val",
+            records=pl_module.collect_task_records_from_dataset_by_task_ids(
+                datamodule.val_dataset,
+                val_task_ids,
+            ),
+            output_path=self.output_path,
+            wandb_logger=self.wandb_logger,
+            key_prefix="val_task",
+        )
+
+
+def apply_grouped_config_aliases(cfg) -> None:
+    """Translate grouped experiment config sections into the flat runtime shape."""
+    if "name" in cfg and "model" not in cfg:
+        cfg["model"] = cfg["name"]
+
+
+def build_runtime_config_dict(cfg) -> dict:
+    """Flatten grouped config sections into the kwargs expected by the runtime."""
+    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+
+    if not isinstance(cfg_dict, dict):
+        msg = "Resolved config must be a dictionary."
+        raise ValueError(msg)
+
+    runtime_cfg = dict(cfg_dict)
+
+    hyper_model_cfg = runtime_cfg.pop("hyper_model", None)
+    if isinstance(hyper_model_cfg, dict):
+        runtime_cfg.update(hyper_model_cfg)
+
+    training_cfg = runtime_cfg.pop("training", None)
+    if isinstance(training_cfg, dict):
+        runtime_cfg.update(training_cfg)
+
+    target_model_cfg = runtime_cfg.pop("target_model", None)
+    if isinstance(target_model_cfg, dict):
+        rnn_cfg = target_model_cfg.get("rnn")
+        if isinstance(rnn_cfg, dict):
+            runtime_cfg["target_rnn_hidden_dim"] = rnn_cfg["hidden_dim"]
+            runtime_cfg["target_rnn_bidirectional"] = rnn_cfg["bidirectional"]
+            runtime_cfg["target_rnn_num_layers"] = rnn_cfg["num_layers"]
+        cnn_cfg = target_model_cfg.get("cnn")
+        if isinstance(cnn_cfg, dict):
+            runtime_cfg["target_cnn_hidden_channels"] = cnn_cfg["hidden_channels"]
+            runtime_cfg["target_cnn_kernel_size"] = cnn_cfg.get("kernel_size", 3)
+            runtime_cfg["target_cnn_num_layers"] = cnn_cfg.get("num_layers", 1)
+            runtime_cfg["target_cnn_use_skip_connections"] = cnn_cfg.get(
+                "use_skip_connections", False
+            )
+
+    return runtime_cfg
 
 
 def main():
@@ -186,11 +333,12 @@ def main():
         del cfg["_base_"]
         cfg = OmegaConf.merge(base_cfg, cfg)
 
+    apply_grouped_config_aliases(cfg)
     OmegaConf.resolve(cfg)
 
     # Convert the OmegaConf DictConfig to a plain Python dict for passing
     # as **kwargs to model and data module constructors.
-    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+    cfg_dict = build_runtime_config_dict(cfg)
 
     # -----------------------------------------------------------------------
     # 3. Save the resolved config to the output directory
@@ -258,6 +406,17 @@ def main():
         save_last=True,  # Also save last.ckpt for resume support
     )
 
+    callbacks = [checkpoint_callback]
+
+    if cfg.get("stop_on_perfect_val_exact_match", False):
+        callbacks.append(
+            StopOnMetricThreshold(
+                monitor=monitor_metric,
+                threshold=1.0,
+                mode="max",
+            )
+        )
+
     # -----------------------------------------------------------------------
     # 8. Set up WandB logger
     # -----------------------------------------------------------------------
@@ -288,6 +447,14 @@ def main():
         wandb_logger.experiment.summary["trainable_parameters"] = trainable_params
         wandb_logger.experiment.summary["model_architecture"] = model_repr
 
+    if getattr(model, "supports_task_visualization", False):
+        callbacks.append(
+            MetaTaskVisualizationCallback(
+                output_path=cfg.output_path,
+                wandb_logger=wandb_logger,
+            )
+        )
+
     # -----------------------------------------------------------------------
     # 9. Create Lightning Trainer
     # -----------------------------------------------------------------------
@@ -295,7 +462,7 @@ def main():
         accelerator=cfg.accelerator,  # "auto", "gpu", "cpu", etc.
         logger=wandb_logger,  # Log metrics to WandB
         max_steps=cfg.max_steps,  # Stop after this many training steps
-        callbacks=[checkpoint_callback],  # Save best + last checkpoints
+        callbacks=callbacks,  # Save checkpoints and optionally stop on perfect val exact match
         num_sanity_val_steps=0,  # Skip sanity validation (faster startup)
         overfit_batches=1 if cfg.get("overfit_single_batch", False) else 0,
     )
@@ -318,29 +485,67 @@ def main():
         ckpt = torch.load(best_ckpt, map_location="cpu", weights_only=True)
         model.load_state_dict(ckpt["state_dict"])
 
-    log_hard_val_examples(
-        model=model,
-        datamodule=dm,
-        output_path=cfg.output_path,
-        wandb_logger=wandb_logger,
-        num_hard_examples=cfg.get("num_hard_examples", 3),
-    )
+    if getattr(model, "supports_hard_val_examples", True):
+        log_hard_val_examples(
+            model=model,
+            datamodule=dm,
+            output_path=cfg.output_path,
+            wandb_logger=wandb_logger,
+            num_hard_examples=cfg.get("num_hard_examples", 3),
+        )
 
     # -----------------------------------------------------------------------
-    # 11. Evaluate on the test set
+    # 11. Evaluate on the validation and test sets
     # -----------------------------------------------------------------------
-    # Use the best checkpoint (by val_accuracy) for final evaluation,
-    # not the last checkpoint. This gives the most representative
-    # test performance.
+    # Use the best checkpoint for the final validation and test report.
     test_ckpt_path = checkpoint_callback.best_model_path or checkpoint_callback.last_model_path
+    val_results = trainer.validate(
+        model=model,
+        datamodule=dm,
+        ckpt_path=test_ckpt_path if test_ckpt_path else None,
+    )
     test_results = trainer.test(
         model=model,
         datamodule=dm,
         ckpt_path=test_ckpt_path if test_ckpt_path else None,
     )
+    if getattr(model, "supports_task_visualization", False) and getattr(
+        model, "log_task_examples", False
+    ):
+        model.log_task_gallery(
+            split_name="train_final",
+            records=model.collect_task_records_from_dataset_by_task_ids(
+                dm.train_dataset,
+                model.selected_representative_task_ids.get("train", []),
+            ),
+            output_path=cfg.output_path,
+            wandb_logger=wandb_logger,
+            key_prefix="train_final_task",
+        )
+        model.log_task_gallery(
+            split_name="val_final",
+            records=model.collect_task_records_from_dataset_by_task_ids(
+                dm.val_dataset,
+                model.selected_representative_task_ids.get("val", []),
+            ),
+            output_path=cfg.output_path,
+            wandb_logger=wandb_logger,
+            key_prefix="val_final_task",
+        )
+        model.log_task_gallery(
+            split_name="val_hard_final",
+            records=model.select_hard_task_records(
+                dm.val_dataloader(),
+                limit=model.num_final_hard_val_task_examples,
+            ),
+            output_path=cfg.output_path,
+            wandb_logger=wandb_logger,
+            key_prefix="val_hard_final_task",
+        )
     write_results_file(
         output_path=cfg.output_path,
         checkpoint_path=test_ckpt_path if test_ckpt_path else None,
+        val_results=val_results,
         test_results=test_results,
     )
 

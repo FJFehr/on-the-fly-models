@@ -33,3 +33,4 @@ log_val_examples: true
 max_logged_val_examples: 3
 max_logged_val_examples_per_category: 3
 log_val_examples_every_n_epochs: 50
+stop_on_perfect_val_exact_match: false

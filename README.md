@@ -19,14 +19,16 @@ on-the-fly-models/
 ├── data_modules/
 │   ├── __init__.py                 # Datamodule registry
 │   ├── arc1d_simple.py
-│   └── arc1d_padded_multiclass.py
+│   ├── arc1d_padded_multiclass.py
+│   └── arc1d_meta_padded_multiclass.py
 ├── models/
 │   ├── __init__.py                 # Model registry
-│   ├── hyper_model.py              # Hyper-model placeholder / prototype territory
+│   ├── hypermodels/                # Task-conditioned hypernetwork model families
 │   └── target_models/
 │       ├── base.py                 # Shared Lightning training/eval logic
 │       ├── mlp.py                  # Positional MLP baseline
 │       ├── cnn.py                  # Positional 1D CNN baseline
+│       ├── cnn_core.py             # Shared pure CNN core for baseline/hypermodels
 │       ├── rnn.py                  # Positional RNN baseline
 │       └── transformer.py          # Positional transformer baseline
 ├── scripts/
@@ -53,7 +55,10 @@ The active comparison track is `arc1d_padded_multiclass`:
 
 The legacy `arc1d_simple` path remains available as the binary padded baseline.
 
-The dataloaders are still pair-based rather than task-conditioned: each ARC task is expanded into support/query `(input, target)` pairs so target-model baselines can be trained without hypernetwork conditioning.
+The repo now supports both training contracts:
+
+- pair-based dataloaders for the baseline target-model experiments
+- task-level dataloaders for the `hyper_rnn` and `hyper_cnn` meta-learning experiments
 
 ## Setup
 
@@ -77,6 +82,8 @@ Supported model families are:
 - `cnn`
 - `rnn`
 - `transformer`
+- `hyper_cnn`
+- `hyper_rnn`
 
 Model defaults:
 
@@ -91,7 +98,30 @@ The current system is optimized for rapid baseline iteration:
 - models are registered in `models/__init__.py`
 - datamodules are registered in `data_modules/__init__.py`
 - resolved configs and model summaries are saved per run
+- training stops early once the configured primary validation metric reaches `1.0` unless disabled in config
 - validation examples and hard failures can be logged for inspection
+
+The first task-conditioned experiment lives under its own meta-learning track and can be launched with:
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_padded_multiclass_meta/move_1p/hyper_rnn.yaml
+```
+
+The hyper-CNN variant uses the same task-level datamodule and can be launched with:
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_padded_multiclass_meta/move_1p/hyper_cnn.yaml
+```
+
+For a single-task overfit sanity check:
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_padded_multiclass_meta/overfit/hyper_rnn.yaml
+```
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_padded_multiclass_meta/overfit/hyper_cnn.yaml
+```
 
 ## Data
 
@@ -135,6 +165,8 @@ The implemented target-model baselines are:
 - `cnn`: 1D CNN with an explicit x-position channel
 - `rnn`: RNN with explicit positional features
 - `transformer`: transformer over per-position value-plus-position features
+- `hyper_cnn`: transformer task encoder that predicts a task-specific 1D CNN
+- `hyper_rnn`: transformer task encoder that reads whole support/query context and predicts a task-specific bidirectional RNN
 
 For multiclass tasks, all models use learned token embeddings by default before the architecture-specific positional features are applied.
 
@@ -187,12 +219,13 @@ The repo keeps a number of architectural knobs configurable, but the current gui
 
 Skip connections are not hardcoded as a universal default in code. They remain experiment-level config choices, but the repo now treats them as recommended guidance for deeper multilayer baselines.
 
-The hyper-model is not implemented yet. [models/hyper_model.py](/home/fabio/Projects/on-the-fly-models/models/hyper_model.py) is roadmap/prototype territory, not shipped functionality.
+The hypernetwork paths now live under `models/hypermodels/`. They keep the task intact, encode the 3 support examples plus query input with explicit token, position, example-index, and input/output-role embeddings, and predict the full weights of a task-specific target model. The current target-model variants are a bidirectional RNN and a 1D CNN.
 
 ## Current scope and limitations
 
 - the main active path is fixed-length padded ARC1D, not variable-length ARC1D
-- training is still pair-based baseline supervision, not full task-conditioned hypernetwork training
+- task-conditioned hypernetwork training currently targets padded multiclass `1d_move_1p`, with overfit sanity-check configs for single-task debugging
+- baseline comparison tracks remain pair-based outside that new meta-learning path
 - `arc1d_simple` remains the binary legacy baseline
 - hypernetwork training and full 2D ARC are future stages
 
@@ -205,6 +238,7 @@ uv run pytest
 Coverage is intentionally focused on:
 
 - dataset construction and datamodule contracts
+- task-conditioned hypernetwork shape, gradient, and smoke-path coverage
 - target-model output-shape invariants
 - shared validation logging behavior
 - exact-match sequence metric behavior
