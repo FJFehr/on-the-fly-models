@@ -21,14 +21,12 @@ Fill in the fields below when dispatching a task to an agent.
 
 ---
 
-## Example (filled)
+## Example
 
-**Task type:** feature
-**Mode:** implement
-**Objective:** Add a CLI flag `--dry-run` to the training script that skips writing checkpoints.
-**Acceptance criteria:** Running with `--dry-run` completes without writing to disk. Existing runs without the flag are unaffected.
-**Constraints:** Do not change the checkpoint format or add new dependencies.
-**Known unknowns:** Unclear whether the eval step should also be skipped; assume no unless training is the only concern.
-**Relevant files:** `train.py`, `tasks/feature.md`
-**Out-of-scope files:** `data/`, `tests/` (read only)
-**Verification:** `uv run python train.py --dry-run` exits cleanly; existing tests pass.
+Read the ./agents folder and the README
+
+Then:
+
+**Task type:** feature / refactor / debug
+**Mode:** implement / plan
+**Objective:** 
