@@ -20,6 +20,7 @@ assert MODULE_SPEC.loader is not None
 build_arc_1d = module_from_spec(MODULE_SPEC)
 MODULE_SPEC.loader.exec_module(build_arc_1d)
 build_dataset_dict = build_arc_1d.build_dataset_dict
+build_padded_multiclass_dataset = build_arc_1d.build_padded_multiclass_dataset
 validate_task_examples = build_arc_1d.validate_task_examples
 
 
@@ -130,3 +131,44 @@ def test_build_dataset_dict_preserves_grouped_examples():
             assert all(len(seq) == task["sequence_length"] for seq in task["support_outputs"])
             assert len(task["query_input"]) == task["sequence_length"]
             assert len(task["query_output"]) == task["sequence_length"]
+
+
+def test_build_padded_multiclass_dataset_preserves_values_and_excludes_padded_fill():
+    """Verify the multiclass derived dataset keeps colors and drops padded-fill."""
+
+    source_dataset = build_arc_1d.DatasetDict(
+        {
+            "train": build_arc_1d.Dataset.from_list(
+                [
+                    {
+                        "task_category": "1d_move_1p",
+                        "task_id": 1,
+                        "sequence_length": 4,
+                        "support_inputs": [[0, 2, 0, 7]] * 3,
+                        "support_outputs": [[7, 2, 0, 0]] * 3,
+                        "query_input": [0, 2, 0, 7],
+                        "query_output": [7, 2, 0, 0],
+                    },
+                    {
+                        "task_category": "1d_padded_fill",
+                        "task_id": 2,
+                        "sequence_length": 4,
+                        "support_inputs": [[0, 3, 0, 8]] * 3,
+                        "support_outputs": [[8, 3, 0, 0]] * 3,
+                        "query_input": [0, 3, 0, 8],
+                        "query_output": [8, 3, 0, 0],
+                    },
+                ]
+            )
+        }
+    )
+
+    padded_multiclass = build_padded_multiclass_dataset(source_dataset)
+
+    assert len(padded_multiclass["train"]) == 1
+    task = padded_multiclass["train"][0]
+    assert task["task_category"] == "1d_move_1p"
+    assert task["support_inputs"][0][:4] == [0, 2, 0, 7]
+    assert task["support_outputs"][0][:4] == [7, 2, 0, 0]
+    assert len(task["query_input"]) == 33
+    assert len(task["query_output"]) == 33

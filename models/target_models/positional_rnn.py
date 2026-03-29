@@ -43,10 +43,13 @@ class TargetPositionalRNNModelLightning(BaseTargetModel):
         )
         output_features = rnn_hidden_dim * (2 if rnn_bidirectional else 1)
         self.input_skip = torch.nn.Linear(2, output_features) if use_skip_connections else None
-        self.output_layer = torch.nn.Linear(output_features, 1)
+        self.output_layer = torch.nn.Linear(
+            output_features,
+            1 if self.prediction_task == "binary" else self.num_classes,
+        )
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        """Concatenate values and positions per token, then decode per-token logits."""
+        """Concatenate values and positions, then return canonical logits."""
         value_channel = inputs.unsqueeze(-1)
         x_position_channel = self.x_positions.expand(inputs.shape[0], -1, -1)
         features = torch.cat([value_channel, x_position_channel], dim=-1)
@@ -54,4 +57,6 @@ class TargetPositionalRNNModelLightning(BaseTargetModel):
         if self.input_skip is not None:
             hidden_states = hidden_states + self.input_skip(features)
         logits = self.output_layer(hidden_states)
-        return logits.squeeze(-1)
+        if self.prediction_task == "binary":
+            return logits.squeeze(-1)
+        return logits

@@ -17,7 +17,7 @@
 
 import lightning as pl
 import torch
-from torch.nn import BCEWithLogitsLoss
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss
 
 import wandb
 from metrics import accuracy, exact_match_accuracy
@@ -28,7 +28,7 @@ class BaseTargetModel(pl.LightningModule):
     """Base Lightning module for all target models in the on-the-fly framework.
 
     Handles everything except the architecture itself:
-      - Loss computation (BCEWithLogitsLoss for binary sequence tasks)
+      - Loss computation for binary or multiclass sequence tasks
       - Metric logging (loss, elementwise accuracy, exact-match accuracy)
       - Optimizer creation from config string (e.g. "Adam" -> torch.optim.Adam)
       - Validation example collection and WandB image logging
@@ -39,9 +39,16 @@ class BaseTargetModel(pl.LightningModule):
       2. Set self.model to a torch.nn.Module
       3. Override forward(inputs) to define the forward pass
 
-    The forward() method receives raw input tensors of shape (batch, seq_len)
-    and must return logits of the same shape. The base class handles sigmoid
-    thresholding, loss, and metric computation.
+    The forward() method receives raw input tensors of shape (batch, seq_len).
+    Subclasses must return logits using the canonical shape for the configured
+    task:
+
+    - binary: (batch, seq_len)
+    - multiclass: (batch, seq_len, num_classes)
+
+    The base class does not reshape or infer multiclass layouts. It only
+    validates the returned shape, computes the task-appropriate loss, decodes
+    predictions, and logs shared metrics.
 
     Args:
         learning_rate: Learning rate for the optimizer.
@@ -69,15 +76,24 @@ class BaseTargetModel(pl.LightningModule):
         max_logged_val_examples: int = 8,
         max_logged_val_examples_per_category: int = 3,
         log_val_examples_every_n_epochs: int = 5,
+        prediction_task: str = "binary",
+        num_classes: int = 2,
         **kwargs,
     ):
         super().__init__()
 
-        # Binary cross-entropy with logits combines sigmoid + BCE in a
-        # numerically stable way. The model outputs raw logits, not
-        # probabilities. This loss function is shared across all target models
-        # because the task is always binary sequence prediction.
-        self.loss_fn = BCEWithLogitsLoss()
+        if prediction_task not in {"binary", "multiclass"}:
+            msg = f"Unknown prediction_task {prediction_task!r}."
+            raise ValueError(msg)
+        if prediction_task == "multiclass" and num_classes < 2:
+            msg = "num_classes must be at least 2 for multiclass prediction."
+            raise ValueError(msg)
+
+        self.prediction_task = prediction_task
+        self.num_classes = num_classes
+        self.loss_fn = (
+            BCEWithLogitsLoss() if self.prediction_task == "binary" else CrossEntropyLoss()
+        )
 
         # Store optimizer config for use in configure_optimizers().
         # The optimizer is resolved dynamically from its string name so that
@@ -109,7 +125,7 @@ class BaseTargetModel(pl.LightningModule):
     # -----------------------------------------------------------------------
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        """Compute raw logits from input sequences.
+        """Compute raw logits using the canonical task-specific shape.
 
         Subclasses MUST override this method. The base implementation raises
         NotImplementedError to catch accidental use of the base class directly.
@@ -118,7 +134,9 @@ class BaseTargetModel(pl.LightningModule):
             inputs: Input tensor of shape (batch_size, sequence_length).
 
         Returns:
-            Logits tensor of shape (batch_size, sequence_length).
+            Binary tasks must return logits of shape ``(batch_size, sequence_length)``.
+            Multiclass tasks must return logits of shape
+            ``(batch_size, sequence_length, num_classes)``.
         """
         raise NotImplementedError("Subclasses must implement forward()")
 
@@ -157,11 +175,17 @@ class BaseTargetModel(pl.LightningModule):
     def common_step(
         self, batch, prefix: str
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
-        """Shared forward pass for training, validation, and test steps.
+        """Run the shared train/val/test path from batch to logged metrics.
 
-        Runs the full pipeline: unpack batch -> forward pass -> compute loss
-        -> compute metrics -> log everything. This avoids duplicating the
-        same logic in training_step, validation_step, and test_step.
+        This method is the single orchestration point for supervised steps.
+        It:
+
+        1. unpacks inputs, targets, and metadata
+        2. calls the subclass ``forward()``
+        3. validates that logits already follow the canonical task contract
+        4. computes the configured loss
+        5. decodes predicted class ids
+        6. logs elementwise and exact-match metrics
 
         Args:
             batch: Dict batch from the dataloader.
@@ -170,39 +194,26 @@ class BaseTargetModel(pl.LightningModule):
         Returns:
             Tuple of (loss, predictions, targets, metadata):
               - loss: Scalar loss tensor (used by Lightning for backprop)
-              - predictions: Binary predictions tensor, shape (batch, seq_len)
-              - targets: Ground truth tensor (as long), shape (batch, seq_len)
+              - predictions: Integer class predictions, shape (batch, seq_len)
+              - targets: Ground truth class ids, shape (batch, seq_len)
               - metadata: Task metadata dict for visualization
         """
-        # Unpack the batch into input sequences, target sequences, and metadata
         inputs, targets, metadata = self.unpack_batch(batch)
-
-        # Forward pass through the subclass-defined architecture.
-        # self(inputs) calls self.forward(inputs) via Lightning's __call__,
-        # which also handles hooks and other Lightning machinery.
         logits = self(inputs)
+        logits = self.format_logits(logits, targets)
+        targets_long = targets.long()
+        loss = self.compute_loss(logits, targets, targets_long)
+        preds = self.decode_logits(logits)
 
-        # Compute binary cross-entropy loss between raw logits and targets
-        loss = self.loss_fn(logits, targets)
-
-        # Convert logits to binary predictions for metric calculation:
-        # 1. Apply sigmoid to map logits to probabilities in [0, 1]
-        # 2. Threshold at 0.5 to get binary predictions (0 or 1)
-        preds = (torch.sigmoid(logits) > 0.5).long()
-
-        # Log loss and both accuracy metrics to the Lightning logger.
-        # prog_bar=True shows these in the training progress bar.
-        # - accuracy: elementwise (what fraction of individual positions are correct)
-        # - exact_match_accuracy: sequence-level (what fraction of full sequences are perfect)
         self.log(f"{prefix}_loss", loss, prog_bar=True)
-        self.log(f"{prefix}_accuracy", accuracy(targets.long(), preds), prog_bar=True)
+        self.log(f"{prefix}_accuracy", accuracy(targets_long, preds), prog_bar=True)
         self.log(
             f"{prefix}_exact_match_accuracy",
-            exact_match_accuracy(targets.long(), preds),
+            exact_match_accuracy(targets_long, preds),
             prog_bar=True,
         )
 
-        return loss, preds, targets.long(), metadata
+        return loss, preds, targets_long, metadata
 
     # -----------------------------------------------------------------------
     # Lightning step hooks
@@ -325,6 +336,71 @@ class BaseTargetModel(pl.LightningModule):
         return self.validation_epoch_count == 1 or (
             self.validation_epoch_count % self.log_val_examples_every_n_epochs == 0
         )
+
+    def format_logits(self, logits: torch.Tensor, targets: torch.Tensor | None = None) -> torch.Tensor:
+        """Validate that a model returned the canonical shape for its task.
+
+        Binary models must emit ``(batch, seq_len)``.
+        Multiclass models must emit ``(batch, seq_len, num_classes)``.
+
+        The method intentionally does not reshape or transpose logits. If a
+        model returns the wrong layout, that is treated as a model bug rather
+        than silently repaired in the training loop.
+        """
+        if targets is None:
+            msg = "Targets are required so the base class can validate logit shapes."
+            raise ValueError(msg)
+
+        expected_batch, expected_seq_len = targets.shape[0], targets.shape[1]
+
+        if self.prediction_task == "binary":
+            expected_shape = (expected_batch, expected_seq_len)
+            if logits.shape != expected_shape:
+                msg = (
+                    "Binary models must return logits with shape "
+                    f"{expected_shape}, got {tuple(logits.shape)}."
+                )
+                raise ValueError(msg)
+            return logits
+
+        expected_shape = (expected_batch, expected_seq_len, self.num_classes)
+        if logits.shape != expected_shape:
+            msg = (
+                "Multiclass models must return logits with shape "
+                f"{expected_shape}, got {tuple(logits.shape)}."
+            )
+            raise ValueError(msg)
+        return logits
+
+    def compute_loss(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        targets_long: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute the configured loss from canonical logits and targets.
+
+        Binary tasks use ``BCEWithLogitsLoss`` on ``(batch, seq_len)`` logits
+        against float targets.
+
+        Multiclass tasks use ``CrossEntropyLoss`` on per-position class logits.
+        ``CrossEntropyLoss`` expects the class axis before the sequence axis, so
+        the canonical ``(batch, seq_len, num_classes)`` tensor is permuted to
+        ``(batch, num_classes, seq_len)`` only at the loss callsite.
+        """
+        if self.prediction_task == "binary":
+            return self.loss_fn(logits, targets)
+        return self.loss_fn(logits.permute(0, 2, 1), targets_long)
+
+    def decode_logits(self, logits: torch.Tensor) -> torch.Tensor:
+        """Convert canonical logits into integer class predictions.
+
+        Binary tasks apply a sigmoid and threshold at 0.5.
+        Multiclass tasks take the argmax over the class dimension.
+        """
+        if self.prediction_task == "binary":
+            return (torch.sigmoid(logits) > 0.5).long()
+        return logits.argmax(dim=-1)
 
     def build_val_example_log_payload(self, records: list[dict]) -> dict:
         """Build the WandB log payload from collected example records.

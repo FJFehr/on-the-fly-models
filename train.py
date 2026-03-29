@@ -59,8 +59,8 @@ def log_hard_val_examples(model, datamodule, output_path, wandb_logger=None, num
             inputs = batch["inputs"].to(device)
             targets = batch["targets"].to(device)
 
-            logits = model(inputs)
-            preds = (torch.sigmoid(logits) > 0.5).long()
+            logits = model.format_logits(model(inputs), targets)
+            preds = model.decode_logits(logits)
             targets_long = targets.long()
 
             exact_matches = (preds == targets_long).all(dim=1)

@@ -36,6 +36,10 @@ class TargetPositionalMLPLightning(BaseTargetModel):
             msg = "input_dim must be at least 1."
             raise ValueError(msg)
 
+        self.output_dim = output_dim
+        final_output_dim = (
+            output_dim * self.num_classes if self.prediction_task == "multiclass" else output_dim
+        )
         self.register_buffer(
             "x_positions",
             torch.linspace(0.0, 1.0, steps=input_dim, dtype=torch.float32),
@@ -43,13 +47,16 @@ class TargetPositionalMLPLightning(BaseTargetModel):
         self.model = mlp(
             input_dim * 2,
             hidden_dim,
-            output_dim,
+            final_output_dim,
             num_layers=num_layers,
             use_skip_connections=use_skip_connections,
         )
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        """Concatenate normalized x positions to the flat input sequence."""
+        """Concatenate positions, run the MLP, and return canonical logits."""
         x_positions = self.x_positions.unsqueeze(0).expand(inputs.shape[0], -1)
         features = torch.cat([inputs, x_positions], dim=1)
-        return self.model(features)
+        logits = self.model(features)
+        if self.prediction_task == "binary":
+            return logits
+        return logits.view(inputs.shape[0], self.output_dim, self.num_classes)

@@ -45,12 +45,15 @@ class TargetPositionalCNNModelLightning(BaseTargetModel):
             kernel_size=kernel_size,
             num_layers=num_layers,
             input_channels=2,
+            output_channels=1 if self.prediction_task == "binary" else self.num_classes,
             use_skip_connections=use_skip_connections,
         )
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        """Append the normalized x-position ramp as a second CNN input channel."""
+        """Append positions and return logits using the canonical task shape."""
         value_channel = inputs.unsqueeze(1)
         x_position_channel = self.x_positions.expand(inputs.shape[0], -1, -1)
         logits = self.model(torch.cat([value_channel, x_position_channel], dim=1))
-        return logits.squeeze(1)
+        if self.prediction_task == "binary":
+            return logits.squeeze(1)
+        return logits.transpose(1, 2)

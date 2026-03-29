@@ -85,7 +85,7 @@ def mlp(
 
 
 class TargetModelLightning(BaseTargetModel):
-    """MLP target model for 1D-ARC binary sequence transformations.
+    """MLP target model for fixed-length ARC1D sequence transformations.
 
     Inherits all training, logging, and optimizer logic from BaseTargetModel.
     Only defines the MLP architecture and a trivial forward pass.
@@ -109,31 +109,29 @@ class TargetModelLightning(BaseTargetModel):
     ):
         super().__init__(**kwargs)
 
+        self.output_dim = output_dim
         # save_hyperparameters() stores all named arguments (excluding **kwargs)
         # into self.hparams, which Lightning uses for checkpoint saving/loading.
         # This captures only the architecture-specific params (input_dim,
         # hidden_dim, output_dim) — training params are handled by the base class.
         self.save_hyperparameters(ignore=["kwargs"])
 
+        final_output_dim = (
+            output_dim * self.num_classes if self.prediction_task == "multiclass" else output_dim
+        )
+
         # Build the MLP architecture
         self.model = mlp(
             input_dim,
             hidden_dim,
-            output_dim,
+            final_output_dim,
             num_layers=num_layers,
             use_skip_connections=use_skip_connections,
         )
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        """Forward pass: feed input sequences directly through the MLP.
-
-        The MLP treats the entire sequence as a flat vector, so no reshaping
-        is needed — the input tensor goes straight through the network.
-
-        Args:
-            inputs: Input tensor of shape (batch_size, sequence_length).
-
-        Returns:
-            Logits tensor of shape (batch_size, sequence_length).
-        """
-        return self.model(inputs)
+        """Run the MLP and return logits using the canonical task shape."""
+        logits = self.model(inputs)
+        if self.prediction_task == "binary":
+            return logits
+        return logits.view(inputs.shape[0], self.output_dim, self.num_classes)

@@ -8,8 +8,11 @@ class checks.
 
 import torch
 
+import pytest
 import wandb
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss
 from models.target_models.mlp import TargetModelLightning
+from models.target_models.positional_cnn import TargetPositionalCNNModelLightning
 from models.target_models.positional_rnn import TargetPositionalRNNModelLightning
 from visualisation import figure_to_wandb_image, render_val_example_figure
 
@@ -26,6 +29,21 @@ def test_target_mlp_forward_preserves_sequence_shape_with_multiple_layers():
     logits = model(inputs)
 
     assert logits.shape == (4, 33)
+
+
+def test_target_mlp_forward_returns_multiclass_logits():
+    model = TargetModelLightning(
+        input_dim=33,
+        hidden_dim=16,
+        output_dim=33,
+        prediction_task="multiclass",
+        num_classes=10,
+    )
+    inputs = torch.randn(4, 33)
+
+    logits = model(inputs)
+
+    assert logits.shape == (4, 33, 10)
 
 
 def test_target_positional_rnn_forward_preserves_sequence_shape():
@@ -54,6 +72,90 @@ def test_target_positional_rnn_forward_preserves_sequence_shape_with_skips_and_d
     logits = model(inputs)
 
     assert logits.shape == (4, 33)
+
+
+def test_target_positional_cnn_forward_returns_multiclass_logits():
+    model = TargetPositionalCNNModelLightning(
+        input_dim=33,
+        output_dim=33,
+        hidden_channels=16,
+        prediction_task="multiclass",
+        num_classes=10,
+    )
+    inputs = torch.randn(4, 33)
+
+    logits = model(inputs)
+
+    assert logits.shape == (4, 33, 10)
+
+
+def test_target_positional_rnn_forward_returns_multiclass_logits():
+    model = TargetPositionalRNNModelLightning(
+        input_dim=33,
+        output_dim=33,
+        rnn_hidden_dim=8,
+        prediction_task="multiclass",
+        num_classes=10,
+    )
+    inputs = torch.randn(4, 33)
+
+    logits = model(inputs)
+
+    assert logits.shape == (4, 33, 10)
+
+
+def test_common_step_uses_cross_entropy_and_argmax_for_multiclass():
+    """Verify the shared base logic switches loss and decoding for multiclass tasks."""
+
+    model = TargetPositionalRNNModelLightning(
+        input_dim=4,
+        output_dim=4,
+        rnn_hidden_dim=8,
+        prediction_task="multiclass",
+        num_classes=10,
+    )
+    batch = {
+        "inputs": torch.tensor([[0, 1, 2, 3], [3, 2, 1, 0]], dtype=torch.float32),
+        "targets": torch.tensor([[1, 2, 3, 4], [4, 3, 2, 1]], dtype=torch.long),
+        "task_category": ["cat_a", "cat_b"],
+        "task_id": torch.tensor([1, 2]),
+        "example_index": torch.tensor([0, 0]),
+        "source": ["query", "query"],
+    }
+
+    loss, preds, targets, _ = model.common_step(batch, "val")
+
+    assert isinstance(model.loss_fn, CrossEntropyLoss)
+    assert torch.isfinite(loss)
+    assert preds.shape == (2, 4)
+    assert targets.shape == (2, 4)
+    assert preds.min().item() >= 0
+    assert preds.max().item() <= 9
+
+
+def test_format_logits_rejects_flattened_multiclass_outputs():
+    model = TargetModelLightning(
+        input_dim=4,
+        hidden_dim=8,
+        output_dim=4,
+        prediction_task="multiclass",
+        num_classes=10,
+    )
+    targets = torch.tensor([[1, 2, 3, 4], [4, 3, 2, 1]], dtype=torch.long)
+    flattened_logits = torch.randn(2, 40)
+
+    with pytest.raises(ValueError, match="Multiclass models must return logits with shape"):
+        model.format_logits(flattened_logits, targets)
+
+
+def test_binary_models_keep_bce_loss():
+    model = TargetModelLightning(
+        input_dim=4,
+        hidden_dim=8,
+        output_dim=4,
+    )
+
+    assert isinstance(model.loss_fn, BCEWithLogitsLoss)
 
 
 def test_build_val_example_records_contains_metadata_and_combined_image():

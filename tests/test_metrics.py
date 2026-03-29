@@ -35,3 +35,12 @@ def test_exact_match_accuracy_handles_mixed_batches():
     preds = torch.tensor([[1, 0, 1], [0, 0, 0]])
 
     assert exact_match_accuracy(targets, preds).item() == 0.5
+
+
+def test_exact_match_accuracy_treats_multiclass_sequences_the_same_way():
+    """One wrong multiclass token should still fail sequence-level exact match."""
+
+    targets = torch.tensor([[7, 2, 1], [3, 4, 5]])
+    preds = torch.tensor([[7, 2, 1], [3, 0, 5]])
+
+    assert exact_match_accuracy(targets, preds).item() == 0.5

@@ -1,0 +1,35 @@
+# Base config for all arc1d_padded_multiclass experiments.
+project_name: arc1d_padded_multiclass_experiments
+entity: fjfehr
+output_dir: outputs
+seed: 42
+experiment_name: ${data}_${task}_${model}
+output_path: ${output_dir}/${project_name}/${experiment_name}
+
+data: arc_1d_padded_multiclass
+data_dir: data/arc_1d_padded_multiclass
+prediction_task: multiclass
+num_classes: 10
+primary_metric: val_exact_match_accuracy
+num_workers: 0
+task_categories:
+  - "1d_${task}"
+task_ids: null
+train_source: train_support_pairs
+val_source: train_query_pairs
+test_source: train_query_pairs
+overfit_single_batch: false
+
+accelerator: auto
+batch_size: 32
+learning_rate: 0.001
+optimizer: Adam
+weight_decay: 0.01
+max_steps: 1000
+
+input_dim: 33
+output_dim: 33
+log_val_examples: true
+max_logged_val_examples: 3
+max_logged_val_examples_per_category: 3
+log_val_examples_every_n_epochs: 50

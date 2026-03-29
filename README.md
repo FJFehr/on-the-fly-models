@@ -18,12 +18,15 @@ on-the-fly-models/
 ├── .agents/                        # Agent contract, style guide, task briefs
 ├── configs/
 │   ├── base/
-│   │   └── arc1d_simple.yaml       # Shared base config for current ARC1D baselines
+│   │   ├── arc1d_simple.yaml       # Shared base config for binary ARC1D baseline
+│   │   └── arc1d_padded_multiclass.yaml
 │   └── experiments/
-│       └── arc1d_simple/           # Task-specific experiment configs by category/model
+│       ├── arc1d_simple/           # Binary ARC1D experiments by category/model
+│       └── arc1d_padded_multiclass/
 ├── data_modules/
 │   ├── __init__.py                 # Datamodule registry
 │   └── arc1d_simple.py             # Pair-based datamodule for padded binary ARC1D
+│   └── arc1d_padded_multiclass.py  # Pair-based datamodule for padded multiclass ARC1D
 ├── models/
 │   ├── __init__.py                 # Model registry
 │   ├── hyper_model.py              # Hyper-model placeholder / prototype territory
@@ -64,7 +67,10 @@ The current training stack in [models/target_models/base.py](/home/fabio/Project
 - sigmoid thresholding for predictions
 - binary elementwise and exact-match metrics
 
-The active config foundation is [configs/base/arc1d_simple.yaml](/home/fabio/Projects/on-the-fly-models/configs/base/arc1d_simple.yaml#L1), with experiment overrides under `configs/experiments/arc1d_simple/`.
+The active config foundations are:
+
+- [configs/base/arc1d_simple.yaml](/home/fabio/Projects/on-the-fly-models/configs/base/arc1d_simple.yaml#L1) for the legacy binary baseline
+- [configs/base/arc1d_padded_multiclass.yaml](/home/fabio/Projects/on-the-fly-models/configs/base/arc1d_padded_multiclass.yaml#L1) for the new multiclass padded track
 
 ## Setup
 
@@ -92,6 +98,12 @@ Current experiment configs cover:
 - `denoising_1c`
 - `pcopy_1c`
 - `overfit`
+
+The first multiclass padded experiments currently cover:
+
+- `move_1p`
+  - `positional_cnn`
+  - `positional_rnn`
 
 Current baseline model families include:
 
@@ -134,6 +146,18 @@ uv run python scripts/build_arc_1d.py --simple
 
 This is the current baseline dataset path used by the repo today: padded, binary, and limited to a simpler subset of ARC1D categories.
 
+### Build the padded multiclass ARC1D baseline dataset
+
+```bash
+uv run python scripts/build_arc_1d.py --padded-multiclass
+```
+
+This creates the new comparison-track dataset at `data/arc_1d_padded_multiclass`:
+
+- padded to length 33
+- original ARC token values `0..9` preserved
+- `1d_padded_fill` excluded
+
 ### Hold out an entire category
 
 ```bash
@@ -155,6 +179,7 @@ The hyper-model is not implemented yet. [models/hyper_model.py](/home/fabio/Proj
 ## Current scope and limitations
 
 - The current documented and tested path is binary padded ARC1D, not multiclass ARC1D.
+- The first multiclass padded path is now available as a separate config and dataset family.
 - The current datamodule is pair-based baseline training, not full task-conditioned hypernetwork training.
 - The current experiments are fixed-length through padding to 33.
 - Hypernetwork training and full 2D ARC are planned next stages, not current capabilities.
@@ -164,7 +189,7 @@ The hyper-model is not implemented yet. [models/hyper_model.py](/home/fabio/Proj
 ### Milestone 1: Add multiclass padded ARC1D alongside simple ARC1D
 
 - Preserve the existing binary `arc1d_simple` dataset and configs unchanged.
-- Add a new multiclass padded ARC1D track as a separate dataset/config family.
+- Add a new multiclass padded ARC1D track as a separate dataset/config family under `arc1d_padded_multiclass`.
 - Keep padding, but remove binarisation for the new track.
 - Exclude the padded-fill category from the new multiclass padded set.
 - Update models and training to predict per-position multiclass outputs.

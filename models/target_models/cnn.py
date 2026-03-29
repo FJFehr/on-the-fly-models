@@ -48,6 +48,7 @@ def cnn_1d(
     kernel_size: int = 3,
     num_layers: int = 1,
     input_channels: int = 1,
+    output_channels: int = 1,
     use_skip_connections: bool = False,
 ) -> torch.nn.Sequential:
     """Build a translation-equivariant 1D CNN with configurable depth.
@@ -116,12 +117,12 @@ def cnn_1d(
                     torch.nn.ReLU(),
                 ]
             )
-    layers.append(torch.nn.Conv1d(hidden_channels, 1, kernel_size=1))
+    layers.append(torch.nn.Conv1d(hidden_channels, output_channels, kernel_size=1))
     return torch.nn.Sequential(*layers)
 
 
 class TargetCNNModelLightning(BaseTargetModel):
-    """1D CNN target model for ARC1D binary sequence transformations.
+    """1D CNN target model for fixed-length ARC1D sequence transformations.
 
     Inherits all training, logging, and optimizer logic from BaseTargetModel.
     Only defines the CNN architecture and a forward pass that handles the
@@ -164,6 +165,7 @@ class TargetCNNModelLightning(BaseTargetModel):
             hidden_channels=hidden_channels,
             kernel_size=kernel_size,
             num_layers=num_layers,
+            output_channels=1 if self.prediction_task == "binary" else self.num_classes,
             use_skip_connections=use_skip_connections,
         )
 
@@ -178,9 +180,11 @@ class TargetCNNModelLightning(BaseTargetModel):
             inputs: Input tensor of shape (batch_size, sequence_length).
 
         Returns:
-            Logits tensor of shape (batch_size, sequence_length).
+            Binary tasks return ``(batch_size, sequence_length)`` logits.
+            Multiclass tasks return ``(batch_size, sequence_length, num_classes)`` logits.
         """
         # (batch, length) -> (batch, 1, length) for Conv1d
         logits = self.model(inputs.unsqueeze(1))
-        # (batch, 1, length) -> (batch, length)
-        return logits.squeeze(1)
+        if self.prediction_task == "binary":
+            return logits.squeeze(1)
+        return logits.transpose(1, 2)

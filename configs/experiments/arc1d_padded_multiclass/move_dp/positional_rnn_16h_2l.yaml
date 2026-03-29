@@ -1,0 +1,8 @@
+_base_: configs/base/arc1d_padded_multiclass.yaml
+task: move_dp
+model: positional_rnn
+variant: 16h_2l
+experiment_name: ${data}_${task}_${model}_${variant}
+rnn_hidden_dim: 16
+rnn_bidirectional: true
+rnn_num_layers: 2

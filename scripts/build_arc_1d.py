@@ -13,6 +13,7 @@ from datasets import Dataset, DatasetDict
 REPO_URL = "https://github.com/khalil-research/1D-ARC.git"
 OUTPUT_DIR = Path("data/arc_1d")
 SIMPLE_OUTPUT_DIR = Path("data/arc_1d_simple")
+PADDED_MULTICLASS_OUTPUT_DIR = Path("data/arc_1d_padded_multiclass")
 MAX_SEQ_LEN = 33
 SIMPLE_CATEGORIES = {
     "1d_move_1p",
@@ -23,6 +24,7 @@ SIMPLE_CATEGORIES = {
     "1d_denoising_1c",
     "1d_pcopy_1c",
 }
+PADDED_MULTICLASS_EXCLUDED_CATEGORIES = {"1d_padded_fill"}
 SPLIT_RATIOS = {
     "train": 0.8,
     "dev": 0.1,
@@ -54,6 +56,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Also build a simplified dataset (binary, padded to 33, subset of categories) "
         f"and save to {SIMPLE_OUTPUT_DIR}.",
+    )
+    parser.add_argument(
+        "--padded-multiclass",
+        action="store_true",
+        help="Also build a padded multiclass dataset (preserve 0-9 values, pad to 33, "
+        f"exclude padded-fill) and save to {PADDED_MULTICLASS_OUTPUT_DIR}.",
     )
     return parser.parse_args()
 
@@ -277,15 +285,56 @@ def simplify_task(task: dict) -> dict:
     }
 
 
+def pad_multiclass_task(task: dict) -> dict:
+    return {
+        "task_category": task["task_category"],
+        "task_id": task["task_id"],
+        "sequence_length": task["sequence_length"],
+        "support_inputs": [pad_sequence(s, MAX_SEQ_LEN) for s in task["support_inputs"]],
+        "support_outputs": [pad_sequence(s, MAX_SEQ_LEN) for s in task["support_outputs"]],
+        "query_input": pad_sequence(task["query_input"], MAX_SEQ_LEN),
+        "query_output": pad_sequence(task["query_output"], MAX_SEQ_LEN),
+    }
+
+
+def derive_binary_simple_track(task: dict) -> dict | None:
+    """Return the simplified binary track record for one task, or skip it."""
+    if task["task_category"] not in SIMPLE_CATEGORIES:
+        return None
+    if task["sequence_length"] > MAX_SEQ_LEN:
+        return None
+    return simplify_task(task)
+
+
+def derive_padded_multiclass_track(task: dict) -> dict | None:
+    """Return the padded multiclass track record for one task, or skip it."""
+    if task["task_category"] in PADDED_MULTICLASS_EXCLUDED_CATEGORIES:
+        return None
+    if task["sequence_length"] > MAX_SEQ_LEN:
+        return None
+    return pad_multiclass_task(task)
+
+
 def build_simple_dataset(dataset_dict: DatasetDict) -> DatasetDict:
     splits = {}
     for split_name, dataset in dataset_dict.items():
-        tasks = [
-            simplify_task(task)
-            for task in dataset
-            if task["task_category"] in SIMPLE_CATEGORIES
-            and task["sequence_length"] <= MAX_SEQ_LEN
-        ]
+        tasks = []
+        for task in dataset:
+            derived_task = derive_binary_simple_track(task)
+            if derived_task is not None:
+                tasks.append(derived_task)
+        splits[split_name] = Dataset.from_list(tasks)
+    return DatasetDict(splits)
+
+
+def build_padded_multiclass_dataset(dataset_dict: DatasetDict) -> DatasetDict:
+    splits = {}
+    for split_name, dataset in dataset_dict.items():
+        tasks = []
+        for task in dataset:
+            derived_task = derive_padded_multiclass_track(task)
+            if derived_task is not None:
+                tasks.append(derived_task)
         splits[split_name] = Dataset.from_list(tasks)
     return DatasetDict(splits)
 
@@ -332,6 +381,15 @@ def main() -> None:
         print(f"Saved simplified dataset to {SIMPLE_OUTPUT_DIR}")
         print(simple_dict)
         print_split_summary(simple_dict)
+
+    if args.padded_multiclass:
+        print("\nBuilding padded multiclass dataset (preserve 0-9 values, padded to 33) ...")
+        padded_multiclass_dict = build_padded_multiclass_dataset(dataset_dict)
+        PADDED_MULTICLASS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        padded_multiclass_dict.save_to_disk(str(PADDED_MULTICLASS_OUTPUT_DIR))
+        print(f"Saved padded multiclass dataset to {PADDED_MULTICLASS_OUTPUT_DIR}")
+        print(padded_multiclass_dict)
+        print_split_summary(padded_multiclass_dict)
 
 
 if __name__ == "__main__":
