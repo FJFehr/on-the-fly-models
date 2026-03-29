@@ -59,3 +59,18 @@ def test_target_cnn_forward_preserves_sequence_shape_with_skip_connections():
     logits = model(inputs)
 
     assert logits.shape == (4, 33)
+
+
+def test_target_cnn_forward_returns_multiclass_logits():
+    model = TargetCNNModelLightning(
+        input_dim=33,
+        output_dim=33,
+        hidden_channels=16,
+        prediction_task="multiclass",
+        num_classes=10,
+    )
+    inputs = torch.randint(0, 10, (4, 33)).float()
+
+    logits = model(inputs)
+
+    assert logits.shape == (4, 33, 10)

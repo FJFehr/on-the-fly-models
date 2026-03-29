@@ -40,6 +40,29 @@ from models import MODEL_REGISTRY
 from visualisation import figure_to_wandb_image, render_val_example_figure
 
 
+def write_results_file(
+    output_path: str, checkpoint_path: str | None, test_results: list[dict]
+) -> None:
+    """Write final evaluation results to a plain-text file in the run directory."""
+    results_path = os.path.join(output_path, "results.txt")
+    lines = ["Final evaluation results"]
+
+    if checkpoint_path:
+        lines.append(f"checkpoint: {checkpoint_path}")
+    else:
+        lines.append("checkpoint: none")
+
+    if test_results:
+        lines.append("metrics:")
+        for metric_name, metric_value in sorted(test_results[0].items()):
+            lines.append(f"{metric_name}: {metric_value}")
+    else:
+        lines.append("metrics: none")
+
+    with open(results_path, "w", encoding="utf-8") as results_file:
+        results_file.write("\n".join(lines) + "\n")
+
+
 def log_hard_val_examples(model, datamodule, output_path, wandb_logger=None, num_hard_examples=3):
     """Find the hardest validation failures and save them as images.
 
@@ -68,14 +91,16 @@ def log_hard_val_examples(model, datamodule, output_path, wandb_logger=None, num
 
             for i in range(inputs.size(0)):
                 if not exact_matches[i]:
-                    wrong_examples.append({
-                        "input": inputs[i].cpu().long().tolist(),
-                        "target": targets_long[i].cpu().long().tolist(),
-                        "prediction": preds[i].cpu().long().tolist(),
-                        "position_accuracy": position_accs[i].item(),
-                        "task_category": batch["task_category"][i],
-                        "task_id": batch["task_id"][i].item(),
-                    })
+                    wrong_examples.append(
+                        {
+                            "input": inputs[i].cpu().long().tolist(),
+                            "target": targets_long[i].cpu().long().tolist(),
+                            "prediction": preds[i].cpu().long().tolist(),
+                            "position_accuracy": position_accs[i].item(),
+                            "task_category": batch["task_category"][i],
+                            "task_id": batch["task_id"][i].item(),
+                        }
+                    )
 
     if not wrong_examples:
         print("No wrong validation examples found — skipping hard example logging.")
@@ -256,9 +281,8 @@ def main():
             "trainable_parameters": trainable_params,
         }
     )
-    if (
-        hasattr(wandb_logger, "experiment")
-        and isinstance(wandb_logger.experiment, wandb.sdk.wandb_run.Run)
+    if hasattr(wandb_logger, "experiment") and isinstance(
+        wandb_logger.experiment, wandb.sdk.wandb_run.Run
     ):
         wandb_logger.experiment.summary["total_parameters"] = total_params
         wandb_logger.experiment.summary["trainable_parameters"] = trainable_params
@@ -309,10 +333,15 @@ def main():
     # not the last checkpoint. This gives the most representative
     # test performance.
     test_ckpt_path = checkpoint_callback.best_model_path or checkpoint_callback.last_model_path
-    trainer.test(
+    test_results = trainer.test(
         model=model,
         datamodule=dm,
         ckpt_path=test_ckpt_path if test_ckpt_path else None,
+    )
+    write_results_file(
+        output_path=cfg.output_path,
+        checkpoint_path=test_ckpt_path if test_ckpt_path else None,
+        test_results=test_results,
     )
 
 

@@ -1,22 +1,15 @@
-# models/target_models/__init__.py
-# ---------------------------------------------------------------------------
-# Re-exports for the target model subpackage.
-#
-# All target models inherit from BaseTargetModel (base.py) and only need
-# to define their architecture (__init__) and forward pass (forward).
-# ---------------------------------------------------------------------------
+"""Re-exports for the target model subpackage."""
 
+from models.target_models.base import BaseTargetModel
 from models.target_models.cnn import TargetCNNModelLightning
-from models.target_models.mlp import TargetModelLightning
-from models.target_models.positional_cnn import TargetPositionalCNNModelLightning
-from models.target_models.positional_mlp import TargetPositionalMLPLightning
-from models.target_models.positional_rnn import TargetPositionalRNNModelLightning
+from models.target_models.mlp import TargetMLPModelLightning
+from models.target_models.rnn import TargetRNNModelLightning
+from models.target_models.transformer import TargetTransformerModelLightning
 
 __all__ = [
     "BaseTargetModel",
     "TargetCNNModelLightning",
-    "TargetModelLightning",
-    "TargetPositionalCNNModelLightning",
-    "TargetPositionalMLPLightning",
-    "TargetPositionalRNNModelLightning",
+    "TargetMLPModelLightning",
+    "TargetRNNModelLightning",
+    "TargetTransformerModelLightning",
 ]

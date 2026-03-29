@@ -1,0 +1,11 @@
+_base_: configs/base/arc1d_padded_multiclass.yaml
+task: move_1p
+model: mlp
+variant: 64_skip_deeper
+experiment_name: ${data}_${task}_${model}_${variant}
+hidden_dim: 64
+num_layers: 4
+use_skip_connections: true
+learning_rate: 0.001
+weight_decay: 0.01
+max_steps: 1000

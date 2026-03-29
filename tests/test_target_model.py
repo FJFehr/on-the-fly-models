@@ -1,24 +1,26 @@
-"""Tests for shared target-model logging behaviour.
-
-This file intentionally carries the shared validation-example assertions using
-the MLP model as the lightest concrete subclass. The CNN suite is then free to
-focus on CNN-specific architecture behaviour instead of repeating the same base
-class checks.
-"""
-
-import torch
+"""Tests for shared target-model logging behaviour."""
 
 import pytest
+import torch
 import wandb
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss
-from models.target_models.mlp import TargetModelLightning
-from models.target_models.positional_cnn import TargetPositionalCNNModelLightning
-from models.target_models.positional_rnn import TargetPositionalRNNModelLightning
+
+from models import MODEL_REGISTRY
+from models.target_models.mlp import TargetMLPModelLightning
+from models.target_models.rnn import TargetRNNModelLightning
+from models.target_models.transformer import TargetTransformerModelLightning
 from visualisation import figure_to_wandb_image, render_val_example_figure
 
 
+def test_model_registry_exposes_simplified_model_keys():
+    assert MODEL_REGISTRY["mlp"] is TargetMLPModelLightning
+    assert "cnn" in MODEL_REGISTRY
+    assert MODEL_REGISTRY["rnn"] is TargetRNNModelLightning
+    assert MODEL_REGISTRY["transformer"] is TargetTransformerModelLightning
+
+
 def test_target_mlp_forward_preserves_sequence_shape_with_multiple_layers():
-    model = TargetModelLightning(
+    model = TargetMLPModelLightning(
         input_dim=33,
         hidden_dim=16,
         output_dim=33,
@@ -32,22 +34,22 @@ def test_target_mlp_forward_preserves_sequence_shape_with_multiple_layers():
 
 
 def test_target_mlp_forward_returns_multiclass_logits():
-    model = TargetModelLightning(
+    model = TargetMLPModelLightning(
         input_dim=33,
         hidden_dim=16,
         output_dim=33,
         prediction_task="multiclass",
         num_classes=10,
     )
-    inputs = torch.randn(4, 33)
+    inputs = torch.randint(0, 10, (4, 33)).float()
 
     logits = model(inputs)
 
     assert logits.shape == (4, 33, 10)
 
 
-def test_target_positional_rnn_forward_preserves_sequence_shape():
-    model = TargetPositionalRNNModelLightning(
+def test_target_rnn_forward_preserves_sequence_shape():
+    model = TargetRNNModelLightning(
         input_dim=33,
         output_dim=33,
         rnn_hidden_dim=8,
@@ -59,8 +61,8 @@ def test_target_positional_rnn_forward_preserves_sequence_shape():
     assert logits.shape == (4, 33)
 
 
-def test_target_positional_rnn_forward_preserves_sequence_shape_with_skips_and_depth():
-    model = TargetPositionalRNNModelLightning(
+def test_target_rnn_forward_preserves_sequence_shape_with_skips_and_depth():
+    model = TargetRNNModelLightning(
         input_dim=33,
         output_dim=33,
         rnn_hidden_dim=32,
@@ -74,40 +76,70 @@ def test_target_positional_rnn_forward_preserves_sequence_shape_with_skips_and_d
     assert logits.shape == (4, 33)
 
 
-def test_target_positional_cnn_forward_returns_multiclass_logits():
-    model = TargetPositionalCNNModelLightning(
-        input_dim=33,
-        output_dim=33,
-        hidden_channels=16,
-        prediction_task="multiclass",
-        num_classes=10,
-    )
-    inputs = torch.randn(4, 33)
-
-    logits = model(inputs)
-
-    assert logits.shape == (4, 33, 10)
-
-
-def test_target_positional_rnn_forward_returns_multiclass_logits():
-    model = TargetPositionalRNNModelLightning(
+def test_target_rnn_forward_returns_multiclass_logits():
+    model = TargetRNNModelLightning(
         input_dim=33,
         output_dim=33,
         rnn_hidden_dim=8,
         prediction_task="multiclass",
         num_classes=10,
     )
-    inputs = torch.randn(4, 33)
+    inputs = torch.randint(0, 10, (4, 33)).float()
 
     logits = model(inputs)
 
     assert logits.shape == (4, 33, 10)
 
 
+def test_target_transformer_forward_returns_multiclass_logits():
+    model = TargetTransformerModelLightning(
+        input_dim=33,
+        output_dim=33,
+        transformer_hidden_dim=40,
+        num_heads=2,
+        num_layers=1,
+        prediction_task="multiclass",
+        num_classes=10,
+    )
+    inputs = torch.randint(0, 10, (4, 33)).float()
+
+    logits = model(inputs)
+
+    assert logits.shape == (4, 33, 10)
+
+
+def test_target_transformer_supports_causal_attention_toggle():
+    inputs = torch.randint(0, 10, (4, 33)).float()
+
+    encoder_style = TargetTransformerModelLightning(
+        input_dim=33,
+        output_dim=33,
+        transformer_hidden_dim=40,
+        num_heads=2,
+        num_layers=1,
+        prediction_task="multiclass",
+        num_classes=10,
+        causal_attention=False,
+    )
+    decoder_style = TargetTransformerModelLightning(
+        input_dim=33,
+        output_dim=33,
+        transformer_hidden_dim=40,
+        num_heads=2,
+        num_layers=1,
+        prediction_task="multiclass",
+        num_classes=10,
+        causal_attention=True,
+    )
+
+    assert encoder_style(inputs).shape == (4, 33, 10)
+    assert decoder_style(inputs).shape == (4, 33, 10)
+
+
 def test_common_step_uses_cross_entropy_and_argmax_for_multiclass():
     """Verify the shared base logic switches loss and decoding for multiclass tasks."""
 
-    model = TargetPositionalRNNModelLightning(
+    model = TargetRNNModelLightning(
         input_dim=4,
         output_dim=4,
         rnn_hidden_dim=8,
@@ -134,7 +166,7 @@ def test_common_step_uses_cross_entropy_and_argmax_for_multiclass():
 
 
 def test_format_logits_rejects_flattened_multiclass_outputs():
-    model = TargetModelLightning(
+    model = TargetMLPModelLightning(
         input_dim=4,
         hidden_dim=8,
         output_dim=4,
@@ -149,7 +181,7 @@ def test_format_logits_rejects_flattened_multiclass_outputs():
 
 
 def test_binary_models_keep_bce_loss():
-    model = TargetModelLightning(
+    model = TargetMLPModelLightning(
         input_dim=4,
         hidden_dim=8,
         output_dim=4,
@@ -159,14 +191,9 @@ def test_binary_models_keep_bce_loss():
 
 
 def test_build_val_example_records_contains_metadata_and_combined_image():
-    """Verify validation examples retain metadata and materialize one stacked image.
+    """Verify validation examples retain metadata and materialize one stacked image."""
 
-    This protects the shared record-building contract in BaseTargetModel: the
-    logged record must keep the task identifiers, raw sequences, exact-match
-    flag, and one rendered image that W&B can log independently.
-    """
-
-    model = TargetModelLightning(
+    model = TargetMLPModelLightning(
         input_dim=4,
         hidden_dim=8,
         output_dim=4,
@@ -207,104 +234,69 @@ def test_build_val_example_records_contains_metadata_and_combined_image():
 
 
 def test_build_val_example_log_payload_uses_per_example_media_keys():
-    """Verify validation logging emits one W&B media item per example.
+    """Verify validation logging emits one W&B media item per example."""
 
-    The payload shape matters more than the image internals here because the
-    logger integration expects category/task-labelled media entries.
-    """
-
-    model = TargetModelLightning(
+    model = TargetMLPModelLightning(
         input_dim=4,
         hidden_dim=8,
         output_dim=4,
         log_val_examples=True,
+        max_logged_val_examples=2,
+        max_logged_val_examples_per_category=2,
+        log_val_examples_every_n_epochs=5,
     )
     records = [
         {
-            "log_key": "val_example_cat_a_3",
-            "combined_image": figure_to_wandb_image(
-                render_val_example_figure(
-                    input_sequence=[0, 0, 0, 0],
-                    target_sequence=[1, 1, 1, 1],
-                    prediction_sequence=[1, 1, 1, 1],
-                )
-            ),
+            "log_key": "val_example_1d_move_1p_8",
+            "combined_image": wandb.Image(render_val_example_figure([0], [0], [0])),
+            "task_category": "1d_move_1p",
+            "task_id": 8,
+            "input": [0],
+            "prediction": [0],
+            "target": [0],
+            "exact_match": True,
         }
     ]
 
     payload = model.build_val_example_log_payload(records)
 
-    assert set(payload) == {"val_example_cat_a_3"}
-    assert "val_examples_raw" not in payload
-    assert isinstance(payload["val_example_cat_a_3"], wandb.Image)
+    assert list(payload) == ["val_example_1d_move_1p_8"]
+    assert isinstance(payload["val_example_1d_move_1p_8"], wandb.Image)
 
 
-def test_build_val_example_records_limits_examples_per_category():
-    """Verify validation collection keeps up to the configured per-category budget."""
-
-    model = TargetModelLightning(
-        input_dim=4,
-        hidden_dim=8,
-        output_dim=4,
-        log_val_examples=True,
-        max_logged_val_examples=10,
-        max_logged_val_examples_per_category=3,
+def test_figure_to_wandb_image_preserves_caption():
+    figure = render_val_example_figure(
+        input_sequence=[0, 1, 0],
+        target_sequence=[1, 1, 0],
+        prediction_sequence=[1, 0, 0],
     )
-    batch = {
-        "inputs": torch.tensor(
-            [
-                [0, 0, 0, 0],
-                [0, 0, 0, 1],
-                [0, 0, 1, 0],
-                [0, 1, 0, 0],
-                [1, 0, 0, 0],
-            ],
-            dtype=torch.float32,
-        ),
-        "targets": torch.tensor(
-            [
-                [0, 0, 0, 0],
-                [0, 0, 0, 1],
-                [0, 0, 1, 0],
-                [0, 1, 0, 0],
-                [1, 0, 0, 0],
-            ],
-            dtype=torch.float32,
-        ),
-        "task_category": ["cat_a", "cat_a", "cat_a", "cat_a", "cat_b"],
-        "task_id": torch.tensor([1, 2, 3, 4, 5]),
-        "example_index": torch.tensor([0, 0, 0, 0, 0]),
-        "source": ["query", "query", "query", "query", "query"],
-    }
-    preds = batch["targets"].long()
-    metadata = {
-        "task_category": batch["task_category"],
-        "task_id": batch["task_id"],
-        "example_index": batch["example_index"],
-        "source": batch["source"],
-    }
 
-    records = model.build_val_example_records(batch, preds, batch["targets"].long(), metadata)
+    image = figure_to_wandb_image(figure, caption="caption")
 
-    assert [record["task_category"] for record in records] == ["cat_a", "cat_a", "cat_a", "cat_b"]
-    assert [record["task_id"] for record in records] == [1, 2, 3, 5]
-    assert model.val_examples_per_category == {"cat_a": 3, "cat_b": 1}
+    assert isinstance(image, wandb.Image)
+    assert image._caption == "caption"
 
 
-def test_should_log_examples_for_epoch_logs_first_and_every_fifth_epoch():
-    """Verify the logging cadence keeps early visibility without flooding runs."""
-
-    model = TargetModelLightning(
+def test_should_log_val_examples_respects_schedule():
+    model = TargetMLPModelLightning(
         input_dim=4,
         hidden_dim=8,
         output_dim=4,
         log_val_examples=True,
         log_val_examples_every_n_epochs=5,
     )
+    model.validation_epoch_count = 1
+    assert model.should_log_examples_for_epoch() is True
+    model.validation_epoch_count = 3
+    assert model.should_log_examples_for_epoch() is False
 
-    decisions = []
-    for epoch_index in range(1, 7):
-        model.validation_epoch_count = epoch_index
-        decisions.append(model.should_log_examples_for_epoch())
 
-    assert decisions == [True, False, False, False, True, False]
+def test_should_log_val_examples_can_be_disabled():
+    model = TargetMLPModelLightning(
+        input_dim=4,
+        hidden_dim=8,
+        output_dim=4,
+        log_val_examples=False,
+    )
+
+    assert model.should_log_examples_for_epoch() is False

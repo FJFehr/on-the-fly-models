@@ -1,0 +1,8 @@
+_base_: configs/base/arc1d_padded_multiclass.yaml
+task: denoising_1c
+model: rnn
+variant: 32h_1l
+experiment_name: ${data}_${task}_${model}_${variant}
+rnn_hidden_dim: 32
+rnn_bidirectional: true
+rnn_num_layers: 1
