@@ -43,7 +43,11 @@ class SelfAttention(nn.Module):
                 ),
             )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        return_attention_weights: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         batch_size, seq_len, channels = x.size()
         query, key, value = self.c_attn(x).split(self.n_embd, dim=2)
 
@@ -52,7 +56,8 @@ class SelfAttention(nn.Module):
         query = query.view(batch_size, seq_len, self.n_head, head_dim).transpose(1, 2)
         value = value.view(batch_size, seq_len, self.n_head, head_dim).transpose(1, 2)
 
-        if self.flash:
+        attention_weights = None
+        if self.flash and not return_attention_weights:
             attended = torch.nn.functional.scaled_dot_product_attention(
                 query,
                 key,
@@ -68,12 +73,15 @@ class SelfAttention(nn.Module):
                     self.bias[:, :, :seq_len, :seq_len] == 0,
                     float("-inf"),
                 )
-            scores = F.softmax(scores, dim=-1)
-            scores = self.attn_dropout(scores)
-            attended = scores @ value
+            attention_weights = F.softmax(scores, dim=-1)
+            dropped_attention_weights = self.attn_dropout(attention_weights)
+            attended = dropped_attention_weights @ value
 
         attended = attended.transpose(1, 2).contiguous().view(batch_size, seq_len, channels)
-        return self.resid_dropout(self.c_proj(attended))
+        output = self.resid_dropout(self.c_proj(attended))
+        if return_attention_weights:
+            return output, attention_weights
+        return output
 
 
 class MLP(nn.Module):
@@ -100,9 +108,24 @@ class Block(nn.Module):
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x + self.attn(self.ln_1(x))
+    def forward(
+        self,
+        x: torch.Tensor,
+        return_attention_weights: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        attention_outputs = self.attn(
+            self.ln_1(x),
+            return_attention_weights=return_attention_weights,
+        )
+        if return_attention_weights:
+            attention_update, attention_weights = attention_outputs
+        else:
+            attention_update = attention_outputs
+            attention_weights = None
+        x = x + attention_update
         x = x + self.mlp(self.ln_2(x))
+        if return_attention_weights:
+            return x, attention_weights
         return x
 
 

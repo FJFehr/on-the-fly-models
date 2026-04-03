@@ -102,6 +102,7 @@ def test_hyper_model_runs_generated_rnn_independently_per_example():
     assert parameter_vectors.shape[0] == 1
     assert torch.allclose(logits[0], manual_logits)
 
+
 def test_hyper_model_metrics_track_query_support_and_all_examples():
     model = HyperRNNMetaModelLightning(
         input_dim=4,
@@ -158,6 +159,54 @@ def test_hyper_model_builds_task_visualization_records():
     assert len(record["query_input"]) == 4
     assert len(record["query_prediction"]) == 4
     assert "query_exact_match" in record
+
+
+def test_hyper_model_exposes_task_encoder_attentions_with_labels():
+    model = HyperRNNMetaModelLightning(
+        input_dim=4,
+        output_dim=4,
+        num_classes=10,
+        task_encoder_hidden_dim=8,
+        task_encoder_num_heads=2,
+        task_encoder_num_layers=2,
+        target_rnn_hidden_dim=8,
+    )
+    batch = make_batch(batch_size=1)
+
+    attention_data = model.get_task_encoder_attention_data(
+        batch["support_inputs"],
+        batch["support_outputs"],
+        batch["query_input"],
+    )
+
+    assert len(attention_data["attentions"]) == 2
+    assert attention_data["attentions"][0].shape == (1, 2, 28, 28)
+    assert attention_data["token_labels"][0][0] == "s1_in|p00|v0"
+    assert attention_data["token_labels"][0][4] == "s1_out|p00|v1"
+    assert attention_data["token_labels"][0][-1] == "q_in|p03|v3"
+
+
+def test_hyper_model_builds_attention_record_from_task_record():
+    model = HyperRNNMetaModelLightning(
+        input_dim=4,
+        output_dim=4,
+        num_classes=10,
+        task_encoder_hidden_dim=8,
+        task_encoder_num_heads=2,
+        task_encoder_num_layers=1,
+        target_rnn_hidden_dim=8,
+    )
+    batch = make_batch(batch_size=1)
+    _, predictions, targets = model.predict_batch(batch)
+    task_record = model.build_task_records(batch, predictions, targets)[0]
+
+    attention_record = model.build_task_attention_record(task_record)
+
+    assert attention_record["task_category"] == "1d_move_1p"
+    assert attention_record["task_id"] == 0
+    assert len(attention_record["attentions"]) == 1
+    assert attention_record["attentions"][0].shape == (2, 28, 28)
+    assert attention_record["token_metadata"][0]["segment_display_label"] == "Support 1 Input"
 
 
 def test_hyper_model_selects_one_representative_task_per_category(tmp_path: Path):

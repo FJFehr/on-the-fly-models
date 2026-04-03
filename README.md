@@ -15,10 +15,12 @@ on-the-fly-models/
 │   │   └── arc1d_padded_multiclass.yaml
 │   └── experiments/
 │       ├── arc1d_simple/           # Legacy binary padded ARC1D experiments
+│       ├── arc1d_simple_meta/      # Debug-oriented binary meta-learning experiments
 │       └── arc1d_padded_multiclass/
 ├── data_modules/
 │   ├── __init__.py                 # Datamodule registry
 │   ├── arc1d_simple.py
+│   ├── arc1d_meta_simple.py
 │   ├── arc1d_padded_multiclass.py
 │   └── arc1d_meta_padded_multiclass.py
 ├── models/
@@ -29,6 +31,7 @@ on-the-fly-models/
 │       ├── mlp.py                  # Positional MLP baseline
 │       ├── cnn.py                  # Positional 1D CNN baseline
 │       ├── cnn_core.py             # Shared pure CNN core for baseline/hypermodels
+│       ├── deepset.py              # Binary DeepSet baseline
 │       ├── rnn.py                  # Positional RNN baseline
 │       └── transformer.py          # Positional transformer baseline
 ├── scripts/
@@ -55,9 +58,10 @@ The active comparison track is `arc1d_padded_multiclass`:
 
 The legacy `arc1d_simple` path remains available as the binary padded baseline.
 
-The repo now supports both training contracts:
+The repo now supports three training contracts:
 
 - pair-based dataloaders for the baseline target-model experiments
+- task-level dataloaders for the binary `arc1d_simple_meta` debugging track
 - task-level dataloaders for the `hyper_rnn` and `hyper_cnn` meta-learning experiments
 
 ## Setup
@@ -80,8 +84,10 @@ Supported model families are:
 
 - `mlp`
 - `cnn`
+- `deepset`
 - `rnn`
 - `transformer`
+- `binary_hyper_rnn`
 - `hyper_cnn`
 - `hyper_rnn`
 
@@ -105,6 +111,12 @@ The first task-conditioned experiment lives under its own meta-learning track an
 
 ```bash
 uv run python train.py --config configs/experiments/arc1d_padded_multiclass_meta/move_1p/hyper_rnn.yaml
+```
+
+The binary meta-learning debug track uses a simpler stateless generated target RNN and can be launched with:
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_simple_meta/move_1p/binary_hyper_rnn.yaml
 ```
 
 The hyper-CNN variant uses the same task-level datamodule and can be launched with:
@@ -163,8 +175,10 @@ The implemented target-model baselines are:
 
 - `mlp`: sequence-to-sequence MLP with explicit positional features
 - `cnn`: 1D CNN with an explicit x-position channel
+- `deepset`: permutation-invariant binary baseline with positional features
 - `rnn`: RNN with explicit positional features
 - `transformer`: transformer over per-position value-plus-position features
+- `binary_hyper_rnn`: debug-oriented binary hypernetwork that predicts one stateless target-RNN parameter set per task
 - `hyper_cnn`: transformer task encoder that predicts a task-specific 1D CNN
 - `hyper_rnn`: transformer task encoder that reads whole support/query context and predicts a task-specific bidirectional RNN
 
@@ -219,7 +233,7 @@ The repo keeps a number of architectural knobs configurable, but the current gui
 
 Skip connections are not hardcoded as a universal default in code. They remain experiment-level config choices, but the repo now treats them as recommended guidance for deeper multilayer baselines.
 
-The hypernetwork paths now live under `models/hypermodels/`. They keep the task intact, encode the 3 support examples plus query input with explicit token, position, example-index, and input/output-role embeddings, and predict the full weights of a task-specific target model. The current target-model variants are a bidirectional RNN and a 1D CNN.
+The hypernetwork paths now live under `models/hypermodels/`. The multiclass meta-learning path keeps the task intact, encodes the 3 support examples plus query input with explicit token, position, example-index, and input/output-role embeddings, and predicts the full weights of a task-specific target model. The current target-model variants are a bidirectional RNN and a 1D CNN. The binary debug meta path reuses the simpler binary dataset, avoids learned token embeddings, and predicts a single stateless one-layer RNN parameter set that is shared across all examples in the task.
 
 ## Current scope and limitations
 

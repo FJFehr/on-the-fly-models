@@ -1,0 +1,31 @@
+_base_: configs/experiments/arc1d_simple_meta/base.yaml
+task: overfit
+variant: single_task_8
+experiment_name: ${data}_${task}_${model}_${variant}
+
+task_categories:
+  - 1d_move_1p
+task_ids:
+  - 8
+train_split: train
+val_split: train
+test_split: train
+overfit_single_batch: true
+batch_size: 1
+learning_rate: 0.01
+weight_decay: 0.0
+max_steps: 200
+hyper_model:
+  task_encoder_hidden_dim: 32
+  task_encoder_num_heads: 4
+  task_encoder_num_layers: 2
+  task_encoder_bias: false
+target_model:
+  rnn:
+    hidden_dim: 32
+    bidirectional: true
+    num_layers: 1
+    use_skip_connections: false
+log_task_examples: true
+log_task_examples_every_n_epochs: 50
+log_task_attention_every_n_epochs: 50

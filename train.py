@@ -206,21 +206,17 @@ class MetaTaskVisualizationCallback(Callback):
         super().__init__()
         self.output_path = output_path
         self.wandb_logger = wandb_logger
+        self.has_logged_pretrain_snapshot = False
 
-    def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        if trainer.sanity_checking:
-            return
-        if not getattr(pl_module, "supports_task_visualization", False):
-            return
-        if not getattr(pl_module, "log_task_examples", False):
-            return
-        every_n_epochs = getattr(pl_module, "log_task_examples_every_n_epochs", 1)
-        if every_n_epochs < 1:
-            return
-        if trainer.current_epoch % every_n_epochs != 0:
-            return
-
-        datamodule = trainer.datamodule
+    def emit_task_visualizations(
+        self,
+        pl_module: pl.LightningModule,
+        datamodule,
+        example_split_prefix: str,
+        example_key_prefix: str,
+        attention_split_prefix: str,
+        attention_key_prefix: str,
+    ) -> None:
         train_task_ids = pl_module.select_representative_task_records_from_dataset(
             datamodule.train_dataset,
             split_name="train",
@@ -231,25 +227,100 @@ class MetaTaskVisualizationCallback(Callback):
             split_name="val",
             limit=pl_module.num_periodic_val_task_examples,
         )
-        pl_module.log_task_gallery(
-            split_name="train",
-            records=pl_module.collect_task_records_from_dataset_by_task_ids(
-                datamodule.train_dataset,
-                train_task_ids,
-            ),
-            output_path=self.output_path,
-            wandb_logger=self.wandb_logger,
-            key_prefix="train_task",
+        train_records = pl_module.collect_task_records_from_dataset_by_task_ids(
+            datamodule.train_dataset,
+            train_task_ids,
         )
-        pl_module.log_task_gallery(
-            split_name="val",
-            records=pl_module.collect_task_records_from_dataset_by_task_ids(
-                datamodule.val_dataset,
-                val_task_ids,
-            ),
-            output_path=self.output_path,
-            wandb_logger=self.wandb_logger,
-            key_prefix="val_task",
+        val_records = pl_module.collect_task_records_from_dataset_by_task_ids(
+            datamodule.val_dataset,
+            val_task_ids,
+        )
+
+        if getattr(pl_module, "log_task_examples", False):
+            pl_module.log_task_gallery(
+                split_name=example_split_prefix.format(split_name="train"),
+                records=train_records,
+                output_path=self.output_path,
+                wandb_logger=self.wandb_logger,
+                key_prefix=example_key_prefix.format(split_name="train_task"),
+            )
+            pl_module.log_task_gallery(
+                split_name=example_split_prefix.format(split_name="val"),
+                records=val_records,
+                output_path=self.output_path,
+                wandb_logger=self.wandb_logger,
+                key_prefix=example_key_prefix.format(split_name="val_task"),
+            )
+
+        if getattr(pl_module, "log_task_attention", False):
+            pl_module.log_task_attention_gallery(
+                split_name=attention_split_prefix.format(split_name="train"),
+                records=train_records,
+                output_path=self.output_path,
+                wandb_logger=self.wandb_logger,
+                key_prefix=attention_key_prefix.format(split_name="train_task_attention"),
+            )
+            pl_module.log_task_attention_gallery(
+                split_name=attention_split_prefix.format(split_name="val"),
+                records=val_records,
+                output_path=self.output_path,
+                wandb_logger=self.wandb_logger,
+                key_prefix=attention_key_prefix.format(split_name="val_task_attention"),
+            )
+
+    def on_fit_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if self.has_logged_pretrain_snapshot:
+            return
+        if not getattr(pl_module, "supports_task_visualization", False):
+            return
+        if not (
+            getattr(pl_module, "log_task_examples", False)
+            or getattr(pl_module, "log_task_attention", False)
+        ):
+            return
+
+        self.emit_task_visualizations(
+            pl_module=pl_module,
+            datamodule=trainer.datamodule,
+            example_split_prefix="pretrain_{split_name}",
+            example_key_prefix="pretrain_{split_name}",
+            attention_split_prefix="pretrain_{split_name}",
+            attention_key_prefix="pretrain_{split_name}",
+        )
+        self.has_logged_pretrain_snapshot = True
+
+    def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if trainer.sanity_checking:
+            return
+        if not getattr(pl_module, "supports_task_visualization", False):
+            return
+
+        every_n_epochs = getattr(pl_module, "log_task_examples_every_n_epochs", 1)
+        should_log_examples = (
+            getattr(pl_module, "log_task_examples", False)
+            and every_n_epochs >= 1
+            and trainer.current_epoch % every_n_epochs == 0
+        )
+        attention_every_n_epochs = getattr(
+            pl_module,
+            "log_task_attention_every_n_epochs",
+            every_n_epochs,
+        )
+        should_log_attention = (
+            getattr(pl_module, "log_task_attention", False)
+            and attention_every_n_epochs >= 1
+            and trainer.current_epoch % attention_every_n_epochs == 0
+        )
+        if not should_log_examples and not should_log_attention:
+            return
+
+        self.emit_task_visualizations(
+            pl_module=pl_module,
+            datamodule=trainer.datamodule,
+            example_split_prefix="{split_name}",
+            example_key_prefix="{split_name}",
+            attention_split_prefix="{split_name}",
+            attention_key_prefix="{split_name}_task_attention",
         )
 
 
@@ -284,6 +355,10 @@ def build_runtime_config_dict(cfg) -> dict:
             runtime_cfg["target_rnn_hidden_dim"] = rnn_cfg["hidden_dim"]
             runtime_cfg["target_rnn_bidirectional"] = rnn_cfg["bidirectional"]
             runtime_cfg["target_rnn_num_layers"] = rnn_cfg["num_layers"]
+            runtime_cfg["target_rnn_use_skip_connections"] = rnn_cfg.get(
+                "use_skip_connections",
+                False,
+            )
         cnn_cfg = target_model_cfg.get("cnn")
         if isinstance(cnn_cfg, dict):
             runtime_cfg["target_cnn_hidden_channels"] = cnn_cfg["hidden_channels"]
@@ -509,39 +584,80 @@ def main():
         datamodule=dm,
         ckpt_path=test_ckpt_path if test_ckpt_path else None,
     )
-    if getattr(model, "supports_task_visualization", False) and getattr(
-        model, "log_task_examples", False
-    ):
-        model.log_task_gallery(
-            split_name="train_final",
-            records=model.collect_task_records_from_dataset_by_task_ids(
+    if getattr(model, "supports_task_visualization", False):
+        train_task_ids = model.selected_representative_task_ids.get("train", [])
+        if not train_task_ids:
+            train_task_ids = model.select_representative_task_records_from_dataset(
                 dm.train_dataset,
-                model.selected_representative_task_ids.get("train", []),
-            ),
-            output_path=cfg.output_path,
-            wandb_logger=wandb_logger,
-            key_prefix="train_final_task",
-        )
-        model.log_task_gallery(
-            split_name="val_final",
-            records=model.collect_task_records_from_dataset_by_task_ids(
+                split_name="train",
+                limit=model.num_periodic_train_task_examples,
+            )
+        val_task_ids = model.selected_representative_task_ids.get("val", [])
+        if not val_task_ids:
+            val_task_ids = model.select_representative_task_records_from_dataset(
                 dm.val_dataset,
-                model.selected_representative_task_ids.get("val", []),
-            ),
-            output_path=cfg.output_path,
-            wandb_logger=wandb_logger,
-            key_prefix="val_final_task",
+                split_name="val",
+                limit=model.num_periodic_val_task_examples,
+            )
+
+        train_final_records = model.collect_task_records_from_dataset_by_task_ids(
+            dm.train_dataset,
+            train_task_ids,
         )
-        model.log_task_gallery(
-            split_name="val_hard_final",
-            records=model.select_hard_task_records(
-                dm.val_dataloader(),
-                limit=model.num_final_hard_val_task_examples,
-            ),
-            output_path=cfg.output_path,
-            wandb_logger=wandb_logger,
-            key_prefix="val_hard_final_task",
+        val_final_records = model.collect_task_records_from_dataset_by_task_ids(
+            dm.val_dataset,
+            val_task_ids,
         )
+        val_hard_final_records = model.select_hard_task_records(
+            dm.val_dataloader(),
+            limit=model.num_final_hard_val_task_examples,
+        )
+
+        if getattr(model, "log_task_examples", False):
+            model.log_task_gallery(
+                split_name="train_final",
+                records=train_final_records,
+                output_path=cfg.output_path,
+                wandb_logger=wandb_logger,
+                key_prefix="train_final_task",
+            )
+            model.log_task_gallery(
+                split_name="val_final",
+                records=val_final_records,
+                output_path=cfg.output_path,
+                wandb_logger=wandb_logger,
+                key_prefix="val_final_task",
+            )
+            model.log_task_gallery(
+                split_name="val_hard_final",
+                records=val_hard_final_records,
+                output_path=cfg.output_path,
+                wandb_logger=wandb_logger,
+                key_prefix="val_hard_final_task",
+            )
+
+        if getattr(model, "log_task_attention", False):
+            model.log_task_attention_gallery(
+                split_name="train_final",
+                records=train_final_records,
+                output_path=cfg.output_path,
+                wandb_logger=wandb_logger,
+                key_prefix="train_final_task_attention",
+            )
+            model.log_task_attention_gallery(
+                split_name="val_final",
+                records=val_final_records,
+                output_path=cfg.output_path,
+                wandb_logger=wandb_logger,
+                key_prefix="val_final_task_attention",
+            )
+            model.log_task_attention_gallery(
+                split_name="val_hard_final",
+                records=val_hard_final_records,
+                output_path=cfg.output_path,
+                wandb_logger=wandb_logger,
+                key_prefix="val_hard_final_task_attention",
+            )
     write_results_file(
         output_path=cfg.output_path,
         checkpoint_path=test_ckpt_path if test_ckpt_path else None,

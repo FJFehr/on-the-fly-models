@@ -18,11 +18,14 @@ from visualisation.arc import (
     render_task_prediction_figure,
     render_val_example_figure,
 )
+from visualisation.attention import render_task_attention_figure, resolve_attention_matrix
 
 __all__ = [
     "figure_to_wandb_image",
     "format_task_category",
+    "render_task_attention_figure",
     "render_task_figure",
     "render_task_prediction_figure",
+    "resolve_attention_matrix",
     "render_val_example_figure",
 ]

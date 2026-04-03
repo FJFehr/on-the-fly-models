@@ -1,0 +1,4 @@
+_base_: configs/experiments/arc1d_simple_meta/base.yaml
+task: move_1p
+
+experiment_name: ${data}_${task}_${model}

@@ -1,0 +1,12 @@
+_base_: configs/experiments/arc1d_simple_meta/base.yaml
+task: all_simple_tasks
+
+task_categories:
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_3p
+  - 1d_fill
+  - 1d_hollow
+  - 1d_denoising_1c
+  - 1d_pcopy_1c
+experiment_name: ${data}_${task}_${model}

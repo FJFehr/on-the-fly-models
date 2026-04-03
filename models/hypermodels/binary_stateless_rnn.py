@@ -1,20 +1,15 @@
-"""Shared task-conditioned hypernetwork components."""
+"""Binary hypernetwork with a stateless target RNN."""
 
 import os
 from collections import OrderedDict
+from math import prod
 
 import lightning as pl
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 import wandb
-
-try:
-    from torch.func import functional_call
-except ImportError:  # pragma: no cover - fallback for older torch versions
-    from torch.nn.utils.stateless import functional_call
-
+from metrics import accuracy
 from models.target_models.transformer import Block, LayerNorm, TransformerConfig
 from visualisation import (
     figure_to_wandb_image,
@@ -22,7 +17,6 @@ from visualisation import (
     render_task_prediction_figure,
     resolve_attention_matrix,
 )
-
 
 TASK_SEGMENT_SHORT_NAMES = (
     "s1_in",
@@ -45,17 +39,17 @@ TASK_SEGMENT_DISPLAY_NAMES = (
 )
 
 
-class TaskTransformerEncoder(nn.Module):
-    """Small transformer encoder reused for task conditioning."""
+class BinaryTaskFeatureEncoder(torch.nn.Module):
+    """Transformer encoder over binary scalar task features."""
 
     def __init__(
         self,
-        block_size: int,
+        input_feature_dim: int,
         hidden_dim: int,
         num_heads: int,
         num_layers: int,
-        dropout: float = 0.0,
-        bias: bool = True,
+        block_size: int,
+        bias: bool = False,
     ):
         super().__init__()
         config = TransformerConfig(
@@ -65,29 +59,20 @@ class TaskTransformerEncoder(nn.Module):
             n_layer=num_layers,
             n_head=num_heads,
             n_embd=hidden_dim,
-            dropout=dropout,
+            dropout=0.0,
             bias=bias,
             causal=False,
         )
-        self.dropout = nn.Dropout(dropout)
-        self.blocks = nn.ModuleList([Block(config) for _ in range(num_layers)])
+        self.input_projection = torch.nn.Linear(input_feature_dim, hidden_dim, bias=bias)
+        self.blocks = torch.nn.ModuleList([Block(config) for _ in range(num_layers)])
         self.ln_f = LayerNorm(hidden_dim, bias=bias)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, module: nn.Module) -> None:
-        if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        if isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(
         self,
-        hidden_states: torch.Tensor,
+        task_features: torch.Tensor,
         return_attentions: bool = False,
     ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
-        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.input_projection(task_features)
         attentions = []
         for block in self.blocks:
             if return_attentions:
@@ -104,8 +89,145 @@ class TaskTransformerEncoder(nn.Module):
         return hidden_states
 
 
-class BaseHyperMetaModelLightning(pl.LightningModule):
-    """Shared Lightning module for task-conditioned hypernetwork experiments."""
+class BinaryStatelessTargetRNN(torch.nn.Module):
+    """Visible zero-parameter target module with generated stateless weights."""
+
+    def __init__(
+        self,
+        sequence_length: int,
+        hidden_dim: int,
+        num_layers: int = 2,
+        bidirectional: bool = True,
+        use_skip_connections: bool = False,
+    ):
+        super().__init__()
+        self.sequence_length = sequence_length
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+        self.bidirectional = bidirectional
+        self.use_skip_connections = use_skip_connections
+        self.register_buffer(
+            "position_ramp",
+            torch.linspace(0.0, 1.0, steps=sequence_length, dtype=torch.float32),
+        )
+
+    @property
+    def input_feature_dim(self) -> int:
+        return 2
+
+    @property
+    def num_directions(self) -> int:
+        return 2 if self.bidirectional else 1
+
+    @property
+    def output_feature_dim(self) -> int:
+        return self.hidden_dim * self.num_directions
+
+    def build_parameter_specs(self) -> list[dict]:
+        specs = []
+        layer_input_dim = self.input_feature_dim
+        directions = ("forward", "backward") if self.bidirectional else ("forward",)
+
+        for layer_index in range(self.num_layers):
+            for direction_name in directions:
+                specs.append(
+                    {
+                        "name": f"weight_ih_l{layer_index}_{direction_name}",
+                        "shape": (self.hidden_dim, layer_input_dim),
+                    }
+                )
+                specs.append(
+                    {
+                        "name": f"weight_hh_l{layer_index}_{direction_name}",
+                        "shape": (self.hidden_dim, self.hidden_dim),
+                    }
+                )
+            layer_input_dim = self.output_feature_dim
+
+        if self.use_skip_connections:
+            specs.append(
+                {
+                    "name": "input_skip_weight",
+                    "shape": (self.output_feature_dim, self.input_feature_dim),
+                }
+            )
+
+        specs.append({"name": "output_weight", "shape": (1, self.output_feature_dim)})
+        return specs
+
+    def build_input_features(self, example_inputs: torch.Tensor) -> torch.Tensor:
+        position_features = self.position_ramp.view(1, self.sequence_length, 1).expand(
+            example_inputs.shape[0], -1, -1
+        )
+        return torch.cat([example_inputs.unsqueeze(-1), position_features], dim=-1)
+
+    def run_direction(
+        self,
+        inputs: torch.Tensor,
+        weight_ih: torch.Tensor,
+        weight_hh: torch.Tensor,
+        reverse: bool = False,
+    ) -> torch.Tensor:
+        hidden_state = inputs.new_zeros(inputs.shape[0], self.hidden_dim)
+        hidden_states = []
+        time_indices = (
+            range(self.sequence_length - 1, -1, -1) if reverse else range(self.sequence_length)
+        )
+
+        for step in time_indices:
+            input_step = inputs[:, step]
+            hidden_state = F.relu(
+                F.linear(input_step, weight_ih) + F.linear(hidden_state, weight_hh)
+            )
+            hidden_states.append(hidden_state)
+
+        if reverse:
+            hidden_states.reverse()
+        return torch.stack(hidden_states, dim=1)
+
+    def forward_with_params(
+        self,
+        example_inputs: torch.Tensor,
+        parameter_mapping: OrderedDict,
+    ) -> torch.Tensor:
+        base_features = self.build_input_features(example_inputs)
+        hidden_stack = base_features
+
+        for layer_index in range(self.num_layers):
+            forward_states = self.run_direction(
+                hidden_stack,
+                parameter_mapping[f"weight_ih_l{layer_index}_forward"],
+                parameter_mapping[f"weight_hh_l{layer_index}_forward"],
+                reverse=False,
+            )
+            layer_outputs = [forward_states]
+
+            if self.bidirectional:
+                backward_states = self.run_direction(
+                    hidden_stack,
+                    parameter_mapping[f"weight_ih_l{layer_index}_backward"],
+                    parameter_mapping[f"weight_hh_l{layer_index}_backward"],
+                    reverse=True,
+                )
+                layer_outputs.append(backward_states)
+
+            hidden_stack = torch.cat(layer_outputs, dim=-1)
+
+        if self.use_skip_connections:
+            hidden_stack = hidden_stack + F.linear(
+                base_features,
+                parameter_mapping["input_skip_weight"],
+            )
+
+        return F.linear(hidden_stack, parameter_mapping["output_weight"]).squeeze(-1)
+
+    def forward(self, example_inputs: torch.Tensor) -> torch.Tensor:
+        msg = "BinaryStatelessTargetRNN requires generated parameters via forward_with_params()."
+        raise RuntimeError(msg)
+
+
+class BinaryHyperRNNMetaModelLightning(pl.LightningModule):
+    """Binary hypernetwork that predicts a stateless task-specific target RNN."""
 
     supports_hard_val_examples = False
     supports_task_visualization = True
@@ -114,102 +236,114 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
         self,
         input_dim: int,
         output_dim: int,
-        num_classes: int,
-        task_encoder_hidden_dim: int,
-        task_encoder_num_heads: int,
-        task_encoder_num_layers: int,
-        target_model_template: nn.Module,
+        task_encoder_hidden_dim: int = 64,
+        task_encoder_num_heads: int = 4,
+        task_encoder_num_layers: int = 3,
+        task_encoder_bias: bool = False,
+        target_rnn_hidden_dim: int = 16,
+        target_rnn_bidirectional: bool = True,
+        target_rnn_num_layers: int = 2,
+        target_rnn_use_skip_connections: bool = False,
         learning_rate: float = 0.001,
         optimizer: str = "Adam",
         weight_decay: float = 0.01,
         loss_on_support: bool = True,
         loss_on_query: bool = True,
-        task_encoder_dropout: float = 0.0,
-        task_encoder_bias: bool = True,
-        log_task_examples: bool = True,
-        log_task_examples_every_n_epochs: int = 1,
-        num_hard_task_examples: int = 3,
         **kwargs,
     ):
         super().__init__()
-        self.save_hyperparameters(ignore=["kwargs", "target_model_template"])
+        self.save_hyperparameters(ignore=["kwargs"])
 
         if input_dim != output_dim:
-            msg = "The hypernetwork path expects input_dim and output_dim to match."
-            raise ValueError(msg)
-        if num_classes < 2:
-            msg = "num_classes must be at least 2."
+            msg = "The binary hypernetwork expects input_dim and output_dim to match."
             raise ValueError(msg)
         if not loss_on_support and not loss_on_query:
             msg = "At least one of loss_on_support or loss_on_query must be enabled."
             raise ValueError(msg)
+        if task_encoder_hidden_dim < 1:
+            msg = "task_encoder_hidden_dim must be at least 1."
+            raise ValueError(msg)
+        if task_encoder_num_heads < 1:
+            msg = "task_encoder_num_heads must be at least 1."
+            raise ValueError(msg)
+        if task_encoder_num_layers < 1:
+            msg = "task_encoder_num_layers must be at least 1."
+            raise ValueError(msg)
+        if target_rnn_hidden_dim < 1:
+            msg = "target_rnn_hidden_dim must be at least 1."
+            raise ValueError(msg)
+        if target_rnn_num_layers < 1:
+            msg = "target_rnn_num_layers must be at least 1."
+            raise ValueError(msg)
 
         self.sequence_length = input_dim
-        self.num_classes = num_classes
-        self.loss_on_support = loss_on_support
-        self.loss_on_query = loss_on_query
+        self.support_example_count = 3
+        self.num_examples = 4
+        self.num_segments = 7
+        self.task_feature_dim = 5
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.optimizer_name = optimizer
-        self.log_task_examples = log_task_examples
-        self.log_task_examples_every_n_epochs = log_task_examples_every_n_epochs
+        self.loss_on_support = loss_on_support
+        self.loss_on_query = loss_on_query
+        self.log_task_examples = kwargs.get("log_task_examples", False)
+        self.log_task_examples_every_n_epochs = kwargs.get("log_task_examples_every_n_epochs", 25)
         self.log_task_attention = kwargs.get("log_task_attention", False)
         self.log_task_attention_every_n_epochs = kwargs.get(
             "log_task_attention_every_n_epochs",
-            log_task_examples_every_n_epochs,
+            self.log_task_examples_every_n_epochs,
         )
         self.attention_head_reduction = kwargs.get("attention_head_reduction", "mean")
         self.num_periodic_train_task_examples = kwargs.get("num_periodic_train_task_examples", 1)
         self.num_periodic_val_task_examples = kwargs.get("num_periodic_val_task_examples", 1)
         self.num_final_hard_val_task_examples = kwargs.get("num_final_hard_val_task_examples", 3)
-        self.num_hard_task_examples = num_hard_task_examples
         self.selected_representative_task_ids: dict[str, list[int]] = {"train": [], "val": []}
 
-        self.num_segments = 7
-        self.num_examples = 4
-        self.support_example_count = 3
-        self.segment_sequence_length = self.num_segments * self.sequence_length
+        self.register_buffer(
+            "position_ramp",
+            torch.linspace(0.0, 1.0, steps=self.sequence_length, dtype=torch.float32),
+        )
 
-        self.value_embedding = nn.Embedding(num_classes, task_encoder_hidden_dim)
-        self.position_embedding = nn.Embedding(self.sequence_length, task_encoder_hidden_dim)
-        self.example_embedding = nn.Embedding(self.num_examples, task_encoder_hidden_dim)
-        self.role_embedding = nn.Embedding(2, task_encoder_hidden_dim)
-        self.task_encoder = TaskTransformerEncoder(
-            block_size=self.segment_sequence_length,
+        self.task_encoder = BinaryTaskFeatureEncoder(
+            input_feature_dim=self.task_feature_dim,
             hidden_dim=task_encoder_hidden_dim,
             num_heads=task_encoder_num_heads,
             num_layers=task_encoder_num_layers,
-            dropout=task_encoder_dropout,
+            block_size=self.num_segments * self.sequence_length,
             bias=task_encoder_bias,
         )
-
-        self.target_model_template = target_model_template
-        self.target_parameter_specs = self.build_target_parameter_specs()
-        self.target_parameter_count = sum(spec["numel"] for spec in self.target_parameter_specs)
-        self.hyper_head = nn.Sequential(
-            nn.Linear(task_encoder_hidden_dim, task_encoder_hidden_dim),
-            nn.GELU(),
-            nn.Linear(task_encoder_hidden_dim, self.target_parameter_count),
+        self.target_model = BinaryStatelessTargetRNN(
+            sequence_length=self.sequence_length,
+            hidden_dim=target_rnn_hidden_dim,
+            num_layers=target_rnn_num_layers,
+            bidirectional=target_rnn_bidirectional,
+            use_skip_connections=target_rnn_use_skip_connections,
+        )
+        self.target_parameter_specs = self.target_model.build_parameter_specs()
+        self.hyper_head = torch.nn.Sequential(
+            torch.nn.Linear(
+                task_encoder_hidden_dim,
+                task_encoder_hidden_dim,
+                bias=task_encoder_bias,
+            ),
+            torch.nn.GELU(),
+            torch.nn.Linear(
+                task_encoder_hidden_dim,
+                self.target_parameter_count,
+                bias=task_encoder_bias,
+            ),
         )
 
-    def build_target_parameter_specs(self) -> list[dict]:
-        specs = []
-        for name, parameter in self.target_model_template.named_parameters():
-            specs.append(
-                {
-                    "name": name,
-                    "shape": tuple(parameter.shape),
-                    "numel": parameter.numel(),
-                }
-            )
-        return specs
+    @property
+    def target_parameter_count(self) -> int:
+        return sum(prod(spec["shape"]) for spec in self.target_parameter_specs)
 
     def serialise_task_segments(
         self,
         support_inputs: torch.Tensor,
         support_outputs: torch.Tensor,
         query_input: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         segment_values = torch.stack(
             [
                 support_inputs[:, 0],
@@ -222,64 +356,50 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
             ],
             dim=1,
         )
+        example_ids = support_inputs.new_tensor([0, 0, 1, 1, 2, 2, 3], dtype=torch.float32)
+        role_ids = support_inputs.new_tensor([0, 1, 0, 1, 0, 1, 0], dtype=torch.float32)
+        is_query_ids = support_inputs.new_tensor([0, 0, 0, 0, 0, 0, 1], dtype=torch.float32)
+        return segment_values, example_ids, role_ids, is_query_ids
 
-        example_ids = support_inputs.new_tensor([0, 0, 1, 1, 2, 2, 3], dtype=torch.long)
-        role_ids = support_inputs.new_tensor([0, 1, 0, 1, 0, 1, 0], dtype=torch.long)
-        return segment_values, example_ids, role_ids
-
-    def encode_task(
-        self,
-        support_inputs: torch.Tensor,
-        support_outputs: torch.Tensor,
-        query_input: torch.Tensor,
-        return_attentions: bool = False,
-    ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
-        segment_values, example_ids, role_ids = self.serialise_task_segments(
-            support_inputs, support_outputs, query_input
-        )
-        batch_size = segment_values.shape[0]
-        flat_values = segment_values.reshape(batch_size, self.segment_sequence_length)
-
-        value_embeddings = self.value_embedding(flat_values.long())
-        position_ids = torch.arange(self.sequence_length, device=flat_values.device).repeat(
-            self.num_segments
-        )
-        position_embeddings = self.position_embedding(position_ids).unsqueeze(0)
-
-        flat_example_ids = example_ids.repeat_interleave(self.sequence_length)
-        example_embeddings = self.example_embedding(flat_example_ids).unsqueeze(0)
-
-        flat_role_ids = role_ids.repeat_interleave(self.sequence_length)
-        role_embeddings = self.role_embedding(flat_role_ids).unsqueeze(0)
-
-        encoder_inputs = (
-            value_embeddings + position_embeddings + example_embeddings + role_embeddings
-        )
-        if return_attentions:
-            encoded_tokens, attentions = self.task_encoder(
-                encoder_inputs,
-                return_attentions=True,
-            )
-            return encoded_tokens.mean(dim=1), attentions
-
-        encoded_tokens = self.task_encoder(encoder_inputs)
-        return encoded_tokens.mean(dim=1)
-
-    def predict_target_parameter_vectors(
+    def build_task_features(
         self,
         support_inputs: torch.Tensor,
         support_outputs: torch.Tensor,
         query_input: torch.Tensor,
     ) -> torch.Tensor:
-        task_representations = self.encode_task(support_inputs, support_outputs, query_input)
-        return self.hyper_head(task_representations)
+        segment_values, example_ids, role_ids, is_query_ids = self.serialise_task_segments(
+            support_inputs,
+            support_outputs,
+            query_input,
+        )
+        batch_size = segment_values.shape[0]
+        flat_values = segment_values.reshape(batch_size, -1, 1)
+
+        position_features = self.position_ramp.repeat(self.num_segments).view(1, -1, 1)
+        example_features = (
+            (example_ids / (self.num_examples - 1))
+            .repeat_interleave(self.sequence_length)
+            .view(1, -1, 1)
+        )
+        role_features = role_ids.repeat_interleave(self.sequence_length).view(1, -1, 1)
+        query_features = is_query_ids.repeat_interleave(self.sequence_length).view(1, -1, 1)
+
+        return torch.cat(
+            [
+                flat_values,
+                position_features.expand(batch_size, -1, -1),
+                example_features.expand(batch_size, -1, -1),
+                role_features.expand(batch_size, -1, -1),
+                query_features.expand(batch_size, -1, -1),
+            ],
+            dim=-1,
+        )
 
     def format_attention_token_label(self, token_metadata: dict) -> str:
-        """Build a compact token label with segment, position, and value."""
         return (
             f"{token_metadata['segment_short_label']}"
             f"|p{token_metadata['position']:02d}"
-            f"|v{token_metadata['value']}"
+            f"|v{int(token_metadata['value'])}"
         )
 
     def build_serialised_token_metadata(
@@ -288,8 +408,7 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
         support_outputs: torch.Tensor,
         query_input: torch.Tensor,
     ) -> list[list[dict]]:
-        """Describe each serialized task token for readable attention plots."""
-        segment_values, example_ids, role_ids = self.serialise_task_segments(
+        segment_values, example_ids, role_ids, _ = self.serialise_task_segments(
             support_inputs,
             support_outputs,
             query_input,
@@ -318,28 +437,57 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
             task_metadata.append(serialized_metadata)
         return task_metadata
 
+    def encode_task(
+        self,
+        support_inputs: torch.Tensor,
+        support_outputs: torch.Tensor,
+        query_input: torch.Tensor,
+        return_attentions: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
+        task_features = self.build_task_features(
+            support_inputs=support_inputs,
+            support_outputs=support_outputs,
+            query_input=query_input,
+        )
+        if return_attentions:
+            encoded_tokens, attentions = self.task_encoder(
+                task_features,
+                return_attentions=True,
+            )
+            return encoded_tokens.mean(dim=1), attentions
+        encoded_tokens = self.task_encoder(task_features)
+        return encoded_tokens.mean(dim=1)
+
+    def predict_target_parameter_vectors(
+        self,
+        support_inputs: torch.Tensor,
+        support_outputs: torch.Tensor,
+        query_input: torch.Tensor,
+    ) -> torch.Tensor:
+        task_representations = self.encode_task(support_inputs, support_outputs, query_input)
+        return self.hyper_head(task_representations)
+
     def get_task_encoder_attention_data(
         self,
         support_inputs: torch.Tensor,
         support_outputs: torch.Tensor,
         query_input: torch.Tensor,
     ) -> dict:
-        """Capture task-encoder self-attention maps and their readable token labels."""
         if support_inputs.dim() == 2:
             support_inputs = support_inputs.unsqueeze(0)
             support_outputs = support_outputs.unsqueeze(0)
             query_input = query_input.unsqueeze(0)
 
         _, attentions = self.encode_task(
-            support_inputs=support_inputs.long(),
-            support_outputs=support_outputs.long(),
-            query_input=query_input.long(),
+            support_inputs=support_inputs.float(),
+            support_outputs=support_outputs.float(),
+            query_input=query_input.float(),
             return_attentions=True,
         )
         token_metadata = self.build_serialised_token_metadata(
-            support_inputs=support_inputs.long(),
-            support_outputs=support_outputs.long(),
-            query_input=query_input.long(),
+            support_inputs=support_inputs.float(),
+            support_outputs=support_outputs.float(),
+            query_input=query_input.float(),
         )
         token_labels = [
             [self.format_attention_token_label(token_info) for token_info in task_tokens]
@@ -355,65 +503,24 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
         parameter_mapping = OrderedDict()
         start = 0
         for spec in self.target_parameter_specs:
-            end = start + spec["numel"]
+            numel = prod(spec["shape"])
+            end = start + numel
             parameter_mapping[spec["name"]] = parameter_vector[start:end].view(spec["shape"])
             start = end
         return parameter_mapping
 
-    def forward(self, batch: dict) -> tuple[torch.Tensor, torch.Tensor]:
-        support_inputs = batch["support_inputs"].long()
-        support_outputs = batch["support_outputs"].long()
-        query_input = batch["query_input"].long()
-
-        parameter_vectors = self.predict_target_parameter_vectors(
-            support_inputs=support_inputs,
-            support_outputs=support_outputs,
-            query_input=query_input,
-        )
-
-        task_inputs = torch.cat([support_inputs, query_input.unsqueeze(1)], dim=1)
-        task_logits = []
-        for task_input, parameter_vector in zip(task_inputs, parameter_vectors, strict=True):
-            parameter_mapping = self.parameter_vector_to_mapping(parameter_vector)
-            example_logits = []
-            for example_input in task_input:
-                example_logits.append(
-                    functional_call(
-                        self.target_model_template,
-                        parameter_mapping,
-                        (example_input.unsqueeze(0),),
-                    ).squeeze(0)
-                )
-            task_logits.append(torch.stack(example_logits, dim=0))
-
-        return torch.stack(task_logits, dim=0), parameter_vectors
-
-    def compute_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        per_position_loss = F.cross_entropy(
-            logits.reshape(-1, self.num_classes),
-            targets.reshape(-1),
-            reduction="none",
-        ).view(targets.shape[0], targets.shape[1], targets.shape[2])
-        per_example_loss = per_position_loss.mean(dim=2)
-
-        selected_losses = []
-        if self.loss_on_support:
-            selected_losses.append(per_example_loss[:, : self.support_example_count])
-        if self.loss_on_query:
-            selected_losses.append(per_example_loss[:, self.support_example_count :])
-        return torch.cat(selected_losses, dim=1).mean()
+    def apply_generated_target_model(
+        self,
+        example_inputs: torch.Tensor,
+        parameter_mapping: OrderedDict,
+    ) -> torch.Tensor:
+        return self.target_model.forward_with_params(example_inputs, parameter_mapping)
 
     def build_targets(self, batch: dict) -> torch.Tensor:
         return torch.cat(
-            [batch["support_outputs"].long(), batch["query_output"].long().unsqueeze(1)],
+            [batch["support_outputs"], batch["query_output"].unsqueeze(1)],
             dim=1,
         )
-
-    def predict_batch(self, batch: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        logits, _ = self(batch)
-        targets = self.build_targets(batch)
-        predictions = logits.argmax(dim=-1)
-        return logits, predictions, targets
 
     def build_task_records(
         self,
@@ -484,6 +591,22 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
             )
         return records
 
+    def build_task_attention_record(self, record: dict) -> dict:
+        attention_data = self.get_task_encoder_attention_data(
+            support_inputs=torch.tensor(record["support_inputs"], device=self.device),
+            support_outputs=torch.tensor(record["support_outputs"], device=self.device),
+            query_input=torch.tensor(record["query_input"], device=self.device),
+        )
+        return {
+            "task_category": record["task_category"],
+            "task_id": record["task_id"],
+            "query_exact_match": record.get("query_exact_match"),
+            "query_accuracy": record.get("query_accuracy"),
+            "token_labels": attention_data["token_labels"][0],
+            "token_metadata": attention_data["token_metadata"][0],
+            "attentions": [layer_attention[0] for layer_attention in attention_data["attentions"]],
+        }
+
     def build_task_visualization_figure(self, record: dict):
         return render_task_prediction_figure(
             support_inputs=record["support_inputs"],
@@ -504,23 +627,6 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
             f"query_acc={record['query_accuracy']:.2f}"
         )
         return figure_to_wandb_image(self.build_task_visualization_figure(record), caption=caption)
-
-    def build_task_attention_record(self, record: dict) -> dict:
-        """Attach task-encoder attention maps to an existing task record."""
-        attention_data = self.get_task_encoder_attention_data(
-            support_inputs=torch.tensor(record["support_inputs"], device=self.device),
-            support_outputs=torch.tensor(record["support_outputs"], device=self.device),
-            query_input=torch.tensor(record["query_input"], device=self.device),
-        )
-        return {
-            "task_category": record["task_category"],
-            "task_id": record["task_id"],
-            "query_exact_match": record.get("query_exact_match"),
-            "query_accuracy": record.get("query_accuracy"),
-            "token_labels": attention_data["token_labels"][0],
-            "token_metadata": attention_data["token_metadata"][0],
-            "attentions": [layer_attention[0] for layer_attention in attention_data["attentions"]],
-        }
 
     def collect_task_records_from_dataloader(
         self,
@@ -545,22 +651,12 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
 
         return records
 
-    def select_representative_task_records(self, dataloader) -> list[dict]:
-        seen_categories = set()
-        selected_records = []
-        for record in self.collect_task_records_from_dataloader(dataloader):
-            if record["task_category"] in seen_categories:
-                continue
-            seen_categories.add(record["task_category"])
-            selected_records.append(record)
-        return selected_records
-
     def select_representative_task_records_from_dataset(
         self,
         dataset,
         split_name: str,
         limit: int,
-    ) -> list[dict]:
+    ) -> list[int]:
         if limit < 1:
             return []
         seen_categories = set()
@@ -642,7 +738,8 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
             figure.savefig(os.path.join(split_dir, filename), dpi=150, bbox_inches="tight")
             wandb_key = f"{payload_prefix}_{record['task_category']}_{record['task_id']}"
             wandb_payload[wandb_key] = self.build_task_visualization_image(
-                record, caption_prefix=payload_prefix
+                record,
+                caption_prefix=payload_prefix,
             )
 
         if (
@@ -708,28 +805,72 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
         ):
             wandb_logger.experiment.log(wandb_payload)
 
+    def forward(self, batch: dict) -> tuple[torch.Tensor, torch.Tensor]:
+        support_inputs = batch["support_inputs"].float()
+        support_outputs = batch["support_outputs"].float()
+        query_input = batch["query_input"].float()
+        task_inputs = torch.cat([support_inputs, query_input.unsqueeze(1)], dim=1)
+
+        parameter_vectors = self.predict_target_parameter_vectors(
+            support_inputs=support_inputs,
+            support_outputs=support_outputs,
+            query_input=query_input,
+        )
+
+        if parameter_vectors.shape[0] != task_inputs.shape[0]:
+            msg = "Expected exactly one generated parameter vector per task."
+            raise RuntimeError(msg)
+
+        task_logits = []
+        for task_input, parameter_vector in zip(task_inputs, parameter_vectors, strict=True):
+            parameter_mapping = self.parameter_vector_to_mapping(parameter_vector)
+            task_logits.append(
+                self.apply_generated_target_model(
+                    example_inputs=task_input,
+                    parameter_mapping=parameter_mapping,
+                )
+            )
+
+        return torch.stack(task_logits, dim=0), parameter_vectors
+
+    def compute_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        per_position_loss = F.binary_cross_entropy_with_logits(
+            logits,
+            targets.float(),
+            reduction="none",
+        )
+        per_example_loss = per_position_loss.mean(dim=2)
+
+        selected_losses = []
+        if self.loss_on_support:
+            selected_losses.append(per_example_loss[:, : self.support_example_count])
+        if self.loss_on_query:
+            selected_losses.append(per_example_loss[:, self.support_example_count :])
+        return torch.cat(selected_losses, dim=1).mean()
+
+    def decode_logits(self, logits: torch.Tensor) -> torch.Tensor:
+        return (torch.sigmoid(logits) >= 0.5).long()
+
     def compute_metrics(
         self,
         logits: torch.Tensor,
         targets: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        predictions = logits.argmax(dim=-1)
-        exact_matches = (predictions == targets).all(dim=2)
-
-        support_predictions = predictions[:, : self.support_example_count]
-        support_targets = targets[:, : self.support_example_count]
-        query_predictions = predictions[:, self.support_example_count]
-        query_targets = targets[:, self.support_example_count]
+        predictions = self.decode_logits(logits)
+        targets_long = targets.long()
+        exact_matches = (predictions == targets_long).all(dim=2).float()
 
         return {
-            "support_accuracy": (support_predictions == support_targets).float().mean(),
-            "query_accuracy": (query_predictions == query_targets).float().mean(),
-            "support_exact_match_accuracy": exact_matches[:, : self.support_example_count]
-            .float()
-            .mean(),
-            "query_exact_match_accuracy": exact_matches[:, self.support_example_count]
-            .float()
-            .mean(),
+            "support_accuracy": accuracy(
+                targets_long[:, : self.support_example_count].reshape(-1, self.sequence_length),
+                predictions[:, : self.support_example_count].reshape(-1, self.sequence_length),
+            ),
+            "query_accuracy": accuracy(
+                targets_long[:, self.support_example_count].reshape(-1, self.sequence_length),
+                predictions[:, self.support_example_count].reshape(-1, self.sequence_length),
+            ),
+            "support_exact_match_accuracy": exact_matches[:, : self.support_example_count].mean(),
+            "query_exact_match_accuracy": exact_matches[:, self.support_example_count].mean(),
             "all_examples_exact_match_accuracy": exact_matches.all(dim=1).float().mean(),
         }
 
@@ -739,30 +880,56 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
         loss = self.compute_loss(logits, targets)
         metrics = self.compute_metrics(logits, targets)
         batch_size = targets.shape[0]
+        log_on_step = prefix == "train"
 
-        self.log(f"{prefix}_loss", loss, prog_bar=(prefix != "test"), batch_size=batch_size)
+        self.log(
+            f"{prefix}_loss",
+            loss,
+            prog_bar=True,
+            batch_size=batch_size,
+            on_step=log_on_step,
+            on_epoch=True,
+        )
         for metric_name, metric_value in metrics.items():
             self.log(
                 f"{prefix}_{metric_name}",
                 metric_value,
                 prog_bar=metric_name == "query_exact_match_accuracy",
                 batch_size=batch_size,
+                on_step=log_on_step,
+                on_epoch=True,
             )
+        self.log(
+            f"{prefix}_generated_parameter_count",
+            torch.tensor(float(parameter_vectors.shape[1]), device=self.device),
+            prog_bar=False,
+            batch_size=batch_size,
+            on_step=log_on_step,
+            on_epoch=True,
+        )
         self.log(
             f"{prefix}_generated_parameter_l2",
             parameter_vectors.norm(dim=1).mean(),
+            prog_bar=False,
             batch_size=batch_size,
+            on_step=log_on_step,
+            on_epoch=True,
         )
         return loss
 
-    def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
+    def training_step(self, batch, batch_idx):
         return self.common_step(batch, "train")
 
-    def validation_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
+    def validation_step(self, batch, batch_idx):
         return self.common_step(batch, "val")
 
-    def test_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
+    def test_step(self, batch, batch_idx):
         return self.common_step(batch, "test")
+
+    def predict_batch(self, batch: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        logits, _ = self(batch)
+        targets = self.build_targets(batch)
+        return logits, self.decode_logits(logits), targets.long()
 
     def configure_optimizers(self):
         optimizer_cls = getattr(torch.optim, self.optimizer_name)
@@ -772,5 +939,24 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
             weight_decay=self.weight_decay,
         )
 
-
-__all__ = ["BaseHyperMetaModelLightning", "TaskTransformerEncoder"]
+    def load_state_dict(self, state_dict, strict: bool = True):
+        filtered_state_dict = dict(state_dict)
+        filtered_state_dict.setdefault(
+            "target_model.position_ramp",
+            self.target_model.position_ramp.detach().clone(),
+        )
+        current_state_dict = self.state_dict()
+        mismatched_keys = [
+            key
+            for key, value in list(filtered_state_dict.items())
+            if key in current_state_dict and current_state_dict[key].shape != value.shape
+        ]
+        for key in mismatched_keys:
+            filtered_state_dict.pop(key)
+        if mismatched_keys:
+            print(
+                "Ignoring incompatible checkpoint keys for BinaryHyperRNNMetaModelLightning: "
+                + ", ".join(sorted(mismatched_keys))
+            )
+            strict = False
+        return super().load_state_dict(filtered_state_dict, strict=strict)
