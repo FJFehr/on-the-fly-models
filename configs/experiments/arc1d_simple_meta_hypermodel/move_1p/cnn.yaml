@@ -1,0 +1,20 @@
+_base_: configs/experiments/arc1d_simple_meta_hypermodel/base.yaml
+task: move_1p
+variant: target_cnn
+
+experiment_name: ${data}_${task}_${model}_${variant}
+
+hyper_model:
+  name: transformer
+  params:
+    hidden_dim: 32
+    num_heads: 1
+    num_layers: 2
+    output_dim: 32
+
+target_model:
+  name: cnn
+  params:
+    hidden_dim: 32
+    num_layers: 2
+    kernel_size: 3

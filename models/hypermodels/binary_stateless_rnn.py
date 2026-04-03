@@ -39,6 +39,127 @@ TASK_SEGMENT_DISPLAY_NAMES = (
 )
 
 
+def serialise_binary_task_segments(
+    support_inputs: torch.Tensor,
+    support_outputs: torch.Tensor,
+    query_input: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Flatten a binary ARC task into the fixed legacy task-segment order."""
+    segment_values = torch.stack(
+        [
+            support_inputs[:, 0],
+            support_outputs[:, 0],
+            support_inputs[:, 1],
+            support_outputs[:, 1],
+            support_inputs[:, 2],
+            support_outputs[:, 2],
+            query_input,
+        ],
+        dim=1,
+    )
+    example_ids = support_inputs.new_tensor([0, 0, 1, 1, 2, 2, 3], dtype=torch.float32)
+    role_ids = support_inputs.new_tensor([0, 1, 0, 1, 0, 1, 0], dtype=torch.float32)
+    is_query_ids = support_inputs.new_tensor([0, 0, 0, 0, 0, 0, 1], dtype=torch.float32)
+    return segment_values, example_ids, role_ids, is_query_ids
+
+
+def build_binary_task_features(
+    support_inputs: torch.Tensor,
+    support_outputs: torch.Tensor,
+    query_input: torch.Tensor,
+) -> torch.Tensor:
+    """Build the 5 scalar features used by the legacy binary task encoder."""
+    segment_values, example_ids, role_ids, is_query_ids = serialise_binary_task_segments(
+        support_inputs,
+        support_outputs,
+        query_input,
+    )
+    batch_size, _, sequence_length = segment_values.shape
+    flat_values = segment_values.reshape(batch_size, -1, 1).float()
+
+    normalized_positions = torch.linspace(
+        0.0,
+        1.0,
+        steps=sequence_length,
+        device=segment_values.device,
+    )
+    position_feature = normalized_positions.repeat(7).view(1, -1, 1)
+    example_feature = (example_ids / 3.0).repeat_interleave(sequence_length).view(1, -1, 1)
+    role_feature = role_ids.repeat_interleave(sequence_length).view(1, -1, 1)
+    is_query_feature = is_query_ids.repeat_interleave(sequence_length).view(1, -1, 1)
+
+    return torch.cat(
+        [
+            flat_values,
+            position_feature.expand(batch_size, -1, -1),
+            example_feature.expand(batch_size, -1, -1),
+            role_feature.expand(batch_size, -1, -1),
+            is_query_feature.expand(batch_size, -1, -1),
+        ],
+        dim=-1,
+    )
+
+
+def build_binary_targets(
+    support_outputs: torch.Tensor,
+    query_output: torch.Tensor,
+) -> torch.Tensor:
+    """Stack support and query outputs into the shared 4-example layout."""
+    return torch.cat([support_outputs.float(), query_output.float().unsqueeze(1)], dim=1)
+
+
+def compute_binary_meta_loss(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    *,
+    loss_on_support: bool,
+    loss_on_query: bool,
+) -> torch.Tensor:
+    """Match the legacy support/query-masked BCE reduction."""
+    per_position_loss = F.binary_cross_entropy_with_logits(
+        logits,
+        targets.float(),
+        reduction="none",
+    )
+    per_example_loss = per_position_loss.mean(dim=2)
+
+    selected_losses = []
+    if loss_on_support:
+        selected_losses.append(per_example_loss[:, :3])
+    if loss_on_query:
+        selected_losses.append(per_example_loss[:, 3:])
+    return torch.cat(selected_losses, dim=1).mean()
+
+
+def decode_binary_logits(logits: torch.Tensor) -> torch.Tensor:
+    """Decode binary logits with the legacy 0.5 sigmoid threshold."""
+    return (torch.sigmoid(logits) >= 0.5).long()
+
+
+def compute_binary_meta_metrics(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    """Compute the legacy binary support/query metrics."""
+    predictions = decode_binary_logits(logits)
+    targets_long = targets.long()
+    exact_matches = (predictions == targets_long).all(dim=2).float()
+
+    return {
+        "support_accuracy": accuracy(
+            targets_long[:, :3].reshape(-1, targets_long.shape[-1]),
+            predictions[:, :3].reshape(-1, predictions.shape[-1]),
+        ),
+        "query_accuracy": accuracy(
+            targets_long[:, 3:].reshape(-1, targets_long.shape[-1]),
+            predictions[:, 3:].reshape(-1, predictions.shape[-1]),
+        ),
+        "support_exact_match_accuracy": exact_matches[:, :3].mean(),
+        "query_exact_match_accuracy": exact_matches[:, 3:].mean(),
+        "all_examples_exact_match_accuracy": exact_matches.all(dim=1).float().mean(),
+    }
+
+
 class BinaryTaskFeatureEncoder(torch.nn.Module):
     """Transformer encoder over binary scalar task features."""
 
@@ -344,22 +465,11 @@ class BinaryHyperRNNMetaModelLightning(pl.LightningModule):
         support_outputs: torch.Tensor,
         query_input: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        segment_values = torch.stack(
-            [
-                support_inputs[:, 0],
-                support_outputs[:, 0],
-                support_inputs[:, 1],
-                support_outputs[:, 1],
-                support_inputs[:, 2],
-                support_outputs[:, 2],
-                query_input,
-            ],
-            dim=1,
+        return serialise_binary_task_segments(
+            support_inputs=support_inputs,
+            support_outputs=support_outputs,
+            query_input=query_input,
         )
-        example_ids = support_inputs.new_tensor([0, 0, 1, 1, 2, 2, 3], dtype=torch.float32)
-        role_ids = support_inputs.new_tensor([0, 1, 0, 1, 0, 1, 0], dtype=torch.float32)
-        is_query_ids = support_inputs.new_tensor([0, 0, 0, 0, 0, 0, 1], dtype=torch.float32)
-        return segment_values, example_ids, role_ids, is_query_ids
 
     def build_task_features(
         self,
@@ -367,32 +477,10 @@ class BinaryHyperRNNMetaModelLightning(pl.LightningModule):
         support_outputs: torch.Tensor,
         query_input: torch.Tensor,
     ) -> torch.Tensor:
-        segment_values, example_ids, role_ids, is_query_ids = self.serialise_task_segments(
-            support_inputs,
-            support_outputs,
-            query_input,
-        )
-        batch_size = segment_values.shape[0]
-        flat_values = segment_values.reshape(batch_size, -1, 1)
-
-        position_features = self.position_ramp.repeat(self.num_segments).view(1, -1, 1)
-        example_features = (
-            (example_ids / (self.num_examples - 1))
-            .repeat_interleave(self.sequence_length)
-            .view(1, -1, 1)
-        )
-        role_features = role_ids.repeat_interleave(self.sequence_length).view(1, -1, 1)
-        query_features = is_query_ids.repeat_interleave(self.sequence_length).view(1, -1, 1)
-
-        return torch.cat(
-            [
-                flat_values,
-                position_features.expand(batch_size, -1, -1),
-                example_features.expand(batch_size, -1, -1),
-                role_features.expand(batch_size, -1, -1),
-                query_features.expand(batch_size, -1, -1),
-            ],
-            dim=-1,
+        return build_binary_task_features(
+            support_inputs=support_inputs,
+            support_outputs=support_outputs,
+            query_input=query_input,
         )
 
     def format_attention_token_label(self, token_metadata: dict) -> str:
@@ -517,9 +605,9 @@ class BinaryHyperRNNMetaModelLightning(pl.LightningModule):
         return self.target_model.forward_with_params(example_inputs, parameter_mapping)
 
     def build_targets(self, batch: dict) -> torch.Tensor:
-        return torch.cat(
-            [batch["support_outputs"], batch["query_output"].unsqueeze(1)],
-            dim=1,
+        return build_binary_targets(
+            support_outputs=batch["support_outputs"],
+            query_output=batch["query_output"],
         )
 
     def build_task_records(
@@ -834,45 +922,22 @@ class BinaryHyperRNNMetaModelLightning(pl.LightningModule):
         return torch.stack(task_logits, dim=0), parameter_vectors
 
     def compute_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        per_position_loss = F.binary_cross_entropy_with_logits(
+        return compute_binary_meta_loss(
             logits,
-            targets.float(),
-            reduction="none",
+            targets,
+            loss_on_support=self.loss_on_support,
+            loss_on_query=self.loss_on_query,
         )
-        per_example_loss = per_position_loss.mean(dim=2)
-
-        selected_losses = []
-        if self.loss_on_support:
-            selected_losses.append(per_example_loss[:, : self.support_example_count])
-        if self.loss_on_query:
-            selected_losses.append(per_example_loss[:, self.support_example_count :])
-        return torch.cat(selected_losses, dim=1).mean()
 
     def decode_logits(self, logits: torch.Tensor) -> torch.Tensor:
-        return (torch.sigmoid(logits) >= 0.5).long()
+        return decode_binary_logits(logits)
 
     def compute_metrics(
         self,
         logits: torch.Tensor,
         targets: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        predictions = self.decode_logits(logits)
-        targets_long = targets.long()
-        exact_matches = (predictions == targets_long).all(dim=2).float()
-
-        return {
-            "support_accuracy": accuracy(
-                targets_long[:, : self.support_example_count].reshape(-1, self.sequence_length),
-                predictions[:, : self.support_example_count].reshape(-1, self.sequence_length),
-            ),
-            "query_accuracy": accuracy(
-                targets_long[:, self.support_example_count].reshape(-1, self.sequence_length),
-                predictions[:, self.support_example_count].reshape(-1, self.sequence_length),
-            ),
-            "support_exact_match_accuracy": exact_matches[:, : self.support_example_count].mean(),
-            "query_exact_match_accuracy": exact_matches[:, self.support_example_count].mean(),
-            "all_examples_exact_match_accuracy": exact_matches.all(dim=1).float().mean(),
-        }
+        return compute_binary_meta_metrics(logits, targets)
 
     def common_step(self, batch: dict, prefix: str) -> torch.Tensor:
         logits, parameter_vectors = self(batch)

@@ -41,6 +41,7 @@ on-the-fly-models/
 ├── tests/
 ├── visualisation/
 ├── metrics.py
+├── train_binary_hypermodel.py    # Dedicated entrypoint for simplified binary HyperModel runs
 ├── train.py
 ├── pyproject.toml
 └── README.md
@@ -88,6 +89,7 @@ Supported model families are:
 - `rnn`
 - `transformer`
 - `binary_hyper_rnn`
+- `binary_hyper_model`
 - `hyper_cnn`
 - `hyper_rnn`
 
@@ -117,6 +119,14 @@ The binary meta-learning debug track uses a simpler stateless generated target R
 
 ```bash
 uv run python train.py --config configs/experiments/arc1d_simple_meta/move_1p/binary_hyper_rnn.yaml
+```
+
+The simplified binary HyperModel path keeps one generated parameter vector per task. Its
+hypernetwork and target template are selected via `hyper_model.name` and
+`target_model.name` in the experiment config, and it can be launched with:
+
+```bash
+uv run python train_binary_hypermodel.py --config configs/experiments/arc1d_simple_meta_hypermodel/move_1p/hyper_model.yaml
 ```
 
 The hyper-CNN variant uses the same task-level datamodule and can be launched with:
@@ -179,6 +189,7 @@ The implemented target-model baselines are:
 - `rnn`: RNN with explicit positional features
 - `transformer`: transformer over per-position value-plus-position features
 - `binary_hyper_rnn`: debug-oriented binary hypernetwork that predicts one stateless target-RNN parameter set per task
+- `binary_hyper_model`: simplified binary hypermodel that reads the full task context, predicts one parameter vector per task, and reuses those generated weights across all support/query examples; the simplified wrapper now selects its hypernetwork and target template from config
 - `hyper_cnn`: transformer task encoder that predicts a task-specific 1D CNN
 - `hyper_rnn`: transformer task encoder that reads whole support/query context and predicts a task-specific bidirectional RNN
 

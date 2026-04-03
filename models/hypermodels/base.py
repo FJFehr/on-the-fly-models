@@ -739,19 +739,31 @@ class BaseHyperMetaModelLightning(pl.LightningModule):
         loss = self.compute_loss(logits, targets)
         metrics = self.compute_metrics(logits, targets)
         batch_size = targets.shape[0]
+        log_on_step = prefix == "train"
 
-        self.log(f"{prefix}_loss", loss, prog_bar=(prefix != "test"), batch_size=batch_size)
+        self.log(
+            f"{prefix}_loss",
+            loss,
+            prog_bar=(prefix != "test"),
+            batch_size=batch_size,
+            on_step=log_on_step,
+            on_epoch=True,
+        )
         for metric_name, metric_value in metrics.items():
             self.log(
                 f"{prefix}_{metric_name}",
                 metric_value,
                 prog_bar=metric_name == "query_exact_match_accuracy",
                 batch_size=batch_size,
+                on_step=log_on_step,
+                on_epoch=True,
             )
         self.log(
             f"{prefix}_generated_parameter_l2",
             parameter_vectors.norm(dim=1).mean(),
             batch_size=batch_size,
+            on_step=log_on_step,
+            on_epoch=True,
         )
         return loss
 

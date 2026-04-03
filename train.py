@@ -38,76 +38,13 @@ import wandb
 # Import the registries — these map config string keys to classes
 from data_modules import DATA_REGISTRY
 from models import MODEL_REGISTRY
+from train_utils import (
+    StopOnMetricThreshold,
+    build_runtime_config_dict,
+    load_config,
+    write_results_file,
+)
 from visualisation import figure_to_wandb_image, render_val_example_figure
-
-
-class StopOnMetricThreshold(Callback):
-    """Stop training once a monitored validation metric reaches a threshold."""
-
-    def __init__(self, monitor: str, threshold: float, mode: str = "max") -> None:
-        super().__init__()
-        if mode not in {"max", "min"}:
-            msg = f"Unsupported mode {mode!r}. Expected 'max' or 'min'."
-            raise ValueError(msg)
-
-        self.monitor = monitor
-        self.threshold = threshold
-        self.mode = mode
-
-    def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        if trainer.sanity_checking:
-            return
-
-        metric = trainer.callback_metrics.get(self.monitor)
-        if metric is None:
-            return
-
-        current_value = float(metric.detach().cpu())
-        reached_threshold = (
-            current_value >= self.threshold
-            if self.mode == "max"
-            else current_value <= self.threshold
-        )
-
-        if reached_threshold:
-            trainer.should_stop = True
-            print(
-                f"Stopping early because {self.monitor} reached "
-                f"{current_value:.6f} (threshold {self.threshold:.6f})."
-            )
-
-
-def write_results_file(
-    output_path: str,
-    checkpoint_path: str | None,
-    val_results: list[dict],
-    test_results: list[dict],
-) -> None:
-    """Write final evaluation results to a plain-text file in the run directory."""
-    results_path = os.path.join(output_path, "results.txt")
-    lines = ["Final evaluation results"]
-
-    if checkpoint_path:
-        lines.append(f"checkpoint: {checkpoint_path}")
-    else:
-        lines.append("checkpoint: none")
-
-    if val_results:
-        lines.append("validation_metrics:")
-        for metric_name, metric_value in sorted(val_results[0].items()):
-            lines.append(f"{metric_name}: {metric_value}")
-    else:
-        lines.append("validation_metrics: none")
-
-    if test_results:
-        lines.append("test_metrics:")
-        for metric_name, metric_value in sorted(test_results[0].items()):
-            lines.append(f"{metric_name}: {metric_value}")
-    else:
-        lines.append("test_metrics: none")
-
-    with open(results_path, "w", encoding="utf-8") as results_file:
-        results_file.write("\n".join(lines) + "\n")
 
 
 def log_hard_val_examples(model, datamodule, output_path, wandb_logger=None, num_hard_examples=3):
@@ -324,53 +261,6 @@ class MetaTaskVisualizationCallback(Callback):
         )
 
 
-def apply_grouped_config_aliases(cfg) -> None:
-    """Translate grouped experiment config sections into the flat runtime shape."""
-    if "name" in cfg and "model" not in cfg:
-        cfg["model"] = cfg["name"]
-
-
-def build_runtime_config_dict(cfg) -> dict:
-    """Flatten grouped config sections into the kwargs expected by the runtime."""
-    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-
-    if not isinstance(cfg_dict, dict):
-        msg = "Resolved config must be a dictionary."
-        raise ValueError(msg)
-
-    runtime_cfg = dict(cfg_dict)
-
-    hyper_model_cfg = runtime_cfg.pop("hyper_model", None)
-    if isinstance(hyper_model_cfg, dict):
-        runtime_cfg.update(hyper_model_cfg)
-
-    training_cfg = runtime_cfg.pop("training", None)
-    if isinstance(training_cfg, dict):
-        runtime_cfg.update(training_cfg)
-
-    target_model_cfg = runtime_cfg.pop("target_model", None)
-    if isinstance(target_model_cfg, dict):
-        rnn_cfg = target_model_cfg.get("rnn")
-        if isinstance(rnn_cfg, dict):
-            runtime_cfg["target_rnn_hidden_dim"] = rnn_cfg["hidden_dim"]
-            runtime_cfg["target_rnn_bidirectional"] = rnn_cfg["bidirectional"]
-            runtime_cfg["target_rnn_num_layers"] = rnn_cfg["num_layers"]
-            runtime_cfg["target_rnn_use_skip_connections"] = rnn_cfg.get(
-                "use_skip_connections",
-                False,
-            )
-        cnn_cfg = target_model_cfg.get("cnn")
-        if isinstance(cnn_cfg, dict):
-            runtime_cfg["target_cnn_hidden_channels"] = cnn_cfg["hidden_channels"]
-            runtime_cfg["target_cnn_kernel_size"] = cnn_cfg.get("kernel_size", 3)
-            runtime_cfg["target_cnn_num_layers"] = cnn_cfg.get("num_layers", 1)
-            runtime_cfg["target_cnn_use_skip_connections"] = cnn_cfg.get(
-                "use_skip_connections", False
-            )
-
-    return runtime_cfg
-
-
 def main():
     """Main training function.
 
@@ -398,18 +288,7 @@ def main():
     # -----------------------------------------------------------------------
     # 2. Load and resolve the config
     # -----------------------------------------------------------------------
-    cfg = OmegaConf.load(cli_args.config)
-
-    # Support config hierarchy: if _base_ is set, load the base config and
-    # merge the experiment config on top. This lets experiment configs stay
-    # minimal — only the fields that differ from the base need to be specified.
-    if "_base_" in cfg:
-        base_cfg = OmegaConf.load(cfg._base_)
-        del cfg["_base_"]
-        cfg = OmegaConf.merge(base_cfg, cfg)
-
-    apply_grouped_config_aliases(cfg)
-    OmegaConf.resolve(cfg)
+    cfg = load_config(cli_args.config)
 
     # Convert the OmegaConf DictConfig to a plain Python dict for passing
     # as **kwargs to model and data module constructors.

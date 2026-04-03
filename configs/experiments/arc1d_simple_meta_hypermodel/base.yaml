@@ -1,0 +1,32 @@
+# Base config for the simplified binary HyperModel track.
+project_name: arc1d_simple_meta_hypermodel_experiments
+entity: fjfehr
+output_dir: outputs
+seed: 42
+experiment_name: ${data}_${task}_${model}
+output_path: ${output_dir}/${project_name}/${experiment_name}
+
+data: arc_1d_meta_simple
+data_dir: data/arc_1d_simple
+model: binary_hyper_model
+primary_metric: val_query_exact_match_accuracy
+num_workers: 0
+task_categories:
+  - "1d_${task}"
+task_ids: null
+train_split: train
+val_split: val
+test_split: test
+overfit_single_batch: false
+
+accelerator: auto
+batch_size: 16
+learning_rate: 0.001
+optimizer: Adam
+weight_decay: 0.01
+max_steps: 10000
+
+input_dim: 33
+output_dim: 33
+prediction_task: binary
+stop_on_perfect_val_exact_match: false
