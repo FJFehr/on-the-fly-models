@@ -232,6 +232,15 @@ The `HyperModelLightning` path keeps one generated parameter vector per task. It
 uv run python train.py --config configs/experiments/arc1d_simple_meta_hypermodel/move_1p/hyper_model.yaml
 ```
 
+The binary hypermodel path also supports a wrapper-owned `task_encoding`
+section:
+
+- `task_encoding.name: scalar` keeps the current 5-scalar hypernetwork tokens
+  plus `[value, normalized_position]` target inputs
+- `task_encoding.name: shared_embeddings` switches both paths to a shared
+  learned token embedder over `value`, `position`, `example_id`, `role`, and
+  `is_query`
+
 ## Data
 
 ### Build task-level ARC1D
@@ -270,6 +279,13 @@ This creates the active comparison-track dataset at `data/arc_1d_padded_multicla
 
 `HyperModelLightning` is the active model class. It encodes the full task context (3 support examples + query input) using a configurable hypernetwork (`hyper_model.name`), mean-pools the token representations into a single task vector, projects it through a hyper-head to a flat parameter vector, and applies those generated weights to a frozen target model template (`target_model.name`) for all support and query examples.
 
+For the binary track, the wrapper can now encode those task tokens in two ways:
+
+- `scalar`: the existing 5-scalar feature vector
+- `shared_embeddings`: summed learned embeddings for `value`, `position`,
+  `example_id`, `role`, and `is_query`, reused by both the hypernetwork and the
+  target model's input-side tokens
+
 Available encoder architectures for both hypernetwork and target roles: `cnn`, `rnn`, `transformer` (defined in `models/`).
 
 Shared experiment defaults:
@@ -277,6 +293,34 @@ Shared experiment defaults:
 - `val_exact_match_accuracy` is the primary metric; elementwise accuracy is also logged
 - each run writes the resolved config, model summary, checkpoints, and `results.txt`
 - early stopping triggers at `val_exact_match_accuracy == 1.0` unless disabled
+
+### Shared-embedding A/B on `move_1p_denoising_1c`
+
+The binary mix experiment now has an explicit scalar-vs-embedding comparison
+pair:
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_binary/mixes/move_1p_denoising_1c/hyper_model_scalar.yaml
+uv run python train.py --config configs/experiments/arc1d_binary/mixes/move_1p_denoising_1c/hyper_model_shared_embeddings.yaml
+```
+
+Compare the resulting runs on:
+
+- `val_query_exact_match`
+- `test_query_exact_match`
+- `val_query_accuracy`
+- `test_query_accuracy`
+- total and trainable parameter counts in `model.txt` or W&B
+
+The same A/B pattern can also be run on the larger
+`move_1p_fill_hollow_denoising_1c` mix:
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_binary/mixes/move_1p_fill_hollow_denoising_1c/hyper_model_scalar.yaml
+uv run python train.py --config configs/experiments/arc1d_binary/mixes/move_1p_fill_hollow_denoising_1c/hyper_model_shared_embeddings.yaml
+```
+
+The shared-embedding variant there uses `embedding_dim: 16`.
 
 ## Deleted architectures — reference for future multiclass port
 

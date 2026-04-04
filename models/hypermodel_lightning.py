@@ -13,29 +13,29 @@ from metrics import accuracy, exact_match_accuracy
 from models.cnn import CNN
 from models.hypermodel import HyperModel
 from models.rnn import RNN
+from models.task_token_embedder import TaskTokenEmbedder
 from models.transformer import Transformer
 from visualisation import figure_to_wandb_image, render_task_prediction_figure
 
 NUM_SUPPORT_EXAMPLES = 3
 NUM_TASK_EXAMPLES = 4
 NUM_TASK_SEGMENTS = 7
-TASK_FEATURE_DIM = 5
+TASK_SCALAR_FEATURE_DIM = 5
+TASK_ENCODING_SCALAR = "scalar"
+TASK_ENCODING_SHARED_EMBEDDINGS = "shared_embeddings"
 
 
 HYPERNETWORK_REGISTRY = {
     "cnn": {
         "class": CNN,
-        "owned_params": {"input_dim": TASK_FEATURE_DIM},
         "output_dim_key": "output_dim",
     },
     "transformer": {
         "class": Transformer,
-        "owned_params": {"input_dim": TASK_FEATURE_DIM},
         "output_dim_key": "output_dim",
     },
     "rnn": {
         "class": RNN,
-        "owned_params": {"input_dim": TASK_FEATURE_DIM},
         "output_dim_key": "output_dim",
     },
 }
@@ -43,15 +43,15 @@ HYPERNETWORK_REGISTRY = {
 TARGET_MODEL_REGISTRY = {
     "cnn": {
         "class": CNN,
-        "owned_params": {"input_dim": 2, "output_dim": 1},
+        "owned_params": {"output_dim": 1},
     },
     "rnn": {
         "class": RNN,
-        "owned_params": {"input_dim": 2, "output_dim": 1},
+        "owned_params": {"output_dim": 1},
     },
     "transformer": {
         "class": Transformer,
-        "owned_params": {"input_dim": 2, "output_dim": 1},
+        "owned_params": {"output_dim": 1},
     },
 }
 
@@ -98,6 +98,7 @@ class HyperModelLightning(pl.LightningModule):
         self,
         hyper_model: dict,
         target_model: dict,
+        task_encoding: dict | None = None,
         learning_rate: float = 1e-3,
         optimizer: str = "Adam",
         optimizer_name: str = "Adam",
@@ -105,6 +106,13 @@ class HyperModelLightning(pl.LightningModule):
         **kwargs,
     ):
         super().__init__()
+        (
+            self.task_encoding_name,
+            self.task_encoding_params,
+            self.hyper_input_dim,
+            self.target_input_dim,
+        ) = self.resolve_task_encoding(task_encoding, kwargs)
+        self.shared_task_token_embedder = self.build_task_token_embedder()
         hypernetwork, hyper_output_dim = self.build_hypernetwork(hyper_model)
         target = self.build_target_model(target_model)
         self.hypermodel = HyperModel(
@@ -120,6 +128,67 @@ class HyperModelLightning(pl.LightningModule):
         self.num_periodic_train_task_examples = kwargs.get("num_periodic_train_task_examples", 1)
         self.num_periodic_val_task_examples = kwargs.get("num_periodic_val_task_examples", 1)
         self.selected_representative_task_ids: dict[str, list[int]] = {"train": [], "val": []}
+
+    def resolve_task_encoding(
+        self,
+        task_encoding: Mapping | None,
+        runtime_kwargs: Mapping,
+    ) -> tuple[str, dict, int, int]:
+        """Resolve the wrapper-owned task encoding contract."""
+        if task_encoding is None:
+            task_encoding = {}
+        if not isinstance(task_encoding, Mapping):
+            msg = "task_encoding must be a mapping with name and params fields."
+            raise ValueError(msg)
+
+        task_encoding_name = task_encoding.get("name", TASK_ENCODING_SCALAR)
+        if task_encoding_name not in {TASK_ENCODING_SCALAR, TASK_ENCODING_SHARED_EMBEDDINGS}:
+            msg = (
+                f"Unknown task_encoding.name {task_encoding_name!r}. Expected one of "
+                f"{[TASK_ENCODING_SCALAR, TASK_ENCODING_SHARED_EMBEDDINGS]}."
+            )
+            raise ValueError(msg)
+
+        params = task_encoding.get("params", {})
+        if not isinstance(params, Mapping):
+            msg = "task_encoding.params must be a mapping."
+            raise ValueError(msg)
+        resolved_params = dict(params)
+
+        if task_encoding_name == TASK_ENCODING_SCALAR:
+            return task_encoding_name, resolved_params, TASK_SCALAR_FEATURE_DIM, 2
+
+        share_input_embeddings = resolved_params.get("share_input_embeddings", True)
+        if share_input_embeddings is not True:
+            msg = "task_encoding.params.share_input_embeddings must be true when enabled."
+            raise ValueError(msg)
+
+        embedding_dim = resolved_params.get("embedding_dim")
+        if not isinstance(embedding_dim, int) or embedding_dim < 1:
+            msg = "task_encoding.params.embedding_dim must be a positive integer."
+            raise ValueError(msg)
+
+        position_vocab_size = runtime_kwargs.get("input_dim")
+        if not isinstance(position_vocab_size, int) or position_vocab_size < 1:
+            msg = (
+                "shared_embeddings requires a positive integer top-level input_dim so "
+                "position embeddings know their vocabulary size."
+            )
+            raise ValueError(msg)
+
+        resolved_params["embedding_dim"] = embedding_dim
+        resolved_params["position_vocab_size"] = position_vocab_size
+        resolved_params["share_input_embeddings"] = True
+        return task_encoding_name, resolved_params, embedding_dim, embedding_dim
+
+    def build_task_token_embedder(self) -> TaskTokenEmbedder | None:
+        """Instantiate the shared task-token embedder when requested."""
+        if self.task_encoding_name != TASK_ENCODING_SHARED_EMBEDDINGS:
+            return None
+        return TaskTokenEmbedder(
+            embedding_dim=self.task_encoding_params["embedding_dim"],
+            position_vocab_size=self.task_encoding_params["position_vocab_size"],
+        )
 
     def build_hypernetwork(self, hyper_model: Mapping) -> tuple[torch.nn.Module, int]:
         """Instantiate the configured hypernetwork and return its output width."""
@@ -141,7 +210,7 @@ class HyperModelLightning(pl.LightningModule):
 
         resolved_params = _apply_owned_params(
             hypernetwork_params,
-            hypernetwork_spec["owned_params"],
+            {"input_dim": self.hyper_input_dim},
             "hyper_model",
         )
         output_dim_key = hypernetwork_spec["output_dim_key"]
@@ -176,21 +245,19 @@ class HyperModelLightning(pl.LightningModule):
 
         resolved_params = _apply_owned_params(
             target_model_params,
-            target_model_spec["owned_params"],
+            {"input_dim": self.target_input_dim, **target_model_spec["owned_params"]},
             "target_model",
         )
         target_model_cls = target_model_spec["class"]
         return target_model_cls(**resolved_params)
 
-    def prepare_inputs(self, batch: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Convert a task batch into hypernetwork features, target inputs, and targets."""
-        support_inputs = batch["support_inputs"].float()
-        support_outputs = batch["support_outputs"].float()
-        query_input = batch["query_input"].float()
-        query_output = batch["query_output"].float()
-
-        # The hypernetwork sees the full task in the legacy ARC order:
-        # support 1 input/output, support 2 input/output, support 3 input/output, query input.
+    def build_task_context_token_ids(
+        self,
+        support_inputs: torch.Tensor,
+        support_outputs: torch.Tensor,
+        query_input: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Build token ids for the serialized full-task hypernetwork input."""
         segment_values = torch.stack(
             [
                 support_inputs[:, 0],
@@ -204,52 +271,129 @@ class HyperModelLightning(pl.LightningModule):
             dim=1,
         )
         batch_size, _, sequence_length = segment_values.shape
+        flat_values = segment_values.reshape(batch_size, -1).long()
 
-        # Flatten the 7 task segments into one token sequence for the task encoder.
-        flat_values = segment_values.reshape(batch_size, -1, 1)
-
-        # This is just normalized positional information for each 1D location.
-        normalized_positions = torch.linspace(
-            0.0,
-            1.0,
-            steps=sequence_length,
-            device=segment_values.device,
+        position_ids = torch.arange(sequence_length, device=segment_values.device).repeat(
+            NUM_TASK_SEGMENTS
         )
-        position_feature = normalized_positions.repeat(NUM_TASK_SEGMENTS).view(1, -1, 1)
+        position_ids = position_ids.unsqueeze(0).expand(batch_size, -1)
 
-        # These metadata features tell the hypernetwork which example each token belongs to,
-        # whether it is an input or output token, and whether it came from the query example.
-        example_ids = support_inputs.new_tensor([0, 0, 1, 1, 2, 2, 3], dtype=torch.float32)
-        example_feature = (
-            (example_ids / (NUM_TASK_EXAMPLES - 1))
-            .repeat_interleave(sequence_length)
-            .view(1, -1, 1)
-        )
-        role_ids = support_inputs.new_tensor([0, 1, 0, 1, 0, 1, 0], dtype=torch.float32)
-        role_feature = role_ids.repeat_interleave(sequence_length).view(1, -1, 1)
-        is_query_ids = support_inputs.new_tensor([0, 0, 0, 0, 0, 0, 1], dtype=torch.float32)
-        is_query_feature = is_query_ids.repeat_interleave(sequence_length).view(1, -1, 1)
-
-        task_features = torch.cat(
-            [
-                flat_values,
-                position_feature.expand(batch_size, -1, -1),
-                example_feature.expand(batch_size, -1, -1),
-                role_feature.expand(batch_size, -1, -1),
-                is_query_feature.expand(batch_size, -1, -1),
-            ],
-            dim=-1,
+        example_ids = support_inputs.new_tensor([0, 0, 1, 1, 2, 2, 3], dtype=torch.long)
+        example_ids = (
+            example_ids.repeat_interleave(sequence_length)
+            .unsqueeze(0)
+            .expand(batch_size, -1)
         )
 
-        # The target model stays simple: each example is represented only by value and position.
+        role_ids = support_inputs.new_tensor([0, 1, 0, 1, 0, 1, 0], dtype=torch.long)
+        role_ids = role_ids.repeat_interleave(sequence_length).unsqueeze(0).expand(batch_size, -1)
+
+        is_query_ids = support_inputs.new_tensor([0, 0, 0, 0, 0, 0, 1], dtype=torch.long)
+        is_query_ids = (
+            is_query_ids.repeat_interleave(sequence_length).unsqueeze(0).expand(batch_size, -1)
+        )
+        return flat_values, position_ids, example_ids, role_ids, is_query_ids
+
+    def build_target_token_ids(
+        self,
+        support_inputs: torch.Tensor,
+        query_input: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Build token ids for input-side target-model sequences."""
         all_inputs = torch.cat([support_inputs, query_input.unsqueeze(1)], dim=1)
-        position_values = normalized_positions.view(1, 1, sequence_length, 1).expand(
-            batch_size,
-            NUM_TASK_EXAMPLES,
-            -1,
-            -1,
-        )
-        example_inputs = torch.cat([all_inputs.unsqueeze(-1), position_values], dim=-1)
+        batch_size, num_examples, sequence_length = all_inputs.shape
+
+        value_ids = all_inputs.long()
+        position_ids = torch.arange(sequence_length, device=all_inputs.device)
+        position_ids = position_ids.view(1, 1, -1).expand(batch_size, num_examples, -1)
+
+        example_ids = torch.arange(num_examples, device=all_inputs.device)
+        example_ids = example_ids.view(1, num_examples, 1).expand(batch_size, -1, sequence_length)
+
+        role_ids = torch.zeros_like(value_ids)
+        is_query_ids = torch.zeros_like(value_ids)
+        is_query_ids[:, -1, :] = 1
+        return value_ids, position_ids, example_ids, role_ids, is_query_ids
+
+    def prepare_inputs(self, batch: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Convert a task batch into hypernetwork features, target inputs, and targets."""
+        support_inputs = batch["support_inputs"].float()
+        support_outputs = batch["support_outputs"].float()
+        query_input = batch["query_input"].float()
+        query_output = batch["query_output"].float()
+        batch_size, _, sequence_length = support_inputs.shape
+
+        if self.task_encoding_name == TASK_ENCODING_SHARED_EMBEDDINGS:
+            task_features = self.shared_task_token_embedder(
+                *self.build_task_context_token_ids(support_inputs, support_outputs, query_input)
+            )
+            example_inputs = self.shared_task_token_embedder(
+                *self.build_target_token_ids(support_inputs, query_input)
+            )
+        else:
+            # The hypernetwork sees the full task in the legacy ARC order:
+            # support 1 input/output, support 2 input/output, support 3 input/output, query input.
+            segment_values = torch.stack(
+                [
+                    support_inputs[:, 0],
+                    support_outputs[:, 0],
+                    support_inputs[:, 1],
+                    support_outputs[:, 1],
+                    support_inputs[:, 2],
+                    support_outputs[:, 2],
+                    query_input,
+                ],
+                dim=1,
+            )
+
+            # Flatten the 7 task segments into one token sequence for the task encoder.
+            flat_values = segment_values.reshape(batch_size, -1, 1)
+
+            # This is just normalized positional information for each 1D location.
+            normalized_positions = torch.linspace(
+                0.0,
+                1.0,
+                steps=sequence_length,
+                device=segment_values.device,
+            )
+            position_feature = normalized_positions.repeat(NUM_TASK_SEGMENTS).view(1, -1, 1)
+
+            # These metadata features tell the hypernetwork which example each token belongs to,
+            # whether it is an input or output token, and whether it came from the query example.
+            example_ids = support_inputs.new_tensor([0, 0, 1, 1, 2, 2, 3], dtype=torch.float32)
+            example_feature = (
+                (example_ids / (NUM_TASK_EXAMPLES - 1))
+                .repeat_interleave(sequence_length)
+                .view(1, -1, 1)
+            )
+            role_ids = support_inputs.new_tensor([0, 1, 0, 1, 0, 1, 0], dtype=torch.float32)
+            role_feature = role_ids.repeat_interleave(sequence_length).view(1, -1, 1)
+            is_query_ids = support_inputs.new_tensor(
+                [0, 0, 0, 0, 0, 0, 1], dtype=torch.float32
+            )
+            is_query_feature = is_query_ids.repeat_interleave(sequence_length).view(1, -1, 1)
+
+            task_features = torch.cat(
+                [
+                    flat_values,
+                    position_feature.expand(batch_size, -1, -1),
+                    example_feature.expand(batch_size, -1, -1),
+                    role_feature.expand(batch_size, -1, -1),
+                    is_query_feature.expand(batch_size, -1, -1),
+                ],
+                dim=-1,
+            )
+
+            # The target model stays simple: each example is represented only
+            # by value and position.
+            all_inputs = torch.cat([support_inputs, query_input.unsqueeze(1)], dim=1)
+            position_values = normalized_positions.view(1, 1, sequence_length, 1).expand(
+                batch_size,
+                NUM_TASK_EXAMPLES,
+                -1,
+                -1,
+            )
+            example_inputs = torch.cat([all_inputs.unsqueeze(-1), position_values], dim=-1)
 
         # Targets follow the same 4-example layout as the logits.
         example_targets = torch.cat([support_outputs, query_output.unsqueeze(1)], dim=1)
@@ -554,7 +698,7 @@ class HyperModelLightning(pl.LightningModule):
     def configure_optimizers(self):
         optimizer_cls = getattr(torch.optim, self.optimizer_name)
         return optimizer_cls(
-            self.hypermodel.parameters(),
+            (parameter for parameter in self.parameters() if parameter.requires_grad),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
         )

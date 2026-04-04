@@ -86,20 +86,32 @@ def _build_hypermodel_summary(model: torch.nn.Module) -> dict[str, int | str]:
     hypernetwork = hypermodel.hypernetwork
     hyper_head = hypermodel.hyper_head
     target_model = hypermodel.target_model
+    shared_task_token_embedder = getattr(model, "shared_task_token_embedder", None)
 
     hypernetwork_backbone_params = count_parameters(hypernetwork, trainable_only=True)
     hyper_head_params = count_parameters(hyper_head, trainable_only=True)
-    hypernetwork_trainable_params = hypernetwork_backbone_params + hyper_head_params
+    shared_embedding_params = (
+        count_parameters(shared_task_token_embedder, trainable_only=True)
+        if shared_task_token_embedder is not None
+        else 0
+    )
+    hypernetwork_trainable_params = (
+        hypernetwork_backbone_params + hyper_head_params + shared_embedding_params
+    )
     target_non_trainable_params = count_parameters(target_model, trainable_only=False)
     total_params = count_parameters(model)
 
     model_repr = str(model)
-    summary_text = "\n".join(
+    summary_lines = [
+        "Model architecture:",
+        f"Hypernetwork: {hypernetwork!r}",
+        f"Hyper projection: {_describe_hyper_projection(hyper_head)}",
+        f"Target: {target_model!r}",
+    ]
+    if shared_task_token_embedder is not None:
+        summary_lines.append(f"Shared task embeddings: {shared_task_token_embedder!r}")
+    summary_lines.extend(
         [
-            "Model architecture:",
-            f"Hypernetwork: {hypernetwork!r}",
-            f"Hyper projection: {_describe_hyper_projection(hyper_head)}",
-            f"Target: {target_model!r}",
             "Hypernetwork trainable params: "
             f"{_format_parameter_count(hypernetwork_trainable_params)}",
             f"Target non-trainable params: {_format_parameter_count(target_non_trainable_params)}",
@@ -108,6 +120,7 @@ def _build_hypermodel_summary(model: torch.nn.Module) -> dict[str, int | str]:
             model_repr,
         ]
     )
+    summary_text = "\n".join(summary_lines)
     return {
         "model_repr": model_repr,
         "summary_text": summary_text,

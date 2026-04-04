@@ -1,0 +1,42 @@
+_base_: configs/experiments/arc1d_binary/base.yaml
+task: move_1p_fill_hollow_denoising_1c
+
+task_categories:
+  - 1d_move_1p
+  - 1d_fill
+  - 1d_hollow
+  - 1d_denoising_1c
+
+# Default to single-GPU; switch to `devices: auto` for multi-GPU.
+accelerator: auto
+devices: 1
+num_workers: 15
+
+# Emit task visualisations every 100 epochs for all four task categories.
+log_task_examples: true
+log_task_examples_every_n_epochs: 100
+num_periodic_train_task_examples: 1
+num_periodic_val_task_examples: 1
+
+experiment_name: ${data}_${task}_${model}_shared_embeddings
+
+task_encoding:
+  name: shared_embeddings
+  params:
+    embedding_dim: 16
+    share_input_embeddings: true
+
+hyper_model:
+  name: transformer
+  params:
+    hidden_dim: 32
+    num_heads: 1
+    num_layers: 2
+    output_dim: 32
+
+target_model:
+  name: rnn
+  params:
+    hidden_dim: 32
+    bidirectional: true
+    num_layers: 1
