@@ -1,6 +1,11 @@
-_base_: configs/experiments/arc1d_simple_meta_hypermodel/base.yaml
+_base_: configs/experiments/arc1d_binary/base.yaml
 task: overfit
 variant: single_task_8
+
+# Default to single-GPU; switch to `devices: auto` for multi-GPU.
+accelerator: auto
+devices: 1
+
 experiment_name: ${data}_${task}_${model}_${variant}
 
 task_categories:

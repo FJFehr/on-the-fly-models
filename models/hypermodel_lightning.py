@@ -308,6 +308,7 @@ class HyperModelLightning(pl.LightningModule):
         metrics = self.compute_metrics(logits, targets, prefix=prefix)
         batch_size = batch["support_inputs"].shape[0]
         log_on_step = prefix == "train"
+        sync_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
         self.log(
             f"{prefix}_loss",
             loss,
@@ -315,6 +316,7 @@ class HyperModelLightning(pl.LightningModule):
             on_epoch=True,
             prog_bar=True,
             batch_size=batch_size,
+            sync_dist=sync_dist,
         )
         for name, value in metrics.items():
             self.log(
@@ -324,6 +326,7 @@ class HyperModelLightning(pl.LightningModule):
                 on_epoch=True,
                 prog_bar=name.endswith("query_exact_match"),
                 batch_size=batch_size,
+                sync_dist=sync_dist,
             )
         return loss
 
@@ -522,6 +525,8 @@ class HyperModelLightning(pl.LightningModule):
         """Save per-task prediction figures and optionally push them to W&B."""
         if not records:
             return
+        if self.trainer is not None and not self.trainer.is_global_zero:
+            return
 
         split_dir = os.path.join(output_path, f"{split_name}_task_examples")
         os.makedirs(split_dir, exist_ok=True)
@@ -542,12 +547,9 @@ class HyperModelLightning(pl.LightningModule):
                 caption_prefix=payload_prefix,
             )
 
-        if (
-            wandb_logger is not None
-            and hasattr(wandb_logger, "experiment")
-            and isinstance(wandb_logger.experiment, wandb.sdk.wandb_run.Run)
-        ):
-            wandb_logger.experiment.log(wandb_payload, step=self.global_step)
+        experiment = getattr(wandb_logger, "experiment", None)
+        if wandb_payload and experiment is not None and hasattr(experiment, "log"):
+            experiment.log(wandb_payload)
 
     def configure_optimizers(self):
         optimizer_cls = getattr(torch.optim, self.optimizer_name)

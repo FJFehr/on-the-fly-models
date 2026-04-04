@@ -1,4 +1,4 @@
-_base_: configs/experiments/arc1d_simple_meta_hypermodel/base.yaml
+_base_: configs/experiments/arc1d_binary/base.yaml
 task: move_1p3p_validate_2p
 
 task_categories:
@@ -7,6 +7,10 @@ task_categories:
 
 val_task_categories:
   - 1d_move_2p
+
+# Default to single-GPU; switch to `devices: auto` for multi-GPU.
+accelerator: auto
+devices: 1
 
 experiment_name: ${data}_${task}_${model}
 

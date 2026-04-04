@@ -132,9 +132,7 @@ class TaskVisualizationCallback(Callback):
         pl_module: pl.LightningModule,
         datamodule,
         example_split_prefix: str,
-        example_key_prefix: str,
         attention_split_prefix: str,
-        attention_key_prefix: str,
     ) -> None:
         train_task_ids = self._resolve_task_ids(
             pl_module,
@@ -158,38 +156,44 @@ class TaskVisualizationCallback(Callback):
         )
 
         if getattr(pl_module, "log_task_examples", False):
+            train_example_split = example_split_prefix.format(split_name="train")
+            val_example_split = example_split_prefix.format(split_name="val")
             pl_module.log_task_gallery(
-                split_name=example_split_prefix.format(split_name="train"),
+                split_name=train_example_split,
                 records=train_records,
                 output_path=self.output_path,
                 wandb_logger=self.wandb_logger,
-                key_prefix=example_key_prefix.format(split_name="train_task"),
+                key_prefix="train_task",
             )
             pl_module.log_task_gallery(
-                split_name=example_split_prefix.format(split_name="val"),
+                split_name=val_example_split,
                 records=val_records,
                 output_path=self.output_path,
                 wandb_logger=self.wandb_logger,
-                key_prefix=example_key_prefix.format(split_name="val_task"),
+                key_prefix="val_task",
             )
 
         if getattr(pl_module, "log_task_attention", False):
+            train_attention_split = attention_split_prefix.format(split_name="train")
+            val_attention_split = attention_split_prefix.format(split_name="val")
             pl_module.log_task_attention_gallery(
-                split_name=attention_split_prefix.format(split_name="train"),
+                split_name=train_attention_split,
                 records=train_records,
                 output_path=self.output_path,
                 wandb_logger=self.wandb_logger,
-                key_prefix=attention_key_prefix.format(split_name="train_task_attention"),
+                key_prefix="train_task_attention",
             )
             pl_module.log_task_attention_gallery(
-                split_name=attention_split_prefix.format(split_name="val"),
+                split_name=val_attention_split,
                 records=val_records,
                 output_path=self.output_path,
                 wandb_logger=self.wandb_logger,
-                key_prefix=attention_key_prefix.format(split_name="val_task_attention"),
+                key_prefix="val_task_attention",
             )
 
     def on_fit_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if not trainer.is_global_zero:
+            return
         if self.has_logged_pretrain_snapshot:
             return
         if not getattr(pl_module, "supports_task_visualization", False):
@@ -204,24 +208,24 @@ class TaskVisualizationCallback(Callback):
             pl_module=pl_module,
             datamodule=trainer.datamodule,
             example_split_prefix=self._snapshot_split_name("{split_name}", 0),
-            example_key_prefix="{split_name}_task",
             attention_split_prefix=self._snapshot_split_name("{split_name}", 0),
-            attention_key_prefix="{split_name}_task_attention",
         )
         self.has_logged_pretrain_snapshot = True
 
     def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if not trainer.is_global_zero:
+            return
         if trainer.sanity_checking:
             return
         if not getattr(pl_module, "supports_task_visualization", False):
             return
 
+        completed_epochs = trainer.current_epoch + 1
         every_n_epochs = getattr(pl_module, "log_task_examples_every_n_epochs", 1)
         should_log_examples = (
             getattr(pl_module, "log_task_examples", False)
             and every_n_epochs >= 1
-            and trainer.current_epoch > 0
-            and trainer.current_epoch % every_n_epochs == 0
+            and completed_epochs % every_n_epochs == 0
         )
         attention_every_n_epochs = getattr(
             pl_module,
@@ -231,8 +235,7 @@ class TaskVisualizationCallback(Callback):
         should_log_attention = (
             getattr(pl_module, "log_task_attention", False)
             and attention_every_n_epochs >= 1
-            and trainer.current_epoch > 0
-            and trainer.current_epoch % attention_every_n_epochs == 0
+            and completed_epochs % attention_every_n_epochs == 0
         )
         if not should_log_examples and not should_log_attention:
             return
@@ -242,14 +245,12 @@ class TaskVisualizationCallback(Callback):
             datamodule=trainer.datamodule,
             example_split_prefix=self._snapshot_split_name(
                 "{split_name}",
-                trainer.current_epoch,
+                completed_epochs,
             ),
-            example_key_prefix="{split_name}_task",
             attention_split_prefix=self._snapshot_split_name(
                 "{split_name}",
-                trainer.current_epoch,
+                completed_epochs,
             ),
-            attention_key_prefix="{split_name}_task_attention",
         )
 
 

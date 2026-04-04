@@ -20,6 +20,8 @@ test_source: train_query_pairs
 overfit_single_batch: false
 
 accelerator: auto
+# Default to single-GPU; set `devices: auto` in an experiment to use all visible GPUs.
+devices: 1
 batch_size: 32
 learning_rate: 0.001
 optimizer: Adam

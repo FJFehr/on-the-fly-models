@@ -10,8 +10,23 @@ import lightning as pl
 import torch
 from lightning.pytorch.loggers import WandbLogger
 
-import wandb
 from visualisation import figure_to_wandb_image, render_val_example_figure
+
+
+def _log_wandb_payload(
+    wandb_logger,
+    payload: dict,
+    *,
+    step: int | None = None,
+) -> None:
+    """Log payload to W&B when an active experiment logger is available."""
+    experiment = getattr(wandb_logger, "experiment", None)
+    if not payload or experiment is None or not hasattr(experiment, "log"):
+        return
+    if step is None:
+        experiment.log(payload)
+        return
+    experiment.log(payload, step=step)
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +175,7 @@ def create_wandb_logger(
     )
 
     experiment = getattr(wandb_logger, "experiment", None)
-    if isinstance(experiment, wandb.sdk.wandb_run.Run):
+    if experiment is not None and hasattr(experiment, "summary"):
         experiment.summary["total_parameters"] = model_summary["total_parameters"]
         experiment.summary["trainable_parameters"] = model_summary["trainable_parameters"]
         experiment.summary["model_architecture"] = model_summary["model_repr"]
@@ -298,11 +313,9 @@ def log_hard_val_examples(
         figure.savefig(os.path.join(hard_dir, filename), dpi=150, bbox_inches="tight")
         wandb_payload[f"{key_prefix}_{index}"] = figure_to_wandb_image(figure, caption=caption)
 
-    experiment = getattr(wandb_logger, "experiment", None)
-    if isinstance(experiment, wandb.sdk.wandb_run.Run):
-        if snapshot_label is not None:
-            wandb_payload["hard_example_snapshot"] = snapshot_label
-        experiment.log(wandb_payload)
+    if snapshot_label is not None:
+        wandb_payload["hard_example_snapshot"] = snapshot_label
+    _log_wandb_payload(wandb_logger, wandb_payload)
 
     print(
         f"Logged {len(hard_examples)} hard validation examples "
@@ -379,6 +392,10 @@ def log_final_task_visualizations(model, datamodule, output_path: str, wandb_log
     snapshot for representative train/val tasks and, when supported, a set of
     especially hard validation tasks.
     """
+    trainer = getattr(model, "trainer", None)
+    if trainer is not None and not trainer.is_global_zero:
+        return
+
     if not getattr(model, "supports_task_visualization", False):
         return
 

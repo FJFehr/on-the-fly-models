@@ -1,4 +1,4 @@
-_base_: configs/experiments/arc1d_simple_meta_hypermodel/base.yaml
+_base_: configs/experiments/arc1d_binary/base.yaml
 task: all_simple_tasks
 variant: target_cnn
 
@@ -10,6 +10,10 @@ task_categories:
   - 1d_hollow
   - 1d_denoising_1c
   - 1d_pcopy_1c
+
+# Default to single-GPU; switch to `devices: auto` for multi-GPU.
+accelerator: auto
+devices: 1
 
 experiment_name: ${data}_${task}_${model}
 
