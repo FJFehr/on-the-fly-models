@@ -10,7 +10,7 @@ data: arc_1d_meta_padded_multiclass
 data_dir: data/arc_1d_padded_multiclass
 prediction_task: multiclass
 num_classes: 10
-primary_metric: val_query_exact_match_accuracy
+primary_metric: val_query_exact_match
 num_workers: 0
 task_categories:
   - "1d_${task}"
@@ -21,6 +21,7 @@ test_split: test
 overfit_single_batch: false
 
 accelerator: auto
+devices: 1
 batch_size: 8
 learning_rate: 0.001
 optimizer: Adam

@@ -6,9 +6,9 @@ import os
 import lightning as pl
 from omegaconf import OmegaConf
 
+from training.config import apply_grouped_config_aliases, build_runtime_config_dict
 from data_modules import DATA_REGISTRY
 from models import MODEL_REGISTRY
-from train import apply_grouped_config_aliases, build_runtime_config_dict
 from visualisation import render_task_attention_figure, resolve_attention_matrix
 
 

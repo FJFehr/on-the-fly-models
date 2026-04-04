@@ -18,9 +18,10 @@ from data_modules.arc1d_simple import Arc1dPairDataset, filter_split
 
 def support_tasks_to_pairs(split) -> Arc1dPairDataset:
     """Convert task-level HF dataset to flat support pairs for multiclass training."""
+    tasks = list(split)
     samples = []
 
-    for task in split:
+    for task in tasks:
         for example_index, (inp, out) in enumerate(
             zip(task["support_inputs"], task["support_outputs"], strict=True)
         ):
@@ -35,14 +36,15 @@ def support_tasks_to_pairs(split) -> Arc1dPairDataset:
                 }
             )
 
-    return Arc1dPairDataset(samples)
+    return Arc1dPairDataset(samples, tasks=tasks)
 
 
 def query_tasks_to_pairs(split) -> Arc1dPairDataset:
     """Convert task-level HF dataset to flat query pairs for multiclass evaluation."""
+    tasks = list(split)
     samples = []
 
-    for task in split:
+    for task in tasks:
         samples.append(
             {
                 "inputs": torch.tensor(task["query_input"], dtype=torch.float32),
@@ -54,7 +56,7 @@ def query_tasks_to_pairs(split) -> Arc1dPairDataset:
             }
         )
 
-    return Arc1dPairDataset(samples)
+    return Arc1dPairDataset(samples, tasks=tasks)
 
 
 def dataset_from_source(split, source: str) -> Arc1dPairDataset:

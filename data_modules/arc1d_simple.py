@@ -23,8 +23,9 @@ from torch.utils.data import DataLoader, Dataset
 class Arc1dPairDataset(Dataset):
     """Dataset of input/output pairs with task metadata."""
 
-    def __init__(self, samples: list[dict]):
+    def __init__(self, samples: list[dict], tasks: list[dict] | None = None):
         self.samples = samples
+        self.tasks = tasks or []
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -54,10 +55,11 @@ def support_tasks_to_pairs(split) -> Arc1dPairDataset:
             and "support_outputs" (list of 3 sequences).
 
     """
+    tasks = list(split)
     samples = []
 
     # Iterate over every task in the split and extract each support pair
-    for task in split:
+    for task in tasks:
         for example_index, (inp, out) in enumerate(
             zip(task["support_inputs"], task["support_outputs"], strict=True)
         ):
@@ -72,7 +74,7 @@ def support_tasks_to_pairs(split) -> Arc1dPairDataset:
                 }
             )
 
-    return Arc1dPairDataset(samples)
+    return Arc1dPairDataset(samples, tasks=tasks)
 
 
 def query_tasks_to_pairs(split) -> Arc1dPairDataset:
@@ -88,10 +90,11 @@ def query_tasks_to_pairs(split) -> Arc1dPairDataset:
             "query_output" (one sequence).
 
     """
+    tasks = list(split)
     samples = []
 
     # Iterate over every task and extract the single query pair
-    for task in split:
+    for task in tasks:
         samples.append(
             {
                 "inputs": torch.tensor(task["query_input"], dtype=torch.float32),
@@ -103,7 +106,7 @@ def query_tasks_to_pairs(split) -> Arc1dPairDataset:
             }
         )
 
-    return Arc1dPairDataset(samples)
+    return Arc1dPairDataset(samples, tasks=tasks)
 
 
 def filter_split(split, task_categories: list[str] | None, task_ids: list[int] | None):

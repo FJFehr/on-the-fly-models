@@ -10,6 +10,19 @@ def _indent_repr(value: object, prefix: str = "    ") -> str:
     return repr(value).replace("\n", f"\n{prefix}")
 
 
+def _describe_hyper_projection(hyper_head: nn.Sequential) -> str:
+    """Build a compact one-line description of the hyper projection head."""
+    layers = []
+    for layer in hyper_head:
+        if isinstance(layer, nn.Linear):
+            layers.append(f"Linear({layer.in_features} -> {layer.out_features})")
+        elif isinstance(layer, nn.GELU):
+            layers.append("GELU")
+        else:
+            layers.append(layer.__class__.__name__)
+    return " + ".join(layers)
+
+
 class HyperModel(nn.Module):
     """Wires a hypernetwork to any target model via functional_call.
 
@@ -129,9 +142,9 @@ class HyperModel(nn.Module):
         n = self.total_target_params
         return (
             f"HyperModel(\n"
-            f"  hypernetwork = {_indent_repr(self.hypernetwork)}\n"
-            f"  target       = {_indent_repr(self.target_model)}\n"
-            f"  hyper_head   = {_indent_repr(self.hyper_head)}\n"
-            f"  target_params = {n:,}\n"
+            f"  Hypernetwork: {_indent_repr(self.hypernetwork)}\n"
+            f"  Hyper projection: {_describe_hyper_projection(self.hyper_head)}\n"
+            f"  Target: {_indent_repr(self.target_model)}\n"
+            f"  Target params: {n:,}\n"
             f")"
         )

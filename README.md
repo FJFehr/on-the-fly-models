@@ -11,12 +11,10 @@ on-the-fly-models/
 ├── .agents/                        # Agent contract, style guide, task briefs
 ├── configs/
 │   ├── base/
-│   │   ├── arc1d_simple.yaml
-│   │   └── arc1d_padded_multiclass.yaml
+│   │   └── arc1d_simple.yaml
 │   └── experiments/
-│       ├── arc1d_simple/           # Legacy binary padded ARC1D experiments
-│       ├── arc1d_simple_meta/      # Debug-oriented binary meta-learning experiments
-│       └── arc1d_padded_multiclass/
+│       ├── arc1d_simple_meta_hypermodel/  # Active: simplified binary hypermodel
+│       └── _archived/                     # Legacy experiment configs (deleted models)
 ├── data_modules/
 │   ├── __init__.py                 # Datamodule registry
 │   ├── arc1d_simple.py
@@ -25,15 +23,11 @@ on-the-fly-models/
 │   └── arc1d_meta_padded_multiclass.py
 ├── models/
 │   ├── __init__.py                 # Model registry
-│   ├── hypermodels/                # Task-conditioned hypernetwork model families
-│   └── target_models/
-│       ├── base.py                 # Shared Lightning training/eval logic
-│       ├── mlp.py                  # Positional MLP baseline
-│       ├── cnn.py                  # Positional 1D CNN baseline
-│       ├── cnn_core.py             # Shared pure CNN core for baseline/hypermodels
-│       ├── deepset.py              # Binary DeepSet baseline
-│       ├── rnn.py                  # Positional RNN baseline
-│       └── transformer.py          # Positional transformer baseline
+│   ├── hypermodel.py               # Generic hypernetwork-target wrapper
+│   ├── hypermodel_lightning.py     # HyperModelLightning training module
+│   ├── cnn.py                      # Generic 1D CNN encoder
+│   ├── rnn.py                      # Generic RNN encoder
+│   └── transformer.py              # Generic transformer encoder
 ├── scripts/
 │   ├── build_arc_1d.py
 │   ├── visualise_tasks.py
@@ -41,8 +35,8 @@ on-the-fly-models/
 ├── tests/
 ├── visualisation/
 ├── metrics.py
-├── train_binary_hypermodel.py    # Dedicated entrypoint for simplified binary HyperModel runs
 ├── train.py
+├── train_utils.py                 # Shared runtime, checkpoint, and visualisation helpers
 ├── pyproject.toml
 └── README.md
 ```
@@ -51,25 +45,164 @@ on-the-fly-models/
 
 The training entrypoint is [train.py](/home/fabio/Projects/on-the-fly-models/train.py). It loads a YAML config, instantiates a registered datamodule and model, trains with PyTorch Lightning, saves the resolved config to the output directory, evaluates the best checkpoint, and writes a `results.txt` summary.
 
-The active comparison track is `arc1d_padded_multiclass`:
+The active track is `arc1d_simple_meta_hypermodel`: task-level binary meta-learning using the simplified `HyperModelLightning` pipeline with one generated parameter vector per task.
 
-- padded to length 33
-- original ARC token values `0..9` preserved
-- multiclass prediction with per-position logits
-
-The legacy `arc1d_simple` path remains available as the binary padded baseline.
-
-The repo now supports three training contracts:
-
-- pair-based dataloaders for the baseline target-model experiments
-- task-level dataloaders for the binary `arc1d_simple_meta` debugging track
-- task-level dataloaders for the `hyper_rnn` and `hyper_cnn` meta-learning experiments
+The repo supports task-level dataloaders for the binary hypermodel meta-learning track.
 
 ## Setup
 
 ```bash
 uv sync --python 3.12 --managed-python
 ```
+
+## GPU setup (Linux, NVIDIA)
+
+The training codepath already supports GPU execution through PyTorch Lightning.
+The shared trainer passes `accelerator: auto` from the experiment config into
+`pl.Trainer`, so Lightning will select CUDA when the environment is valid.
+
+GPU support is therefore an environment question, not a missing training
+feature. At the time of writing, the main failure mode has been a stale or
+mixed Python environment: `torch` and `lightning` were being imported from an
+incompatible stack (`torch 1.11.0+cu102`, no visible CUDA device, and a
+`lightning` import failure). Do not reuse a global/system Python for training.
+
+This repo does not currently ship a `build.sh`. The recommended setup is
+environment-variable driven through `uv`.
+
+### GPU readiness requirements
+
+- bare-metal Linux host with an NVIDIA GPU and working driver stack
+- Python `3.12.x` only
+- `uv`-managed project environment only
+- `torch` and `lightning` resolved from the same environment and mutually compatible
+- training launched through `uv run ...`, not a system Python
+
+The runtime knobs that already matter are:
+
+- `accelerator` in experiment YAMLs; keep the existing `auto` default
+- `devices` in experiment YAMLs; use `1` for a single GPU or `auto` to use all visible GPUs
+- `num_workers` for dataloader parallelism; useful for throughput tuning but not required for first GPU bring-up
+- `UV_TORCH_BACKEND` for choosing the CUDA wheel family
+
+Typical GPU settings in experiment configs:
+
+```yaml
+accelerator: auto
+devices: 1
+```
+
+Set `devices: auto` when you want Lightning to use all visible GPUs on the
+host. Keep `accelerator: auto` unless you need to force a specific backend.
+
+### Recommended backend: CUDA 12.8 (`cu128`)
+
+Create a clean managed environment and select the CUDA backend before syncing:
+
+```bash
+export UV_TORCH_BACKEND=cu128
+uv python install 3.12
+uv sync --python 3.12 --managed-python
+```
+
+This repo expects Python `3.12.x` via `uv`. PyTorch is resolved transitively by
+the dependency stack; the CUDA wheel family is selected through
+`UV_TORCH_BACKEND`.
+
+### Alternate backend: CUDA 12.1 (`cu121`)
+
+If your host or driver/toolchain needs the older backend, recreate the same
+environment with:
+
+```bash
+export UV_TORCH_BACKEND=cu121
+uv python install 3.12
+uv sync --python 3.12 --managed-python
+```
+
+Use one backend per environment. If you switch between `cu128` and `cu121`,
+recreate or fully resync the managed environment rather than mixing packages
+from different runs.
+
+### Verify the environment before training
+
+1. Confirm `uv` is using Python `3.12.x`:
+
+```bash
+uv run python -c "import sys; print(sys.version)"
+```
+
+2. Confirm the project environment can see CUDA through PyTorch:
+
+```bash
+uv run python -c "import torch; print('torch', torch.__version__); print('cuda_available', torch.cuda.is_available()); print('cuda_device_count', torch.cuda.device_count()); print('cuda_device_0', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'n/a')"
+```
+
+3. Confirm `lightning` imports cleanly from the same environment:
+
+```bash
+uv run python -c "import lightning as pl; print('lightning', pl.__version__)"
+```
+
+4. Run one training command from the managed environment and check that
+Lightning selects CUDA rather than CPU:
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_binary/mixes/move_1p3p_validate_2p/hyper_model.yaml
+```
+
+Expected pass condition:
+
+- no Python import errors
+- `torch.cuda.is_available()` prints `True`
+- `torch.cuda.device_count()` is at least `1`
+- the training startup logs show Lightning using a CUDA accelerator
+
+### Troubleshooting
+
+`lightning` import fails:
+- likely cause: mixed environment or incompatible `torch`
+- fix: recreate the `uv` environment under Python `3.12.x` and rerun the verification commands above
+
+`torch.cuda.is_available()` is `False`:
+- likely cause: wrong backend, missing NVIDIA driver visibility, or a CPU-only wheel resolution
+- fix: re-check `UV_TORCH_BACKEND`, confirm the host GPU/driver is visible, and recreate the managed environment cleanly
+
+Training still uses CPU:
+- verify the experiment config still uses `accelerator: auto`
+- verify the run is launched with `uv run ...` from the project environment, not from a stale system interpreter
+
+### End-to-end GPU bring-up commands
+
+For a clean Linux GPU setup, data build, and hypermodel overfit run:
+
+```bash
+export UV_TORCH_BACKEND=cu128
+uv python install 3.12
+uv sync --python 3.12 --managed-python
+
+uv run python -c "import sys; print(sys.version)"
+uv run python -c "import torch; print('torch', torch.__version__); print('cuda_available', torch.cuda.is_available()); print('cuda_device_count', torch.cuda.device_count()); print('cuda_device_0', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'n/a')"
+uv run python -c "import lightning as pl; print('lightning', pl.__version__)"
+
+uv run python scripts/build_arc_1d.py --simple
+
+uv run python train.py --config configs/experiments/arc1d_binary/overfit/hyper_model.yaml
+```
+
+If you need the alternate CUDA backend, switch the first line to:
+
+```bash
+export UV_TORCH_BACKEND=cu121
+```
+
+The overfit config used above is:
+
+- [hyper_model.yaml](/home/fabio/Projects/on-the-fly-models/configs/experiments/arc1d_binary/overfit/hyper_model.yaml)
+
+It is a single-task overfit run over task category `1d_move_1p`, task id `8`,
+with `train`, `val`, and `test` all pointed at the training split and
+`overfit_single_batch: true`.
 
 ## Training
 
@@ -83,23 +216,7 @@ uv run python train.py --config configs/experiments/arc1d_padded_multiclass/move
 
 Supported model families are:
 
-- `mlp`
-- `cnn`
-- `deepset`
-- `rnn`
-- `transformer`
-- `binary_hyper_rnn`
-- `binary_hyper_model`
-- `hyper_cnn`
-- `hyper_rnn`
-
-Model defaults:
-
-- positional features are built into all four model families
-- multiclass embeddings are built into all multiclass models
-- transformer causality is controlled with `causal_attention: false|true`
-
-See the Baseline Assumptions section below for how these baselines are wired and why the repo treats those choices as the working comparison setup.
+- `binary_hyper_model` / `hyper_model` — both resolve to `HyperModelLightning`; hypernetwork and target template are selected via `hyper_model.name` and `target_model.name` in the experiment config
 
 The current system is optimized for rapid baseline iteration:
 
@@ -109,40 +226,10 @@ The current system is optimized for rapid baseline iteration:
 - training stops early once the configured primary validation metric reaches `1.0` unless disabled in config
 - validation examples and hard failures can be logged for inspection
 
-The first task-conditioned experiment lives under its own meta-learning track and can be launched with:
+The `HyperModelLightning` path keeps one generated parameter vector per task. Its hypernetwork and target template are selected via `hyper_model.name` and `target_model.name` in the experiment config:
 
 ```bash
-uv run python train.py --config configs/experiments/arc1d_padded_multiclass_meta/move_1p/hyper_rnn.yaml
-```
-
-The binary meta-learning debug track uses a simpler stateless generated target RNN and can be launched with:
-
-```bash
-uv run python train.py --config configs/experiments/arc1d_simple_meta/move_1p/binary_hyper_rnn.yaml
-```
-
-The simplified binary HyperModel path keeps one generated parameter vector per task. Its
-hypernetwork and target template are selected via `hyper_model.name` and
-`target_model.name` in the experiment config, and it can be launched with:
-
-```bash
-uv run python train_binary_hypermodel.py --config configs/experiments/arc1d_simple_meta_hypermodel/move_1p/hyper_model.yaml
-```
-
-The hyper-CNN variant uses the same task-level datamodule and can be launched with:
-
-```bash
-uv run python train.py --config configs/experiments/arc1d_padded_multiclass_meta/move_1p/hyper_cnn.yaml
-```
-
-For a single-task overfit sanity check:
-
-```bash
-uv run python train.py --config configs/experiments/arc1d_padded_multiclass_meta/overfit/hyper_rnn.yaml
-```
-
-```bash
-uv run python train.py --config configs/experiments/arc1d_padded_multiclass_meta/overfit/hyper_cnn.yaml
+uv run python train.py --config configs/experiments/arc1d_simple_meta_hypermodel/move_1p/hyper_model.yaml
 ```
 
 ## Data
@@ -181,78 +268,49 @@ This creates the active comparison-track dataset at `data/arc_1d_padded_multicla
 
 ## Models
 
-The implemented target-model baselines are:
+`HyperModelLightning` is the active model class. It encodes the full task context (3 support examples + query input) using a configurable hypernetwork (`hyper_model.name`), mean-pools the token representations into a single task vector, projects it through a hyper-head to a flat parameter vector, and applies those generated weights to a frozen target model template (`target_model.name`) for all support and query examples.
 
-- `mlp`: sequence-to-sequence MLP with explicit positional features
-- `cnn`: 1D CNN with an explicit x-position channel
-- `deepset`: permutation-invariant binary baseline with positional features
-- `rnn`: RNN with explicit positional features
-- `transformer`: transformer over per-position value-plus-position features
-- `binary_hyper_rnn`: debug-oriented binary hypernetwork that predicts one stateless target-RNN parameter set per task
-- `binary_hyper_model`: simplified binary hypermodel that reads the full task context, predicts one parameter vector per task, and reuses those generated weights across all support/query examples; the simplified wrapper now selects its hypernetwork and target template from config
-- `hyper_cnn`: transformer task encoder that predicts a task-specific 1D CNN
-- `hyper_rnn`: transformer task encoder that reads whole support/query context and predicts a task-specific bidirectional RNN
+Available encoder architectures for both hypernetwork and target roles: `cnn`, `rnn`, `transformer` (defined in `models/`).
 
-For multiclass tasks, all models use learned token embeddings by default before the architecture-specific positional features are applied.
+Shared experiment defaults:
 
-### Baseline Assumptions
+- `val_exact_match_accuracy` is the primary metric; elementwise accuracy is also logged
+- each run writes the resolved config, model summary, checkpoints, and `results.txt`
+- early stopping triggers at `val_exact_match_accuracy == 1.0` unless disabled
 
-The current baselines are built around a small number of shared assumptions. These are partly implementation defaults and partly deliberate comparison choices for the current stage of the project.
+## Deleted architectures — reference for future multiclass port
 
-| Assumption | Current behavior | Why this assumption is used |
-|------|---------|---------|
-| Fixed-length padded ARC1D | Baselines use `input_dim = output_dim = 33` in the shared configs. | This keeps the comparison controlled before variable-length hypernetwork work. |
-| Pair-based supervision | The datamodules expand tasks into support/query `(input, target)` pairs. | This isolates target-model baseline performance before adding task-conditioning machinery. |
-| Active track | `arc1d_padded_multiclass` is the main comparison track; `arc1d_simple` remains the binary legacy baseline. | This keeps the repo focused on the non-binary setting while preserving the earlier baseline path. |
-| Multiclass token space | The multiclass track uses `prediction_task: multiclass` with `num_classes: 10` and preserves ARC tokens `0..9`. | This keeps token identity intact instead of collapsing colors into binary presence/absence. |
-| Train/eval split shape | Training uses support pairs; validation and test use query pairs from the configured sources. | This is closer to the ARC-style distinction between examples seen during fitting and held-out task queries. |
-| Success metric | `val_exact_match_accuracy` is the shared primary metric, with elementwise accuracy also logged. | Exact match better reflects whether a task output is actually solved. |
-| Shared optimizer defaults | Base configs use `Adam`, `learning_rate: 0.001`, `weight_decay: 0.01`, `batch_size: 32`, and `seed: 42`. | This gives a stable common starting point across baseline families. |
-| Run artifacts | Each run writes the resolved config, model summary, checkpoints, and `results.txt`. | This keeps each experiment self-documenting and easier to reproduce. |
-| Positional information | All four baseline families inject absolute position information directly into the model input path. | ARC tasks depend on absolute location, not only local pattern matching. |
-| Multiclass embeddings | Multiclass models embed token IDs before architecture-specific processing. | Learned embeddings preserve token identity without imposing a fake ordinal meaning on colors. |
+The following model families were removed from `models/hypermodels/` and `models/target_models/` in favour of the cleaner `HyperModelLightning` pipeline. This section records the key design decisions needed to extend the new pipeline to multiclass.
 
-### Base Models
+### Multiclass hypernetwork — what to re-implement
 
-- `mlp`
-  - Multiclass inputs are embedded first, then flattened.
-  - A normalized position ramp in `[0, 1]` is appended before the first linear layer.
-  - The MLP supports configurable depth, `use_skip_connections`, `use_layernorm`, `activation`, `init_scheme`, `dropout`, and `ffn_expansion_factor`.
-- `cnn`
-  - Inputs are converted into channels; for multiclass runs, embeddings become the value channels.
-  - One extra normalized x-position channel is concatenated before the convolution stack.
-  - Same-padding convolutions preserve sequence length, so `input_dim == output_dim` is required.
-  - Kernels must be odd so padding stays symmetric.
-- `rnn`
-  - Per-position value features are concatenated with a normalized position scalar and then fed to the RNN.
-  - Current experiment configs commonly use `rnn_bidirectional: true`.
-  - An optional input skip projection can add the input features back into the hidden-state space.
-- `transformer`
-  - Per-position value features are concatenated with a normalized position scalar and then linearly projected into the transformer width.
-  - Multiclass runs use learned token embeddings before feature concatenation.
-  - `causal_attention: false|true` controls encoder-style versus causal attention; current baseline examples are encoder-style (`false`).
+The deleted `hyper_rnn` and `hyper_cnn` used a richer task encoder than the current path:
 
-### Recommended Baseline Defaults
+- **TaskTransformerEncoder**: 4 separate learned embedding tables for `value`, `position`, `example_index`, and `role` (input vs. output side). All four are **summed** into a single token representation before the transformer encoder. This is more expressive than the new path's 5-scalar feature vector and is required to meaningfully encode multiclass token identities in the task context.
+- **Loss / prediction**: `CrossEntropyLoss` over logits of shape `(batch, num_classes, seq_len)`. Predictions via `argmax`. Replaces the binary `BCEWithLogitsLoss` / sigmoid-threshold path.
 
-The repo keeps a number of architectural knobs configurable, but the current guidance for new baseline comparisons is:
+### Future planned track: task-conditioned target training (no hypernetwork)
 
-- treat positional information as part of the baseline definition for all model families
-- treat multiclass embeddings as part of the baseline definition for multiclass runs
-- treat skip connections as recommended for multilayer baselines, especially deeper MLP and CNN variants
-- treat layer norm as a strong stabilizer to try next for deeper MLP variants
-- treat transformer as an active comparison family, but not currently the strongest baseline
+A planned experiment where target models are trained directly on task examples (support + query, using the task-level datamodule) without any hypernetwork. The target model itself is fit on task context end-to-end. This is a third contract distinct from both pair-based baselines and hypernetwork meta-learning, and should live in its own Lightning module and model-registry key when implemented.
 
-Skip connections are not hardcoded as a universal default in code. They remain experiment-level config choices, but the repo now treats them as recommended guidance for deeper multilayer baselines.
+### binary_hyper_rnn vs HyperModelLightning — diff
 
-The hypernetwork paths now live under `models/hypermodels/`. The multiclass meta-learning path keeps the task intact, encodes the 3 support examples plus query input with explicit token, position, example-index, and input/output-role embeddings, and predicts the full weights of a task-specific target model. The current target-model variants are a bidirectional RNN and a 1D CNN. The binary debug meta path reuses the simpler binary dataset, avoids learned token embeddings, and predicts a single stateless one-layer RNN parameter set that is shared across all examples in the task.
+The deleted `BinaryHyperRNNMetaModelLightning` differed from the current `HyperModelLightning` as follows:
+
+| Aspect | `binary_hyper_rnn` (deleted) | `HyperModelLightning` (current) |
+|--------|------------------------------|----------------------------------|
+| RNN execution | Hand-coded stateless forward: manually loops over timesteps, applies generated `weight_ih` / `weight_hh` per layer without `torch.nn.RNN` | `torch.func.functional_call` against a frozen `torch.nn.RNN` module |
+| Parameter spec system | Custom `_build_param_specs()` derives weight shapes from config (input_size, hidden_size, num_layers, bidirectional) | Generic: uses `dict(target_model.named_parameters())` and reshapes the flat vector to match those shapes |
+| Feature vector | 5 scalars: value, normalised position, example_id (0–3), role (0=input / 1=output), is_query (0/1) | Same |
+| Task serialisation order | support1-in, support1-out, support2-in, support2-out, support3-in, support3-out, query-in | Same |
+| Loss masking | `loss_on_support` / `loss_on_query` config flags | Always loss on both support and query |
+| Bidirectionality | Manually implemented (concat forward + backward hidden states per timestep) | Delegated to `torch.nn.RNN` |
 
 ## Current scope and limitations
 
-- the main active path is fixed-length padded ARC1D, not variable-length ARC1D
-- task-conditioned hypernetwork training currently targets padded multiclass `1d_move_1p`, with overfit sanity-check configs for single-task debugging
-- baseline comparison tracks remain pair-based outside that new meta-learning path
-- `arc1d_simple` remains the binary legacy baseline
-- hypernetwork training and full 2D ARC are future stages
+- active path is binary `arc1d_simple_meta_hypermodel`; multiclass and variable-length ARC1D are future stages
+- `HyperModelLightning` always applies loss on both support and query; selective masking is a future addition
+- full 2D ARC is a future stage
 
 ## Tests
 
@@ -263,9 +321,7 @@ uv run pytest
 Coverage is intentionally focused on:
 
 - dataset construction and datamodule contracts
-- task-conditioned hypernetwork shape, gradient, and smoke-path coverage
-- target-model output-shape invariants
-- shared validation logging behavior
+- `HyperModelLightning` shape, gradient, and smoke-path coverage
 - exact-match sequence metric behavior
 
 ## Agentic workflow

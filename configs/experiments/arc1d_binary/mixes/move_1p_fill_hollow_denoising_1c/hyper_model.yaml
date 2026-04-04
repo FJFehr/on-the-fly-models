@@ -1,0 +1,25 @@
+_base_: configs/experiments/arc1d_simple_meta_hypermodel/base.yaml
+task: move_1p_fill_hollow_denoising_1c
+
+task_categories:
+  - 1d_move_1p
+  - 1d_fill
+  - 1d_hollow
+  - 1d_denoising_1c
+
+experiment_name: ${data}_${task}_${model}
+
+hyper_model:
+  name: transformer
+  params:
+    hidden_dim: 32
+    num_heads: 1
+    num_layers: 2
+    output_dim: 32
+
+target_model:
+  name: rnn
+  params:
+    hidden_dim: 32
+    bidirectional: true
+    num_layers: 1

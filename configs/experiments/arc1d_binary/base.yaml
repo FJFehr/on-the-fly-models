@@ -9,7 +9,7 @@ output_path: ${output_dir}/${project_name}/${experiment_name}
 data: arc_1d_meta_simple
 data_dir: data/arc_1d_simple
 model: binary_hyper_model
-primary_metric: val_query_exact_match_accuracy
+primary_metric: val_query_exact_match
 num_workers: 0
 task_categories:
   - "1d_${task}"
@@ -20,11 +20,16 @@ test_split: test
 overfit_single_batch: false
 
 accelerator: auto
+devices: 1
 batch_size: 16
 learning_rate: 0.001
 optimizer: Adam
 weight_decay: 0.01
 max_steps: 10000
+log_task_examples: true
+log_task_examples_every_n_epochs: 25
+num_periodic_train_task_examples: 1
+num_periodic_val_task_examples: 1
 
 input_dim: 33
 output_dim: 33

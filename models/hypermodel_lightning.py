@@ -6,9 +6,9 @@ from collections.abc import Mapping
 import lightning as pl
 import torch
 import torch.nn.functional as F
-import wandb
 from matplotlib import pyplot as plt
 
+import wandb
 from metrics import accuracy, exact_match_accuracy
 from models.cnn import CNN
 from models.hypermodel import HyperModel
@@ -290,16 +290,16 @@ class HyperModelLightning(pl.LightningModule):
         key = f"{prefix}_" if prefix else ""
         return {
             f"{key}support_accuracy": accuracy(support_targets, support_predictions),
-            f"{key}support_exact_match_accuracy": exact_match_accuracy(
+            f"{key}support_exact_match": exact_match_accuracy(
                 support_targets,
                 support_predictions,
             ),
             f"{key}query_accuracy": accuracy(query_targets, query_predictions),
-            f"{key}query_exact_match_accuracy": exact_match_accuracy(
+            f"{key}query_exact_match": exact_match_accuracy(
                 query_targets,
                 query_predictions,
             ),
-            f"{key}all_examples_exact_match_accuracy": exact_matches.all(dim=1).float().mean(),
+            f"{key}all_examples_exact_match": exact_matches.all(dim=1).float().mean(),
         }
 
     def common_step(self, batch: dict, prefix: str) -> torch.Tensor:
@@ -322,7 +322,7 @@ class HyperModelLightning(pl.LightningModule):
                 value,
                 on_step=log_on_step,
                 on_epoch=True,
-                prog_bar=name.endswith("query_exact_match_accuracy"),
+                prog_bar=name.endswith("query_exact_match"),
                 batch_size=batch_size,
             )
         return loss
@@ -547,7 +547,7 @@ class HyperModelLightning(pl.LightningModule):
             and hasattr(wandb_logger, "experiment")
             and isinstance(wandb_logger.experiment, wandb.sdk.wandb_run.Run)
         ):
-            wandb_logger.experiment.log(wandb_payload)
+            wandb_logger.experiment.log(wandb_payload, step=self.global_step)
 
     def configure_optimizers(self):
         optimizer_cls = getattr(torch.optim, self.optimizer_name)

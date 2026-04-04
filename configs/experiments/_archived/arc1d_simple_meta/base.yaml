@@ -11,7 +11,7 @@ output_path: ${output_dir}/${project_name}/${experiment_name}
 data: arc_1d_meta_simple
 data_dir: data/arc_1d_simple
 model: binary_hyper_rnn
-primary_metric: val_query_exact_match_accuracy
+primary_metric: val_query_exact_match
 num_workers: 0
 task_categories:
   - "1d_${task}"
@@ -22,6 +22,7 @@ test_split: test
 overfit_single_batch: false
 
 accelerator: auto
+devices: 1
 batch_size: 16 # Used to be 8
 learning_rate: 0.001
 optimizer: Adam
