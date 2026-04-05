@@ -49,14 +49,8 @@ def _format_parameter_count(num_parameters: int) -> str:
 
 
 def _describe_hyper_projection(hypermodel) -> str:
-    parts = [
-        f"Linear({hypermodel.hyper_output_dim} -> {hypermodel.bottleneck_dim})",
-        "GELU",
-        f"Linear({hypermodel.bottleneck_dim} -> {hypermodel.total_target_params})",
-    ]
-    if hypermodel.noise_std > 0.0:
-        parts.insert(2, f"Noise(std={hypermodel.noise_std})")
-    return " + ".join(parts)
+    from models.hypermodel import _describe_hyper_projection as _hp_repr
+    return _hp_repr(hypermodel)
 
 
 def _build_generic_model_summary(model: torch.nn.Module) -> dict[str, int | str]:
