@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.func import functional_call
 
 
@@ -12,10 +13,13 @@ def _indent_repr(value: object, prefix: str = "    ") -> str:
 
 def _describe_hyper_projection(model: "HyperModel") -> str:
     """Build a compact one-line description of the hyper projection head."""
+    expand = model.bottleneck_dim * 4
     parts = [
         f"Linear({model.hyper_output_dim} -> {model.bottleneck_dim})",
         "GELU",
-        f"Linear({model.bottleneck_dim} -> {model.total_target_params})",
+        f"Linear({model.bottleneck_dim} -> {expand})",
+        "GELU",
+        f"Linear({expand} -> {model.total_target_params})",
     ]
     if model.noise_std > 0.0:
         parts.insert(2, f"Noise(std={model.noise_std})")
@@ -66,11 +70,21 @@ class HyperModel(nn.Module):
 
         # The hyper head turns one pooled task representation into one flat
         # parameter vector matching the full target model.
+        # L2 normalisation after the bottleneck projects all task codes onto the
+        # unit hypersphere, so task identity is encoded as direction rather than
+        # magnitude. This gives interpolated codes (e.g. a novel shift-2 task
+        # seen at test time) a well-defined position between the training codes
+        # on the sphere, with no learnable parameters involved.
         self.hyper_bottleneck = nn.Sequential(
             nn.Linear(self.hyper_output_dim, self.bottleneck_dim, bias=False),
             nn.GELU(),
         )
-        self.hyper_out = nn.Linear(self.bottleneck_dim, self.total_target_params, bias=False)
+        # Added nonlinearity after to increase expressivity after bottleneck
+        self.hyper_out = nn.Sequential(
+            nn.Linear(self.bottleneck_dim, self.bottleneck_dim * 4, bias=False),
+            nn.GELU(),
+            nn.Linear(self.bottleneck_dim * 4, self.total_target_params, bias=False),
+        )
 
     @property
     def total_target_params(self) -> int:
@@ -117,8 +131,11 @@ class HyperModel(nn.Module):
             hyper_output.transpose(1, 2),
         )  # (batch, 1, seq_len)
         attn_weights = torch.softmax(attn_weights, dim=-1)
-        task_representation = torch.bmm(attn_weights, hyper_output).squeeze(1)  # (batch, hidden_dim)
+        task_representation = torch.bmm(attn_weights, hyper_output).squeeze(
+            1
+        )  # (batch, hidden_dim)
         bottleneck = self.hyper_bottleneck(task_representation)
+        bottleneck = F.normalize(bottleneck, dim=-1)
         if self.training and self.noise_std > 0.0:
             bottleneck = bottleneck + torch.randn_like(bottleneck) * self.noise_std
         return self.hyper_out(bottleneck)
