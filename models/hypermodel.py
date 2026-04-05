@@ -12,13 +12,19 @@ def _indent_repr(value: object, prefix: str = "    ") -> str:
 
 def _describe_hyper_projection(model: "HyperModel") -> str:
     """Build a compact one-line description of the hyper projection head."""
-    parts = [
-        f"Linear({model.hyper_output_dim} -> {model.bottleneck_dim})",
-        "GELU",
-        f"Linear({model.bottleneck_dim} -> {model.total_target_params})",
-    ]
-    if model.noise_std > 0.0:
-        parts.insert(2, f"Noise(std={model.noise_std})")
+    if model.use_vae:
+        parts = [
+            f"mu: Linear({model.hyper_output_dim} -> {model.bottleneck_dim}) + GELU",
+            f"log_sigma: Linear({model.hyper_output_dim} -> {model.bottleneck_dim})",
+            "reparam -> z",
+            f"Linear({model.bottleneck_dim} -> {model.total_target_params})",
+        ]
+    else:
+        parts = [
+            f"Linear({model.hyper_output_dim} -> {model.bottleneck_dim})",
+            "GELU",
+            f"Linear({model.bottleneck_dim} -> {model.total_target_params})",
+        ]
     return " + ".join(parts)
 
 
@@ -41,7 +47,7 @@ class HyperModel(nn.Module):
         target_model: nn.Module,
         hyper_output_dim: int,
         bottleneck_dim: int | None = None,
-        noise_std: float = 0.0,
+        use_vae: bool = False,
     ):
         super().__init__()
         self.hypernetwork = hypernetwork
@@ -59,18 +65,35 @@ class HyperModel(nn.Module):
 
         self.hyper_output_dim = hyper_output_dim
         self.bottleneck_dim = bottleneck_dim if bottleneck_dim is not None else hyper_output_dim
-        self.noise_std = noise_std
+        self.use_vae = use_vae
 
         # Learned query vector for attention pooling over the token sequence.
         self.pool_query = nn.Parameter(torch.randn(1, 1, self.hyper_output_dim))
 
-        # The hyper head turns one pooled task representation into one flat
-        # parameter vector matching the full target model.
-        self.hyper_bottleneck = nn.Sequential(
-            nn.Linear(self.hyper_output_dim, self.bottleneck_dim, bias=False),
-            nn.GELU(),
-        )
+        if self.use_vae:
+            # VAE bottleneck: two parallel heads produce mu and log_sigma.
+            # At train time z is sampled via the reparameterisation trick;
+            # at eval time z = mu (no noise).
+            self.hyper_mu = nn.Sequential(
+                nn.Linear(self.hyper_output_dim, self.bottleneck_dim, bias=False),
+                nn.GELU(),
+            )
+            self.hyper_log_sigma = nn.Linear(
+                self.hyper_output_dim, self.bottleneck_dim, bias=False
+            )
+        else:
+            # Deterministic bottleneck.
+            self.hyper_bottleneck = nn.Sequential(
+                nn.Linear(self.hyper_output_dim, self.bottleneck_dim, bias=False),
+                nn.GELU(),
+            )
+
+        # Projects the bottleneck code to the full target model parameter vector.
         self.hyper_out = nn.Linear(self.bottleneck_dim, self.total_target_params, bias=False)
+
+        # Initialised to zero; updated every forward pass so the lightning module
+        # can read the KL term without changing the forward() return signature.
+        self._last_kl: torch.Tensor = torch.tensor(0.0)
 
     @property
     def total_target_params(self) -> int:
@@ -118,10 +141,22 @@ class HyperModel(nn.Module):
         )  # (batch, 1, seq_len)
         attn_weights = torch.softmax(attn_weights, dim=-1)
         task_representation = torch.bmm(attn_weights, hyper_output).squeeze(1)  # (batch, hidden)
-        bottleneck = self.hyper_bottleneck(task_representation)
-        if self.training and self.noise_std > 0.0:
-            bottleneck = bottleneck + torch.randn_like(bottleneck) * self.noise_std
-        return self.hyper_out(bottleneck)
+
+        if self.use_vae:
+            mu = self.hyper_mu(task_representation)
+            log_sigma = self.hyper_log_sigma(task_representation)
+            if self.training:
+                z = mu + torch.exp(0.5 * log_sigma) * torch.randn_like(mu)
+            else:
+                z = mu  # use posterior mean at eval time
+            # KL divergence: KL(N(mu, sigma) || N(0, I)), averaged over the batch.
+            kl = -0.5 * (1 + log_sigma - mu.pow(2) - log_sigma.exp()).sum(dim=-1).mean()
+        else:
+            z = self.hyper_bottleneck(task_representation)
+            kl = task_representation.new_tensor(0.0)
+
+        self._last_kl = kl
+        return self.hyper_out(z)
 
     def apply_target(
         self, params: dict[str, torch.Tensor], example_inputs: torch.Tensor

@@ -119,19 +119,18 @@ class HyperModelLightning(pl.LightningModule):
         target = self.build_target_model(target_model)
         hyper_head_cfg = hyper_head or {}
         bottleneck_dim = hyper_head_cfg.get("bottleneck_dim")
-        noise_std = float(hyper_head_cfg.get("noise_std", 0.0))
+        use_vae = bool(hyper_head_cfg.get("use_vae", False))
+        kl_weight = float(hyper_head_cfg.get("kl_weight", 0.0))
         if bottleneck_dim is not None and (not isinstance(bottleneck_dim, int) or bottleneck_dim < 1):
             msg = "hyper_head.bottleneck_dim must be a positive integer."
             raise ValueError(msg)
-        if noise_std < 0.0:
-            msg = "hyper_head.noise_std must be a non-negative float."
-            raise ValueError(msg)
+        self.kl_weight = kl_weight
         self.hypermodel = HyperModel(
             hypernetwork=hypernetwork,
             target_model=target,
             hyper_output_dim=hyper_output_dim,
             bottleneck_dim=bottleneck_dim,
-            noise_std=noise_std,
+            use_vae=use_vae,
         )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
@@ -420,9 +419,14 @@ class HyperModelLightning(pl.LightningModule):
         logits = self.hypermodel(task_features, example_inputs)
         return logits, example_targets
 
-    def compute_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        """Train on one binary loss over all task examples."""
-        return F.binary_cross_entropy_with_logits(logits, targets)
+    def compute_loss(
+        self, logits: torch.Tensor, targets: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return (total_loss, task_loss, kl_loss) for logging and backprop."""
+        task_loss = F.binary_cross_entropy_with_logits(logits, targets)
+        kl_loss = self.hypermodel._last_kl
+        total_loss = task_loss + self.kl_weight * kl_loss
+        return total_loss, task_loss, kl_loss
 
     def compute_metrics(
         self,
@@ -462,20 +466,20 @@ class HyperModelLightning(pl.LightningModule):
 
     def common_step(self, batch: dict, prefix: str) -> torch.Tensor:
         logits, targets = self(batch)
-        loss = self.compute_loss(logits, targets)
+        loss, task_loss, kl_loss = self.compute_loss(logits, targets)
         metrics = self.compute_metrics(logits, targets, prefix=prefix)
         batch_size = batch["support_inputs"].shape[0]
         log_on_step = prefix == "train"
         sync_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
-        self.log(
-            f"{prefix}_loss",
-            loss,
-            on_step=log_on_step,
-            on_epoch=True,
-            prog_bar=True,
-            batch_size=batch_size,
-            sync_dist=sync_dist,
-        )
+        log_kwargs = {
+            "on_step": log_on_step,
+            "on_epoch": True,
+            "batch_size": batch_size,
+            "sync_dist": sync_dist,
+        }
+        self.log(f"{prefix}_loss", loss, prog_bar=True, **log_kwargs)
+        self.log(f"{prefix}_task_loss", task_loss, prog_bar=False, **log_kwargs)
+        self.log(f"{prefix}_kl_loss", kl_loss, prog_bar=False, **log_kwargs)
         for name, value in metrics.items():
             self.log(
                 name,
