@@ -26,7 +26,7 @@ class HyperModel(nn.Module):
     """Wires a hypernetwork to any target model via functional_call.
 
     The hypernetwork emits tokenwise hidden features for each task. HyperModel then:
-      - mean-pools those tokenwise features into one task representation
+      - attention-pools those tokenwise features into one task representation
       - projects the pooled task representation to the target parameter size
       - reshapes that flat parameter vector into the target model weights
       - applies the generated weights to every example in the task
@@ -60,6 +60,9 @@ class HyperModel(nn.Module):
         self.hyper_output_dim = hyper_output_dim
         self.bottleneck_dim = bottleneck_dim if bottleneck_dim is not None else hyper_output_dim
         self.noise_std = noise_std
+
+        # Learned query vector for attention pooling over the token sequence.
+        self.pool_query = nn.Parameter(torch.randn(1, 1, self.hyper_output_dim))
 
         # The hyper head turns one pooled task representation into one flat
         # parameter vector matching the full target model.
@@ -106,7 +109,15 @@ class HyperModel(nn.Module):
             )
             raise ValueError(msg)
 
-        task_representation = hyper_output.mean(dim=1)
+        # Attention pooling: learned query attends over the token sequence,
+        # allowing the model to focus on the most informative tokens rather
+        # than averaging over all (including many uninformative inactive-bit tokens).
+        attn_weights = torch.bmm(
+            self.pool_query.expand(hyper_output.shape[0], -1, -1),
+            hyper_output.transpose(1, 2),
+        )  # (batch, 1, seq_len)
+        attn_weights = torch.softmax(attn_weights, dim=-1)
+        task_representation = torch.bmm(attn_weights, hyper_output).squeeze(1)  # (batch, hidden_dim)
         bottleneck = self.hyper_bottleneck(task_representation)
         if self.training and self.noise_std > 0.0:
             bottleneck = bottleneck + torch.randn_like(bottleneck) * self.noise_std
