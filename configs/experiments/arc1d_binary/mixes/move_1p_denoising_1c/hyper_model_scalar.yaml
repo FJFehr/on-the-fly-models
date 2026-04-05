@@ -14,8 +14,6 @@ log_task_examples_every_n_epochs: 50
 num_periodic_train_task_examples: 2
 num_periodic_val_task_examples: 2
 
-stop_on_perfect_val_exact_match: true
-
 experiment_name: ${data}_${task}_${model}_scalar
 
 task_encoding:

@@ -1,22 +1,23 @@
 _base_: configs/experiments/arc1d_binary/base.yaml
-task: move_1p3p_val_2p
+task: move_1p_hollow
 
 task_categories:
   - 1d_move_1p
-  - 1d_move_3p
+  - 1d_hollow
 
 val_task_categories:
   - 1d_move_1p
-  - 1d_move_2p
-  - 1d_move_3p
+  - 1d_hollow
 
 accelerator: auto
 devices: 1
 
-experiment_name: ${data}_${task}_${model}_shared_embeddings
-max_steps: 1000
+experiment_name: ${data}_${task}_${model}_shared_embeddings_valcategories_attention_pool_sinosualdail
+max_steps: 5000
 num_periodic_val_task_examples: 3
-log_task_examples_every_n_epochs: 10
+log_task_examples_every_n_epochs: 100
+
+# stop_on_perfect_val_exact_match: true
 
 task_encoding:
   name: shared_embeddings

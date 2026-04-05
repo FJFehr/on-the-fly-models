@@ -1,20 +1,20 @@
 _base_: configs/experiments/arc1d_binary/base.yaml
-task: move_1p3p_val_2p_radam_cosine
+task: all_simple_tasks
 
 task_categories:
   - 1d_move_1p
-  - 1d_move_3p
-
-val_task_categories:
-  - 1d_move_1p
   - 1d_move_2p
   - 1d_move_3p
+  - 1d_fill
+  - 1d_hollow
+  - 1d_denoising_1c
+  - 1d_pcopy_1c
 
 accelerator: auto
 devices: 1
 
 experiment_name: ${data}_${task}_${model}_shared_embeddings_bn8_radam_cosine
-max_steps: 5000
+max_steps: 10000
 num_periodic_val_task_examples: 3
 log_task_examples_every_n_epochs: 100
 
@@ -33,6 +33,7 @@ hyper_model:
     num_heads: 1
     num_layers: 2
     output_dim: 32
+    # dropout: 0.1
 
 target_model:
   name: rnn
@@ -43,6 +44,7 @@ target_model:
 
 hyper_head:
   bottleneck_dim: 8
+  # noise_std: 0.1 # This is too much. What about dropout. That would show more general representations
 
 optimizer: RAdam
 gradient_clip_val: 1.0

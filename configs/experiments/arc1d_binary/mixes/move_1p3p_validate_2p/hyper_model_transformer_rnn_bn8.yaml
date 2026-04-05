@@ -1,5 +1,5 @@
 _base_: configs/experiments/arc1d_binary/base.yaml
-task: move_1p3p_val_2p_bn4_noisy
+task: move_1p3p_val_2p_bn4
 
 task_categories:
   - 1d_move_1p
@@ -7,16 +7,18 @@ task_categories:
 
 val_task_categories:
   - 1d_move_1p
-  - 1d_move_2p
+  # - 1d_move_2p
   - 1d_move_3p
 
 accelerator: auto
 devices: 1
 
-experiment_name: ${data}_${task}_${model}_shared_embeddings_bn4_noisy
-max_steps: 1000
+experiment_name: ${data}_${task}_${model}_scalar_embeddings_bn4_attentionPool_sinosodial_bn8_AdamW
+max_steps: 2000
 num_periodic_val_task_examples: 3
-log_task_examples_every_n_epochs: 10
+log_task_examples_every_n_epochs: 100
+
+optimizer: AdamW
 
 task_encoding:
   name: shared_embeddings
@@ -40,5 +42,4 @@ target_model:
     num_layers: 1
 
 hyper_head:
-  bottleneck_dim: 4
-  noise_std: 0.1
+  bottleneck_dim: 8

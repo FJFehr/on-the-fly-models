@@ -1,5 +1,5 @@
 _base_: configs/experiments/arc1d_binary/base.yaml
-task: move_1p3p_val_2p_radam_cosine
+task: move_1p3p_val_2p_bn4_noisy
 
 task_categories:
   - 1d_move_1p
@@ -7,18 +7,16 @@ task_categories:
 
 val_task_categories:
   - 1d_move_1p
-  - 1d_move_2p
+  # - 1d_move_2p
   - 1d_move_3p
 
 accelerator: auto
 devices: 1
 
-experiment_name: ${data}_${task}_${model}_shared_embeddings_bn8_radam_cosine
+experiment_name: ${data}_${task}_${model}_shared_embeddings_bn8_noisy0.3
 max_steps: 5000
 num_periodic_val_task_examples: 3
 log_task_examples_every_n_epochs: 100
-
-stop_on_perfect_val_exact_match: false
 
 task_encoding:
   name: shared_embeddings
@@ -43,12 +41,4 @@ target_model:
 
 hyper_head:
   bottleneck_dim: 8
-
-optimizer: RAdam
-gradient_clip_val: 1.0
-
-lr_scheduler:
-  name: CosineAnnealingLR
-  params:
-    T_max: ${max_steps}
-    eta_min: 0.00001
+  noise_std: 0.3

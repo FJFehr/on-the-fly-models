@@ -1,17 +1,21 @@
 _base_: configs/experiments/arc1d_binary/base.yaml
-task: move_1p3p_val_2p_radam_cosine
+task: move_1p_fill_hollow_denoising_1c
 
 task_categories:
   - 1d_move_1p
-  - 1d_move_3p
+  - 1d_fill
+  - 1d_hollow
+  - 1d_denoising_1c
 
 val_task_categories:
   - 1d_move_1p
-  - 1d_move_2p
-  - 1d_move_3p
+  - 1d_fill
+  - 1d_hollow
+  - 1d_denoising_1c
 
 accelerator: auto
 devices: 1
+num_workers: 15
 
 experiment_name: ${data}_${task}_${model}_shared_embeddings_bn8_radam_cosine
 max_steps: 5000
@@ -45,6 +49,7 @@ hyper_head:
   bottleneck_dim: 8
 
 optimizer: RAdam
+batch_size: 32
 gradient_clip_val: 1.0
 
 lr_scheduler:
@@ -52,3 +57,4 @@ lr_scheduler:
   params:
     T_max: ${max_steps}
     eta_min: 0.00001
+

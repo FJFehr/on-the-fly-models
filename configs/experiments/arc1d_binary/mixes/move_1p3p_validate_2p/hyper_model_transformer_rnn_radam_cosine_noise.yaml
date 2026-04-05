@@ -1,5 +1,5 @@
 _base_: configs/experiments/arc1d_binary/base.yaml
-task: move_1p3p_val_2p_bn4
+task: move_1p3p_val_2p_radam_cosine
 
 task_categories:
   - 1d_move_1p
@@ -13,10 +13,12 @@ val_task_categories:
 accelerator: auto
 devices: 1
 
-experiment_name: ${data}_${task}_${model}_shared_embeddings_bn4
-max_steps: 1000
+experiment_name: ${data}_${task}_${model}_shared_embeddings_bn8_radam_cosine_noise_dropout
+max_steps: 5000
 num_periodic_val_task_examples: 3
-log_task_examples_every_n_epochs: 10
+log_task_examples_every_n_epochs: 100
+
+stop_on_perfect_val_exact_match: false
 
 task_encoding:
   name: shared_embeddings
@@ -31,6 +33,7 @@ hyper_model:
     num_heads: 1
     num_layers: 2
     output_dim: 32
+    dropout: 0.1
 
 target_model:
   name: rnn
@@ -40,4 +43,14 @@ target_model:
     num_layers: 1
 
 hyper_head:
-  bottleneck_dim: 4
+  bottleneck_dim: 8
+  # noise_std: 0.1 # This is too much. What about dropout. That would show more general representations
+
+optimizer: RAdam
+gradient_clip_val: 1.0
+
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: ${max_steps}
+    eta_min: 0.00001
