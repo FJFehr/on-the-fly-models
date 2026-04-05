@@ -48,16 +48,15 @@ def _format_parameter_count(num_parameters: int) -> str:
     return f"{num_parameters:,}"
 
 
-def _describe_hyper_projection(hyper_head: torch.nn.Sequential) -> str:
-    layers = []
-    for layer in hyper_head:
-        if isinstance(layer, torch.nn.Linear):
-            layers.append(f"Linear({layer.in_features} -> {layer.out_features})")
-        elif isinstance(layer, torch.nn.GELU):
-            layers.append("GELU")
-        else:
-            layers.append(layer.__class__.__name__)
-    return " + ".join(layers)
+def _describe_hyper_projection(hypermodel) -> str:
+    parts = [
+        f"Linear({hypermodel.hyper_output_dim} -> {hypermodel.bottleneck_dim})",
+        "GELU",
+        f"Linear({hypermodel.bottleneck_dim} -> {hypermodel.total_target_params})",
+    ]
+    if hypermodel.noise_std > 0.0:
+        parts.insert(2, f"Noise(std={hypermodel.noise_std})")
+    return " + ".join(parts)
 
 
 def _build_generic_model_summary(model: torch.nn.Module) -> dict[str, int | str]:
@@ -84,12 +83,11 @@ def _build_hypermodel_summary(model: torch.nn.Module) -> dict[str, int | str]:
     """Build a hypermodel-aware summary for the simplified binary HyperModel path."""
     hypermodel = model.hypermodel
     hypernetwork = hypermodel.hypernetwork
-    hyper_head = hypermodel.hyper_head
     target_model = hypermodel.target_model
     shared_task_token_embedder = getattr(model, "shared_task_token_embedder", None)
 
     hypernetwork_backbone_params = count_parameters(hypernetwork, trainable_only=True)
-    hyper_head_params = count_parameters(hyper_head, trainable_only=True)
+    hyper_head_params = count_parameters(hypermodel.hyper_bottleneck, trainable_only=True) + count_parameters(hypermodel.hyper_out, trainable_only=True)
     shared_embedding_params = (
         count_parameters(shared_task_token_embedder, trainable_only=True)
         if shared_task_token_embedder is not None
@@ -105,7 +103,7 @@ def _build_hypermodel_summary(model: torch.nn.Module) -> dict[str, int | str]:
     summary_lines = [
         "Model architecture:",
         f"Hypernetwork: {hypernetwork!r}",
-        f"Hyper projection: {_describe_hyper_projection(hyper_head)}",
+        f"Hyper projection: {_describe_hyper_projection(hypermodel)}",
         f"Target: {target_model!r}",
     ]
     if shared_task_token_embedder is not None:

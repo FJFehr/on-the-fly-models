@@ -10,17 +10,16 @@ def _indent_repr(value: object, prefix: str = "    ") -> str:
     return repr(value).replace("\n", f"\n{prefix}")
 
 
-def _describe_hyper_projection(hyper_head: nn.Sequential) -> str:
+def _describe_hyper_projection(model: "HyperModel") -> str:
     """Build a compact one-line description of the hyper projection head."""
-    layers = []
-    for layer in hyper_head:
-        if isinstance(layer, nn.Linear):
-            layers.append(f"Linear({layer.in_features} -> {layer.out_features})")
-        elif isinstance(layer, nn.GELU):
-            layers.append("GELU")
-        else:
-            layers.append(layer.__class__.__name__)
-    return " + ".join(layers)
+    parts = [
+        f"Linear({model.hyper_output_dim} -> {model.bottleneck_dim})",
+        "GELU",
+        f"Linear({model.bottleneck_dim} -> {model.total_target_params})",
+    ]
+    if model.noise_std > 0.0:
+        parts.insert(2, f"Noise(std={model.noise_std})")
+    return " + ".join(parts)
 
 
 class HyperModel(nn.Module):
@@ -41,6 +40,8 @@ class HyperModel(nn.Module):
         hypernetwork: nn.Module,
         target_model: nn.Module,
         hyper_output_dim: int,
+        bottleneck_dim: int | None = None,
+        noise_std: float = 0.0,
     ):
         super().__init__()
         self.hypernetwork = hypernetwork
@@ -57,14 +58,16 @@ class HyperModel(nn.Module):
         ]
 
         self.hyper_output_dim = hyper_output_dim
+        self.bottleneck_dim = bottleneck_dim if bottleneck_dim is not None else hyper_output_dim
+        self.noise_std = noise_std
 
         # The hyper head turns one pooled task representation into one flat
         # parameter vector matching the full target model.
-        self.hyper_head = nn.Sequential(
-            nn.Linear(self.hyper_output_dim, self.hyper_output_dim, bias=False),
+        self.hyper_bottleneck = nn.Sequential(
+            nn.Linear(self.hyper_output_dim, self.bottleneck_dim, bias=False),
             nn.GELU(),
-            nn.Linear(self.hyper_output_dim, self.total_target_params, bias=False),
         )
+        self.hyper_out = nn.Linear(self.bottleneck_dim, self.total_target_params, bias=False)
 
     @property
     def total_target_params(self) -> int:
@@ -104,7 +107,10 @@ class HyperModel(nn.Module):
             raise ValueError(msg)
 
         task_representation = hyper_output.mean(dim=1)
-        return self.hyper_head(task_representation)
+        bottleneck = self.hyper_bottleneck(task_representation)
+        if self.training and self.noise_std > 0.0:
+            bottleneck = bottleneck + torch.randn_like(bottleneck) * self.noise_std
+        return self.hyper_out(bottleneck)
 
     def apply_target(
         self, params: dict[str, torch.Tensor], example_inputs: torch.Tensor
@@ -143,7 +149,7 @@ class HyperModel(nn.Module):
         return (
             f"HyperModel(\n"
             f"  Hypernetwork: {_indent_repr(self.hypernetwork)}\n"
-            f"  Hyper projection: {_describe_hyper_projection(self.hyper_head)}\n"
+            f"  Hyper projection: {_describe_hyper_projection(self)}\n"
             f"  Target: {_indent_repr(self.target_model)}\n"
             f"  Target params: {n:,}\n"
             f")"

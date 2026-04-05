@@ -19,7 +19,6 @@ from training.logging import (
     log_final_task_visualizations,
 )
 
-
 # ---------------------------------------------------------------------------
 # Callbacks
 # ---------------------------------------------------------------------------
@@ -286,7 +285,7 @@ def build_callbacks(
     if cfg.get("stop_on_perfect_val_exact_match", False):
         callbacks.append(
             StopOnMetricThreshold(
-                monitor=cfg.primary_metric,
+                monitor="val_all_examples_exact_match",
                 threshold=1.0,
                 mode="max",
             )

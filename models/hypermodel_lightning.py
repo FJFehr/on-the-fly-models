@@ -98,6 +98,7 @@ class HyperModelLightning(pl.LightningModule):
         self,
         hyper_model: dict,
         target_model: dict,
+        hyper_head: dict | None = None,
         task_encoding: dict | None = None,
         learning_rate: float = 1e-3,
         optimizer: str = "Adam",
@@ -115,10 +116,21 @@ class HyperModelLightning(pl.LightningModule):
         self.shared_task_token_embedder = self.build_task_token_embedder()
         hypernetwork, hyper_output_dim = self.build_hypernetwork(hyper_model)
         target = self.build_target_model(target_model)
+        hyper_head_cfg = hyper_head or {}
+        bottleneck_dim = hyper_head_cfg.get("bottleneck_dim")
+        noise_std = float(hyper_head_cfg.get("noise_std", 0.0))
+        if bottleneck_dim is not None and (not isinstance(bottleneck_dim, int) or bottleneck_dim < 1):
+            msg = "hyper_head.bottleneck_dim must be a positive integer."
+            raise ValueError(msg)
+        if noise_std < 0.0:
+            msg = "hyper_head.noise_std must be a non-negative float."
+            raise ValueError(msg)
         self.hypermodel = HyperModel(
             hypernetwork=hypernetwork,
             target_model=target,
             hyper_output_dim=hyper_output_dim,
+            bottleneck_dim=bottleneck_dim,
+            noise_std=noise_std,
         )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
