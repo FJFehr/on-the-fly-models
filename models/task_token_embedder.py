@@ -1,7 +1,10 @@
 """Shared embeddings for task-serialized ARC tokens."""
 
+import math
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class TaskTokenEmbedder(nn.Module):
@@ -25,7 +28,19 @@ class TaskTokenEmbedder(nn.Module):
         self.num_query_flags = num_query_flags
 
         self.value_embedding = nn.Embedding(value_vocab_size, embedding_dim)
-        self.position_embedding = nn.Embedding(position_vocab_size, embedding_dim)
+
+        # Fixed sinusoidal position encoding — no parameters to train.
+        # Encodes positional distance geometrically, making shift-amount detection
+        # directly learnable without needing the model to discover vector arithmetic.
+        pe = torch.zeros(position_vocab_size, embedding_dim)
+        position = torch.arange(position_vocab_size).unsqueeze(1).float()
+        div_term = torch.exp(
+            torch.arange(0, embedding_dim, 2).float() * -(math.log(10000.0) / embedding_dim)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term[: embedding_dim // 2])
+        self.register_buffer("sinusoidal_position_encoding", pe)  # (position_vocab_size, embedding_dim)
+
         self.example_embedding = nn.Embedding(num_examples, embedding_dim)
         self.role_embedding = nn.Embedding(num_roles, embedding_dim)
         self.is_query_embedding = nn.Embedding(num_query_flags, embedding_dim)
@@ -71,7 +86,7 @@ class TaskTokenEmbedder(nn.Module):
 
         return (
             self.value_embedding(value_ids)
-            + self.position_embedding(position_ids)
+            + F.embedding(position_ids, self.sinusoidal_position_encoding)
             + self.example_embedding(example_ids)
             + self.role_embedding(role_ids)
             + self.is_query_embedding(is_query_ids)
