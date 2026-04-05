@@ -104,6 +104,7 @@ class HyperModelLightning(pl.LightningModule):
         optimizer: str = "Adam",
         optimizer_name: str = "Adam",
         weight_decay: float = 0.01,
+        lr_scheduler: dict | None = None,
         **kwargs,
     ):
         super().__init__()
@@ -135,6 +136,7 @@ class HyperModelLightning(pl.LightningModule):
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
         self.weight_decay = weight_decay
+        self.lr_scheduler_cfg = lr_scheduler
         self.log_task_examples = kwargs.get("log_task_examples", False)
         self.log_task_examples_every_n_epochs = kwargs.get("log_task_examples_every_n_epochs", 25)
         self.num_periodic_train_task_examples = kwargs.get("num_periodic_train_task_examples", 1)
@@ -709,11 +711,19 @@ class HyperModelLightning(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer_cls = getattr(torch.optim, self.optimizer_name)
-        return optimizer_cls(
+        optimizer = optimizer_cls(
             (parameter for parameter in self.parameters() if parameter.requires_grad),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
         )
+        if self.lr_scheduler_cfg:
+            sched_cls = getattr(torch.optim.lr_scheduler, self.lr_scheduler_cfg["name"])
+            scheduler = sched_cls(optimizer, **self.lr_scheduler_cfg.get("params", {}))
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {"scheduler": scheduler, "interval": "step", "frequency": 1},
+            }
+        return optimizer
 
     def on_fit_start(self) -> None:
         print(repr(self.hypermodel))

@@ -322,6 +322,9 @@ def build_trainer(
     if evaluation:
         return pl.Trainer(**trainer_kwargs)
 
+    if cfg.get("gradient_clip_val") is not None:
+        trainer_kwargs["gradient_clip_val"] = cfg.gradient_clip_val
+
     return pl.Trainer(
         **trainer_kwargs,
         max_steps=cfg.max_steps,
