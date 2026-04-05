@@ -87,7 +87,15 @@ def _build_hypermodel_summary(model: torch.nn.Module) -> dict[str, int | str]:
     shared_task_token_embedder = getattr(model, "shared_task_token_embedder", None)
 
     hypernetwork_backbone_params = count_parameters(hypernetwork, trainable_only=True)
-    hyper_head_params = count_parameters(hypermodel.hyper_bottleneck, trainable_only=True) + count_parameters(hypermodel.hyper_out, trainable_only=True)
+    if hypermodel.use_vae:
+        bottleneck_modules = [hypermodel.hyper_mu, hypermodel.hyper_log_sigma]
+    else:
+        bottleneck_modules = [hypermodel.hyper_bottleneck]
+    hyper_head_params = (
+        sum(count_parameters(m, trainable_only=True) for m in bottleneck_modules)
+        + hypermodel.pool_query.numel()
+        + count_parameters(hypermodel.hyper_out, trainable_only=True)
+    )
     shared_embedding_params = (
         count_parameters(shared_task_token_embedder, trainable_only=True)
         if shared_task_token_embedder is not None
