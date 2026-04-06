@@ -3,16 +3,30 @@ task: move_1p3p_validate_2p
 
 task_categories:
   - 1d_move_1p
+  # - 1d_move_2p
   - 1d_move_3p
+  # - 1d_fill
+  # - 1d_hollow
+  # - 1d_denoising_1c
+  # - 1d_pcopy_1c
 
 val_task_categories:
-  - 1d_move_2p
+  - 1d_move_1p
+  - 1d_move_2p 
+  - 1d_move_3p
+  # - 1d_fill
+  # - 1d_hollow
+  # - 1d_denoising_1c
+  # - 1d_pcopy_1c
 
-# Default to single-GPU; switch to `devices: auto` for multi-GPU.
-accelerator: auto
-devices: 1
+devices: 2
+max_steps: 2000
+log_task_examples_every_n_epochs: 200
+optimizer: RAdam
+gradient_clip_val: 1.0
+batch_size: 32
 
-experiment_name: ${data}_${task}_${model}
+# stop_on_perfect_val_exact_match: true
 
 hyper_model:
   name: transformer
@@ -21,7 +35,7 @@ hyper_model:
     num_heads: 1
     num_layers: 2
     output_dim: 32
-    dropout: 0.1
+    # dropout: 0.1
 
 target_model:
   name: rnn
@@ -29,3 +43,6 @@ target_model:
     hidden_dim: 32
     bidirectional: true
     num_layers: 1
+
+hyper_head:
+  bottleneck_dim: 2
