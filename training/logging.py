@@ -29,6 +29,24 @@ def _log_wandb_payload(
     experiment.log(payload, step=step)
 
 
+def _write_wandb_summary(experiment, summary_values: dict[str, int | str]) -> None:
+    """Write summary metadata when the experiment exposes a dict-like summary.
+
+    On non-zero distributed ranks Lightning can return a dummy experiment
+    object whose `.summary` is a no-op method instead of a mapping. In that
+    case we should skip summary assignment entirely.
+    """
+    if experiment is None:
+        return
+
+    summary = getattr(experiment, "summary", None)
+    if summary is None or not hasattr(summary, "__setitem__"):
+        return
+
+    for key, value in summary_values.items():
+        summary[key] = value
+
+
 # ---------------------------------------------------------------------------
 # Model summary
 # ---------------------------------------------------------------------------
@@ -184,11 +202,14 @@ def create_wandb_logger(
         }
     )
 
-    experiment = getattr(wandb_logger, "experiment", None)
-    if experiment is not None and hasattr(experiment, "summary"):
-        experiment.summary["total_parameters"] = model_summary["total_parameters"]
-        experiment.summary["trainable_parameters"] = model_summary["trainable_parameters"]
-        experiment.summary["model_architecture"] = model_summary["model_repr"]
+    _write_wandb_summary(
+        getattr(wandb_logger, "experiment", None),
+        {
+            "total_parameters": model_summary["total_parameters"],
+            "trainable_parameters": model_summary["trainable_parameters"],
+            "model_architecture": model_summary["model_repr"],
+        },
+    )
 
     return wandb_logger
 
