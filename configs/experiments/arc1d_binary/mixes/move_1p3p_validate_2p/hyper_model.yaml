@@ -1,6 +1,8 @@
 _base_: configs/experiments/arc1d_binary/base.yaml
 task: move_1p3p_validate_2p
 
+experiment_name: ${data}_${task}_${model}
+
 task_categories:
   - 1d_move_1p
   # - 1d_move_2p

@@ -55,6 +55,3 @@ target_model:
 
 hyper_head:
   bottleneck_dim: 8
-
-
-

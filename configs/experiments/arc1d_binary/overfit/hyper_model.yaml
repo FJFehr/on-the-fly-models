@@ -24,7 +24,7 @@ hyper_model:
   name: transformer
   params:
     hidden_dim: 32
-    num_heads: 4
+    num_heads: 1
     num_layers: 2
     output_dim: 32
 target_model:
