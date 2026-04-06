@@ -89,7 +89,12 @@ def main() -> None:
             job_type="evaluation",
             resume="never",
         )
-    trainer = build_trainer(cfg, wandb_logger=wandb_logger, evaluation=True)
+    trainer = build_trainer(
+        cfg,
+        runtime_cfg,
+        wandb_logger=wandb_logger,
+        evaluation=True,
+    )
 
     print(f"Using checkpoint: {checkpoint_path}")
 

@@ -14,6 +14,7 @@ That split keeps this file readable when you want to answer
 import argparse
 
 import lightning as pl
+import torch
 
 from data_modules import DATA_REGISTRY
 from models import MODEL_REGISTRY
@@ -35,6 +36,28 @@ from training.trainer import (
     resolve_resume_checkpoint_path,
     run_post_training_artifacts,
 )
+
+
+def configure_torch_runtime(runtime_cfg: dict) -> None:
+    """Apply repo-level Torch runtime settings from config.
+
+    `float32_matmul_precision` is optional. When set on CUDA hosts it removes
+    PyTorch's Tensor Core warning while keeping the trade-off explicit in the
+    experiment config.
+    """
+    precision = runtime_cfg.get("float32_matmul_precision")
+    if precision is None:
+        return
+
+    allowed_precisions = {"highest", "high", "medium"}
+    if precision not in allowed_precisions:
+        msg = (
+            "float32_matmul_precision must be one of "
+            f"{sorted(allowed_precisions)}, got {precision!r}."
+        )
+        raise ValueError(msg)
+
+    torch.set_float32_matmul_precision(precision)
 
 
 def parse_args() -> argparse.Namespace:
@@ -73,6 +96,7 @@ def main() -> None:
     # model and datamodule constructors.
     cfg = load_config(cli_args.config)
     runtime_cfg = build_runtime_config_dict(cfg)
+    configure_torch_runtime(runtime_cfg)
 
     # The output directory is treated as the canonical home for this run:
     # config snapshot, model summary, checkpoints, visualisations, and results.
@@ -95,7 +119,7 @@ def main() -> None:
     # here before building the Lightning trainer.
     wandb_logger = create_wandb_logger(cfg, runtime_cfg, model_summary)
     callbacks, checkpoint_callback = build_callbacks(cfg, model, wandb_logger=wandb_logger)
-    trainer = build_trainer(cfg, callbacks, wandb_logger)
+    trainer = build_trainer(cfg, runtime_cfg, callbacks, wandb_logger)
 
     # Resume from `last.ckpt` when the run directory already contains one.
     # If it does not exist, Lightning starts from scratch.

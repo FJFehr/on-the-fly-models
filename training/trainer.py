@@ -304,6 +304,7 @@ def build_callbacks(
 
 def build_trainer(
     cfg,
+    runtime_cfg: dict,
     callbacks: list[Callback] | None = None,
     wandb_logger=None,
     *,
@@ -311,8 +312,8 @@ def build_trainer(
 ) -> pl.Trainer:
     """Create the shared Lightning trainer."""
     trainer_kwargs = {
-        "accelerator": cfg.accelerator,
-        "devices": cfg.get("devices", 1),
+        "accelerator": runtime_cfg["accelerator"],
+        "devices": runtime_cfg.get("devices", 1),
         "logger": wandb_logger if wandb_logger not in {None, False} else False,
         "callbacks": callbacks or [],
         "enable_model_summary": False,
@@ -322,12 +323,12 @@ def build_trainer(
     if evaluation:
         return pl.Trainer(**trainer_kwargs)
 
-    if cfg.get("gradient_clip_val") is not None:
-        trainer_kwargs["gradient_clip_val"] = cfg.gradient_clip_val
+    if runtime_cfg.get("gradient_clip_val") is not None:
+        trainer_kwargs["gradient_clip_val"] = runtime_cfg["gradient_clip_val"]
 
     return pl.Trainer(
         **trainer_kwargs,
-        max_steps=cfg.max_steps,
+        max_steps=runtime_cfg["max_steps"],
         overfit_batches=1 if cfg.get("overfit_single_batch", False) else 0,
         log_every_n_steps=1,
     )
