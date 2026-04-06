@@ -1,4 +1,4 @@
-"""Lightning training wrapper for the simplified binary HyperModel path."""
+"""Lightning training wrapper for the simplified HyperModel path."""
 
 import os
 from collections.abc import Mapping
@@ -19,6 +19,8 @@ from visualisation import figure_to_wandb_image, render_task_prediction_figure
 
 NUM_SUPPORT_EXAMPLES = 3
 NUM_TASK_EXAMPLES = 4
+PREDICTION_TASK_BINARY = "binary"
+PREDICTION_TASK_MULTICLASS = "multiclass"
 
 
 HYPERNETWORK_REGISTRY = {
@@ -39,15 +41,15 @@ HYPERNETWORK_REGISTRY = {
 TARGET_MODEL_REGISTRY = {
     "cnn": {
         "class": CNN,
-        "owned_params": {"output_dim": 1},
+        "owned_params": {},
     },
     "rnn": {
         "class": RNN,
-        "owned_params": {"output_dim": 1},
+        "owned_params": {},
     },
     "transformer": {
         "class": Transformer,
-        "owned_params": {"output_dim": 1},
+        "owned_params": {},
     },
 }
 
@@ -85,7 +87,7 @@ def _apply_owned_params(
 
 
 class HyperModelLightning(pl.LightningModule):
-    """Binary ARC1D training wrapper around a generic HyperModel."""
+    """ARC1D training wrapper around a generic HyperModel."""
 
     supports_hard_val_examples = False
     supports_task_visualization = True
@@ -96,6 +98,8 @@ class HyperModelLightning(pl.LightningModule):
         target_model: dict,
         hyper_head: dict | None = None,
         task_encoding: dict | None = None,
+        prediction_task: str = PREDICTION_TASK_BINARY,
+        num_classes: int | None = None,
         learning_rate: float = 1e-3,
         optimizer: str = "Adam",
         optimizer_name: str = "Adam",
@@ -104,6 +108,10 @@ class HyperModelLightning(pl.LightningModule):
         **kwargs,
     ):
         super().__init__()
+        self.prediction_task, self.num_classes = self.resolve_prediction_task(
+            prediction_task, num_classes
+        )
+        self.target_output_dim = 1 if self.is_binary_task else self.num_classes
         embedding_dim, position_vocab_size = self._resolve_embedding_params(
             task_encoding, kwargs
         )
@@ -134,6 +142,29 @@ class HyperModelLightning(pl.LightningModule):
         self.num_periodic_train_task_examples = kwargs.get("num_periodic_train_task_examples", 1)
         self.num_periodic_val_task_examples = kwargs.get("num_periodic_val_task_examples", 1)
         self.selected_representative_task_ids: dict[str, list[int]] = {"train": [], "val": []}
+
+    @property
+    def is_binary_task(self) -> bool:
+        return self.prediction_task == PREDICTION_TASK_BINARY
+
+    def resolve_prediction_task(
+        self,
+        prediction_task: str,
+        num_classes: int | None,
+    ) -> tuple[str, int]:
+        """Validate the prediction mode and return its owned output width."""
+        if prediction_task == PREDICTION_TASK_BINARY:
+            return prediction_task, 2
+        if prediction_task == PREDICTION_TASK_MULTICLASS:
+            if not isinstance(num_classes, int) or num_classes < 2:
+                msg = "num_classes must be an integer >= 2 for multiclass prediction."
+                raise ValueError(msg)
+            return prediction_task, num_classes
+        msg = (
+            f"Unknown prediction_task {prediction_task!r}. Expected one of "
+            f"{[PREDICTION_TASK_BINARY, PREDICTION_TASK_MULTICLASS]}."
+        )
+        raise ValueError(msg)
 
     def _resolve_embedding_params(
         self,
@@ -217,7 +248,11 @@ class HyperModelLightning(pl.LightningModule):
 
         resolved_params = _apply_owned_params(
             target_model_params,
-            {"input_dim": embedding_dim, **target_model_spec["owned_params"]},
+            {
+                "input_dim": embedding_dim,
+                "output_dim": self.target_output_dim,
+                **target_model_spec["owned_params"],
+            },
             "target_model",
         )
         target_model_cls = target_model_spec["class"]
@@ -312,11 +347,22 @@ class HyperModelLightning(pl.LightningModule):
         logits = self.hypermodel(task_features, example_inputs)
         return logits, example_targets
 
+    def decode_logits(self, logits: torch.Tensor) -> torch.Tensor:
+        """Decode canonical logits to integer predictions."""
+        if self.is_binary_task:
+            return (torch.sigmoid(logits) >= 0.5).long()
+        return logits.argmax(dim=-1)
+
     def compute_loss(
         self, logits: torch.Tensor, targets: torch.Tensor
     ) -> torch.Tensor:
         """Return the task loss for backprop."""
-        return F.binary_cross_entropy_with_logits(logits, targets)
+        if self.is_binary_task:
+            return F.binary_cross_entropy_with_logits(logits, targets)
+        return F.cross_entropy(
+            logits.reshape(-1, self.num_classes),
+            targets.long().reshape(-1),
+        )
 
     def compute_metrics(
         self,
@@ -324,7 +370,7 @@ class HyperModelLightning(pl.LightningModule):
         targets: torch.Tensor,
         prefix: str = "",
     ) -> dict[str, torch.Tensor]:
-        predictions = (torch.sigmoid(logits) >= 0.5).long()
+        predictions = self.decode_logits(logits)
         targets_long = targets.long()
         exact_matches = (predictions == targets_long).all(dim=2).float()
 
@@ -393,9 +439,9 @@ class HyperModelLightning(pl.LightningModule):
         self,
         batch: dict,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Return logits, binary predictions, and targets for a task batch."""
+        """Return logits, integer predictions, and targets for a task batch."""
         logits, targets = self(batch)
-        predictions = (torch.sigmoid(logits) >= 0.5).long()
+        predictions = self.decode_logits(logits)
         return logits, predictions, targets.long()
 
     def build_task_records(

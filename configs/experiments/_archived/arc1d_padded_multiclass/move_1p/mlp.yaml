@@ -1,6 +1,0 @@
-_base_: configs/base/arc1d_padded_multiclass.yaml
-task: move_1p
-model: mlp
-hidden_dim: 132
-num_layers: 3
-use_skip_connections: false

@@ -1,4 +1,0 @@
-_base_: configs/experiments/arc1d_simple_meta/base.yaml
-task: denoising_1c
-
-experiment_name: ${data}_${task}_${model}

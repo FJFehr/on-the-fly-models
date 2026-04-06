@@ -1,7 +1,0 @@
-_base_: configs/base/arc1d_simple.yaml
-task: move_3p
-model: cnn
-hidden_channels: 40
-kernel_size: 7
-num_layers: 4
-use_skip_connections: true

@@ -1,5 +1,0 @@
-_base_: configs/base/arc1d_simple.yaml
-task: move_1p
-model: deepset
-hidden_dim: 64
-num_layers: 3

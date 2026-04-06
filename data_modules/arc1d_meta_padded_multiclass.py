@@ -40,6 +40,7 @@ class Arc1dMetaPaddedMulticlassDataModule(pl.LightningDataModule):
         batch_size: int,
         num_workers: int = 0,
         task_categories: list[str] | None = None,
+        val_task_categories: list[str] | None = None,
         task_ids: list[int] | None = None,
         train_split: str = "train",
         val_split: str = "dev",
@@ -52,6 +53,7 @@ class Arc1dMetaPaddedMulticlassDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.task_categories = task_categories
+        self.val_task_categories = val_task_categories
         self.task_ids = task_ids
         self.train_split = train_split
         self.val_split = val_split
@@ -68,12 +70,15 @@ class Arc1dMetaPaddedMulticlassDataModule(pl.LightningDataModule):
         raise ValueError(msg)
 
     def build_dataset(
-        self, dataset_dict: DatasetDict, split_name: str
+        self,
+        dataset_dict: DatasetDict,
+        split_name: str,
+        task_categories: list[str] | None,
     ) -> Arc1dMetaTaskDataset:
         resolved_split_name = self.resolve_split_name(dataset_dict, split_name)
         filtered_tasks = filter_split(
             dataset_dict[resolved_split_name],
-            self.task_categories,
+            task_categories,
             self.task_ids,
         )
         if not filtered_tasks:
@@ -83,9 +88,10 @@ class Arc1dMetaPaddedMulticlassDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         dataset_dict = DatasetDict.load_from_disk(self.data_dir)
-        self.train_dataset = self.build_dataset(dataset_dict, self.train_split)
-        self.val_dataset = self.build_dataset(dataset_dict, self.val_split)
-        self.test_dataset = self.build_dataset(dataset_dict, self.test_split)
+        val_cats = self.val_task_categories or self.task_categories
+        self.train_dataset = self.build_dataset(dataset_dict, self.train_split, self.task_categories)
+        self.val_dataset = self.build_dataset(dataset_dict, self.val_split, val_cats)
+        self.test_dataset = self.build_dataset(dataset_dict, self.test_split, val_cats)
 
     def train_dataloader(self):
         return DataLoader(

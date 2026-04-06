@@ -14,14 +14,10 @@
 
 from data_modules.arc1d_meta_padded_multiclass import Arc1dMetaPaddedMulticlassDataModule
 from data_modules.arc1d_meta_simple import Arc1dMetaSimpleDataModule
-from data_modules.arc1d_padded_multiclass import Arc1dPaddedMulticlassDataModule
-from data_modules.arc1d_simple import Arc1dSimpleDataModule
 
 # Maps config string -> LightningDataModule class
 # The key must match the "data" field in experiment YAML configs
 DATA_REGISTRY = {
-    "arc_1d_padded_multiclass": Arc1dPaddedMulticlassDataModule,
-    "arc_1d_simple": Arc1dSimpleDataModule,
     "arc_1d_meta_simple": Arc1dMetaSimpleDataModule,
     "arc_1d_meta_padded_multiclass": Arc1dMetaPaddedMulticlassDataModule,
 }

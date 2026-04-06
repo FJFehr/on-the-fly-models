@@ -23,7 +23,7 @@ Fill in the fields below when dispatching a task to an agent.
 
 ## Example
 
-Read the ./agents folder and the README
+Read the .agents folder and the README
 
 Then:
 
