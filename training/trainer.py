@@ -321,6 +321,9 @@ def build_trainer(
     }
 
     if evaluation:
+        # Run evaluation on one device so Lightning does not wrap dataloaders
+        # in a DistributedSampler that can duplicate samples across ranks.
+        trainer_kwargs["devices"] = 1
         return pl.Trainer(**trainer_kwargs)
 
     if runtime_cfg.get("gradient_clip_val") is not None:

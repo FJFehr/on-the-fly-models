@@ -171,6 +171,14 @@ def write_model_summary(output_path: str, model_summary: dict[str, int | str]) -
 # ---------------------------------------------------------------------------
 
 
+def _is_global_zero_process() -> bool:
+    """Return whether this process should own external logging side effects."""
+    rank = os.environ.get("RANK")
+    if rank is None:
+        return True
+    return rank == "0"
+
+
 def create_wandb_logger(
     cfg,
     runtime_cfg: dict,
@@ -179,13 +187,16 @@ def create_wandb_logger(
     run_name: str | None = None,
     job_type: str | None = None,
     resume: str = "allow",
-) -> WandbLogger:
+) -> WandbLogger | bool:
     """Create and prime the W&B logger for one run.
 
     The entrypoint relies on model-side `self.log(...)` calls for metrics.
     This helper is responsible for run-level metadata: config fields, model
     parameter counts, and the printable architecture string.
     """
+    if not _is_global_zero_process():
+        return False
+
     wandb_logger = WandbLogger(
         project=cfg.project_name,
         entity=cfg.get("entity"),
