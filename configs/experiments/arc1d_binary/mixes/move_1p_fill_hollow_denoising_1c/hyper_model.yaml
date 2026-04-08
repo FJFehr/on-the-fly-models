@@ -21,7 +21,7 @@ val_task_categories:
   - 1d_denoising_1c
   # - 1d_pcopy_1c
 
-devices: 2
+devices: 1
 max_steps: 4000
 log_task_examples_every_n_epochs: 500
 optimizer: RAdam

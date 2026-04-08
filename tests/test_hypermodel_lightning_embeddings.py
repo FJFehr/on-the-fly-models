@@ -44,56 +44,50 @@ def make_batch() -> dict:
     }
 
 
-def test_shared_embedding_token_ids_match_expected_task_metadata():
-    """Protect the serialized metadata contract used by the shared embedder."""
-    model = build_model(
-        {
-            "name": "shared_embeddings",
-            "params": {"embedding_dim": 8, "share_input_embeddings": True},
-        }
-    )
+def test_task_context_token_ids_match_expected_metadata():
+    """Hypernetwork sees 6 support segments with example and role ids; no query, no is_query."""
+    model = build_model({"embedding_dim": 8})
     batch = make_batch()
 
-    task_ids = model.build_task_context_token_ids(
+    flat_values, position_ids, example_ids, role_ids = model.build_task_context_token_ids(
         batch["support_inputs"],
         batch["support_outputs"],
-        batch["query_input"],
     )
-    target_ids = model.build_target_token_ids(
+
+    # 6 segments × 4 positions = 24 tokens
+    assert example_ids.shape == (1, 24)
+    assert example_ids[0].tolist() == [0] * 8 + [1] * 8 + [2] * 8
+    assert role_ids[0].tolist() == [0] * 4 + [1] * 4 + [0] * 4 + [1] * 4 + [0] * 4 + [1] * 4
+
+
+def test_target_token_ids_are_value_and_position_only():
+    """Target model receives only value and position ids — no metadata."""
+    model = build_model({"embedding_dim": 8})
+    batch = make_batch()
+
+    value_ids, position_ids = model.build_target_token_ids(
         batch["support_inputs"],
         batch["query_input"],
     )
 
-    _, _, task_example_ids, task_role_ids, task_is_query_ids = task_ids
-    _, _, target_example_ids, target_role_ids, target_is_query_ids = target_ids
-
-    assert task_example_ids.shape == (1, 28)
-    assert task_example_ids[0].tolist() == [0] * 8 + [1] * 8 + [2] * 8 + [3] * 4
-    assert task_role_ids[0].tolist() == (
-        [0] * 4 + [1] * 4 + [0] * 4 + [1] * 4 + [0] * 4 + [1] * 4 + [0] * 4
-    )
-    assert task_is_query_ids[0].tolist() == [0] * 24 + [1] * 4
-
-    assert target_example_ids.shape == (1, 4, 4)
-    assert target_example_ids[0, :, 0].tolist() == [0, 1, 2, 3]
-    assert torch.equal(target_role_ids, torch.zeros_like(target_role_ids))
-    assert target_is_query_ids[0, :, 0].tolist() == [0, 0, 0, 1]
+    # 4 examples (3 support + query) × 4 positions
+    assert value_ids.shape == (1, 4, 4)
+    assert position_ids.shape == (1, 4, 4)
+    assert position_ids[0, 0].tolist() == [0, 1, 2, 3]
+    assert position_ids[0, 1].tolist() == [0, 1, 2, 3]
 
 
-def test_shared_embeddings_forward_runs_with_expected_shapes():
+def test_forward_runs_with_expected_shapes():
     """Smoke-test the shared embedding path through the generic hypermodel."""
-    model = build_model(
-        {
-            "name": "shared_embeddings",
-            "params": {"embedding_dim": 8, "share_input_embeddings": True},
-        }
-    )
+    model = build_model({"embedding_dim": 8})
     batch = make_batch()
 
     task_features, example_inputs, example_targets = model.prepare_inputs(batch)
     logits, targets = model(batch)
 
-    assert task_features.shape == (1, 28, 8)
+    # Hypernetwork: 6 segments × 4 positions = 24 tokens
+    assert task_features.shape == (1, 24, 8)
+    # Target: 4 examples × 4 positions
     assert example_inputs.shape == (1, 4, 4, 8)
     assert example_targets.shape == (1, 4, 4)
     assert logits.shape == (1, 4, 4)

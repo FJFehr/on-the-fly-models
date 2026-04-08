@@ -7,6 +7,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def _build_sinusoidal_pe(position_vocab_size: int, embedding_dim: int) -> torch.Tensor:
+    """Build a fixed sinusoidal position encoding table of shape (position_vocab_size, embedding_dim)."""
+    pe = torch.zeros(position_vocab_size, embedding_dim)
+    position = torch.arange(position_vocab_size).unsqueeze(1).float()
+    div_term = torch.exp(
+        torch.arange(0, embedding_dim, 2).float() * -(math.log(10000.0) / embedding_dim)
+    )
+    pe[:, 0::2] = torch.sin(position * div_term)
+    pe[:, 1::2] = torch.cos(position * div_term[: embedding_dim // 2])
+    return pe
+
+
 class TaskTokenEmbedder(nn.Module):
     """Embed binary ARC task tokens by summing learned metadata embeddings."""
 
@@ -17,7 +29,6 @@ class TaskTokenEmbedder(nn.Module):
         value_vocab_size: int = 2,
         num_examples: int = 4,
         num_roles: int = 2,
-        num_query_flags: int = 2,
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
@@ -25,25 +36,19 @@ class TaskTokenEmbedder(nn.Module):
         self.value_vocab_size = value_vocab_size
         self.num_examples = num_examples
         self.num_roles = num_roles
-        self.num_query_flags = num_query_flags
 
         self.value_embedding = nn.Embedding(value_vocab_size, embedding_dim)
 
         # Fixed sinusoidal position encoding — no parameters to train.
         # Encodes positional distance geometrically, making shift-amount detection
         # directly learnable without needing the model to discover vector arithmetic.
-        pe = torch.zeros(position_vocab_size, embedding_dim)
-        position = torch.arange(position_vocab_size).unsqueeze(1).float()
-        div_term = torch.exp(
-            torch.arange(0, embedding_dim, 2).float() * -(math.log(10000.0) / embedding_dim)
-        )
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term[: embedding_dim // 2])
-        self.register_buffer("sinusoidal_position_encoding", pe)  # (position_vocab_size, embedding_dim)
+        self.register_buffer(
+            "sinusoidal_position_encoding",
+            _build_sinusoidal_pe(position_vocab_size, embedding_dim),
+        )  # (position_vocab_size, embedding_dim)
 
         self.example_embedding = nn.Embedding(num_examples, embedding_dim)
         self.role_embedding = nn.Embedding(num_roles, embedding_dim)
-        self.is_query_embedding = nn.Embedding(num_query_flags, embedding_dim)
 
     def _validate_id_range(self, ids: torch.Tensor, upper_bound: int, name: str) -> None:
         if ids.numel() == 0:
@@ -61,33 +66,41 @@ class TaskTokenEmbedder(nn.Module):
         self,
         value_ids: torch.Tensor,
         position_ids: torch.Tensor,
-        example_ids: torch.Tensor,
-        role_ids: torch.Tensor,
-        is_query_ids: torch.Tensor,
+        example_ids: torch.Tensor | None = None,
+        role_ids: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Return summed embeddings with shape matching the id tensors plus embedding_dim."""
-        tensors = {
-            "value": value_ids,
-            "position": position_ids,
-            "example": example_ids,
-            "role": role_ids,
-            "is_query": is_query_ids,
-        }
-        shapes = {tuple(tensor.shape) for tensor in tensors.values()}
-        if len(shapes) != 1:
-            msg = f"All token id tensors must share one shape, got {shapes}."
+        """Return summed embeddings with shape matching the id tensors plus embedding_dim.
+
+        Pass example_ids and role_ids for the hypernetwork path (support segments only).
+        Omit both for the target path (value + position only).
+        """
+        reference_shape = tuple(value_ids.shape)
+        optional = {"example": example_ids, "role": role_ids}
+        for name, tensor in optional.items():
+            if tensor is not None and tuple(tensor.shape) != reference_shape:
+                msg = (
+                    f"{name}_ids shape {tuple(tensor.shape)} does not match "
+                    f"value_ids shape {reference_shape}."
+                )
+                raise ValueError(msg)
+        if tuple(position_ids.shape) != reference_shape:
+            msg = (
+                f"position_ids shape {tuple(position_ids.shape)} does not match "
+                f"value_ids shape {reference_shape}."
+            )
             raise ValueError(msg)
 
         self._validate_id_range(value_ids, self.value_vocab_size, "value")
         self._validate_id_range(position_ids, self.position_vocab_size, "position")
-        self._validate_id_range(example_ids, self.num_examples, "example")
-        self._validate_id_range(role_ids, self.num_roles, "role")
-        self._validate_id_range(is_query_ids, self.num_query_flags, "is_query")
 
-        return (
+        result = (
             self.value_embedding(value_ids)
             + F.embedding(position_ids, self.sinusoidal_position_encoding)
-            + self.example_embedding(example_ids)
-            + self.role_embedding(role_ids)
-            + self.is_query_embedding(is_query_ids)
         )
+        if example_ids is not None:
+            self._validate_id_range(example_ids, self.num_examples, "example")
+            result = result + self.example_embedding(example_ids)
+        if role_ids is not None:
+            self._validate_id_range(role_ids, self.num_roles, "role")
+            result = result + self.role_embedding(role_ids)
+        return result

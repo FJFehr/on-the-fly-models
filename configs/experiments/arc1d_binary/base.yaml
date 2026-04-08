@@ -38,9 +38,5 @@ output_dim: 33
 prediction_task: binary
 stop_on_perfect_val_exact_match: false
 
-# This is default here but will eventually be removed
 task_encoding:
-  name: shared_embeddings
-  params:
-    embedding_dim: 16
-    share_input_embeddings: true
+  embedding_dim: 16
