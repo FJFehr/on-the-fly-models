@@ -54,7 +54,7 @@ lr_scheduler:
     T_max: ${max_steps}
     eta_min: 0.00001
 
-stop_on_perfect_val_exact_match: true
+stop_on_perfect_val_exact_match: false
 
 hyper_model:
   name: transformer

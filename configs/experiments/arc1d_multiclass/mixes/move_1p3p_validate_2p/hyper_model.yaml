@@ -1,7 +1,9 @@
 _base_: configs/experiments/arc1d_multiclass/base.yaml
 task: move_1p3p_validate_2p
 
-experiment_name: ${data}_${task}_${model}
+# Doesnt converge to solving at the moment. Might need more capacity or steps.
+
+experiment_name: ${data}_${task}_${model}_newrepo
 
 task_categories:
   - 1d_move_1p
@@ -41,9 +43,9 @@ val_task_categories:
   # - 1d_recolor_cmp
   # - 1d_scale_dp
 
-devices: 2
-max_steps: 2000
-log_task_examples_every_n_epochs: 200
+devices: 1
+max_steps: 1000 
+log_task_examples_every_n_epochs: 100
 optimizer: RAdam
 gradient_clip_val: 1.0
 batch_size: 32

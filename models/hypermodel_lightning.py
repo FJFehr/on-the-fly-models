@@ -112,13 +112,14 @@ class HyperModelLightning(pl.LightningModule):
             prediction_task, num_classes
         )
         self.target_output_dim = 1 if self.is_binary_task else self.num_classes
-        embedding_dim, position_vocab_size = self._resolve_embedding_params(
+        embedding_dim, position_vocab_size, value_vocab_size = self._resolve_embedding_params(
             task_encoding, kwargs
         )
         self.embedding_dim = embedding_dim
         self.shared_task_token_embedder = TaskTokenEmbedder(
             embedding_dim=embedding_dim,
             position_vocab_size=position_vocab_size,
+            value_vocab_size=value_vocab_size,
         )
         hypernetwork, hyper_output_dim = self.build_hypernetwork(hyper_model, embedding_dim)
         target = self.build_target_model(target_model, embedding_dim)
@@ -191,7 +192,12 @@ class HyperModelLightning(pl.LightningModule):
             )
             raise ValueError(msg)
 
-        return embedding_dim, position_vocab_size
+        value_vocab_size = task_encoding.get("value_vocab_size", 2)
+        if not isinstance(value_vocab_size, int) or value_vocab_size < 2:
+            msg = "task_encoding.value_vocab_size must be an integer >= 2."
+            raise ValueError(msg)
+
+        return embedding_dim, position_vocab_size, value_vocab_size
 
     def build_hypernetwork(self, hyper_model: Mapping, embedding_dim: int) -> tuple[torch.nn.Module, int]:
         """Instantiate the configured hypernetwork and return its output width."""

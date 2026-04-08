@@ -365,6 +365,45 @@ def log_hard_val_examples(
     )
 
 
+def _select_hard_task_records(
+    model: pl.LightningModule,
+    dataloader,
+    *,
+    limit: int | None = None,
+    one_per_category: bool = False,
+) -> list[dict]:
+    """Select failed task records ordered from hardest to easiest."""
+    if not hasattr(model, "collect_task_records_from_dataloader"):
+        return []
+
+    records = model.collect_task_records_from_dataloader(dataloader)
+    failed_records = [record for record in records if not record["query_exact_match"]]
+    failed_records.sort(
+        key=lambda record: (
+            record["query_accuracy"],
+            record["task_category"],
+            record["task_id"],
+        )
+    )
+
+    if not one_per_category:
+        if limit is None or limit < 1:
+            return failed_records
+        return failed_records[:limit]
+
+    selected_records = []
+    seen_categories = set()
+    for record in failed_records:
+        task_category = record["task_category"]
+        if task_category in seen_categories:
+            continue
+        seen_categories.add(task_category)
+        selected_records.append(record)
+        if limit is not None and limit > 0 and len(selected_records) >= limit:
+            break
+    return selected_records
+
+
 def export_hard_validation_examples(
     model: pl.LightningModule,
     datamodule,
@@ -389,11 +428,8 @@ def export_hard_validation_examples(
         )
         return
 
-    if not hasattr(model, "select_hard_task_records"):
-        print("Model does not support hard validation example export.")
-        return
-
-    hard_task_records = model.select_hard_task_records(
+    hard_task_records = _select_hard_task_records(
+        model,
         datamodule.val_dataloader(),
         limit=num_hard_examples,
     )
@@ -464,12 +500,12 @@ def log_final_task_visualizations(model, datamodule, output_path: str, wandb_log
         datamodule.val_dataset,
         val_task_ids,
     )
-    val_hard_final_records = []
-    if hasattr(model, "select_hard_task_records"):
-        val_hard_final_records = model.select_hard_task_records(
-            datamodule.val_dataloader(),
-            limit=getattr(model, "num_final_hard_val_task_examples", 3),
-        )
+    val_hard_final_records = _select_hard_task_records(
+        model,
+        datamodule.val_dataloader(),
+        limit=getattr(model, "num_final_hard_val_task_examples", None),
+        one_per_category=True,
+    )
 
     if getattr(model, "log_task_examples", False):
         model.log_task_gallery(

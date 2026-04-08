@@ -41,13 +41,13 @@ val_task_categories:
   # - 1d_recolor_cmp
   # - 1d_scale_dp
 
-max_steps: 1000
-log_task_examples_every_n_epochs: 200
+max_steps: 200
+log_task_examples_every_n_epochs: 50
 optimizer: RAdam
 gradient_clip_val: 1.0
 batch_size: 32
 
-stop_on_perfect_val_exact_match: true
+stop_on_perfect_val_exact_match: false
 
 hyper_model:
   name: transformer
