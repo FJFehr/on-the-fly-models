@@ -7,23 +7,43 @@ task_categories:
   - 1d_move_1p
   - 1d_move_2p
   - 1d_move_3p
+  - 1d_move_dp
+  - 1d_move_2p_dp
   - 1d_fill
   - 1d_hollow
+  - 1d_flip
+  - 1d_mirror
   - 1d_denoising_1c
+  - 1d_denoising_mc
   - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_oe
+  - 1d_recolor_cnt
+  - 1d_recolor_cmp
+  - 1d_scale_dp
 
 val_task_categories:
   - 1d_move_1p
   - 1d_move_2p
   - 1d_move_3p
+  - 1d_move_dp
+  - 1d_move_2p_dp
   - 1d_fill
   - 1d_hollow
+  - 1d_flip
+  - 1d_mirror
   - 1d_denoising_1c
+  - 1d_denoising_mc
   - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_oe
+  - 1d_recolor_cnt
+  - 1d_recolor_cmp
+  - 1d_scale_dp
 
 devices: 3
-max_steps: 4000
-log_task_examples_every_n_epochs: 400
+max_steps: 2000
+log_task_examples_every_n_epochs: 200
 optimizer: RAdam
 gradient_clip_val: 1.0
 batch_size: 64

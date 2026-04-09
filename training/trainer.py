@@ -24,22 +24,22 @@ from training.logging import (
 # ---------------------------------------------------------------------------
 
 
-def _select_representative_task_ids(tasks: list[dict], limit: int) -> list[int]:
-    """Select at most one task id per category in dataset order."""
+def _select_representative_task_ids(tasks: list[dict], limit: int) -> list[tuple[str, int]]:
+    """Select at most one (category, task_id) pair per category in dataset order."""
     if limit < 1:
         return []
 
     seen_categories = set()
-    selected_task_ids = []
+    selected = []
     for task in tasks:
         task_category = task["task_category"]
         if task_category in seen_categories:
             continue
         seen_categories.add(task_category)
-        selected_task_ids.append(task["task_id"])
-        if len(selected_task_ids) >= limit:
+        selected.append((task_category, task["task_id"]))
+        if len(selected) >= limit:
             break
-    return selected_task_ids
+    return selected
 
 
 class StopOnMetricThreshold(Callback):

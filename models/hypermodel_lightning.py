@@ -567,38 +567,39 @@ class HyperModelLightning(pl.LightningModule):
         dataset,
         split_name: str,
         limit: int,
-    ) -> list[int]:
-        """Select at most one task id per category for recurring visual logging."""
+    ) -> list[tuple[str, int]]:
+        """Select at most one (category, task_id) pair per category for recurring visual logging."""
         if limit < 1:
             return []
 
         seen_categories = set()
-        selected_task_ids = []
+        selected = []
         for task in dataset.tasks:
             task_category = task["task_category"]
             if task_category in seen_categories:
                 continue
             seen_categories.add(task_category)
-            selected_task_ids.append(task["task_id"])
-            if len(selected_task_ids) >= limit:
+            selected.append((task_category, task["task_id"]))
+            if len(selected) >= limit:
                 break
 
-        self.selected_representative_task_ids[split_name] = selected_task_ids
-        return selected_task_ids
+        self.selected_representative_task_ids[split_name] = selected
+        return selected
 
     def collect_task_records_from_dataset_by_task_ids(
         self,
         dataset,
-        task_ids: list[int],
+        task_ids: list[tuple[str, int]],
     ) -> list[dict]:
-        """Collect prediction records for a fixed set of task ids."""
+        """Collect prediction records for a fixed set of (category, task_id) pairs."""
         if not task_ids:
             return []
 
         selected_records = []
         task_id_set = set(task_ids)
         for task in dataset.tasks:
-            if task["task_id"] not in task_id_set:
+            key = (task["task_category"], task["task_id"])
+            if key not in task_id_set:
                 continue
             batch = {
                 "support_inputs": torch.tensor([task["support_inputs"]], device=self.device),
@@ -613,7 +614,9 @@ class HyperModelLightning(pl.LightningModule):
                 self.build_task_records(batch, predictions.cpu(), targets.cpu())
             )
 
-        selected_records.sort(key=lambda record: task_ids.index(record["task_id"]))
+        selected_records.sort(
+            key=lambda record: task_ids.index((record["task_category"], record["task_id"]))
+        )
         return selected_records
 
     def log_task_gallery(

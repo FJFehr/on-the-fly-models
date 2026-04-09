@@ -30,8 +30,8 @@ weight_decay: 0.01
 max_steps: 10000
 log_task_examples: true
 log_task_examples_every_n_epochs: 200
-num_periodic_train_task_examples: 1
-num_periodic_val_task_examples: 1
+num_periodic_train_task_examples: 100
+num_periodic_val_task_examples: 100
 
 input_dim: 33
 output_dim: 33
