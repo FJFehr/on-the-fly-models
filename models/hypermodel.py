@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 from torch.func import functional_call
 
+from models.transformer import Block
+
 
 def _indent_repr(value: object, prefix: str = "    ") -> str:
     """Indent multiline repr output so nested modules stay readable."""
@@ -18,6 +20,147 @@ def _describe_hyper_projection(model: "HyperModel") -> str:
         f"Linear({model.bottleneck_dim} -> {model.total_target_params})",
     ]
     return " + ".join(parts)
+
+
+def _describe_hyper_pooling(model: "HyperModel") -> str:
+    """Build a compact one-line description of the pooling path."""
+    return model.hyper_pooling.describe()
+
+
+class LearnedQueryAttentionPool(nn.Module):
+    """Pool a token sequence to one vector with a learned attention query."""
+
+    def __init__(self, hidden_dim: int):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.pool_query = nn.Parameter(torch.randn(1, 1, hidden_dim))
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        if inputs.ndim != 3:
+            msg = "Expected pooling inputs with shape (batch, seq_len, hidden_dim)."
+            raise ValueError(msg)
+
+        attn_weights = torch.bmm(
+            self.pool_query.expand(inputs.shape[0], -1, -1),
+            inputs.transpose(1, 2),
+        )
+        attn_weights = torch.softmax(attn_weights, dim=-1)
+        return torch.bmm(attn_weights, inputs).squeeze(1)
+
+
+class AttentionPooler(nn.Module):
+    """Current one-shot learned attention pooling over all hypernetwork tokens."""
+
+    def __init__(self, hidden_dim: int):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.pool = LearnedQueryAttentionPool(hidden_dim)
+
+    def forward(self, hyper_output: torch.Tensor) -> torch.Tensor:
+        return self.pool(hyper_output)
+
+    def describe(self) -> str:
+        return f"attention_pool(query over token sequence, hidden={self.hidden_dim})"
+
+
+class HierarchicalPooler(nn.Module):
+    """Hierarchical learned pooling for 6 support segments -> 3 examples -> 1 task vector."""
+
+    num_segments = 6
+    num_examples = 3
+    segment_pair_size = 2
+
+    def __init__(
+        self,
+        hidden_dim: int,
+        num_heads: int,
+        segment_interaction_layers: int,
+        example_interaction_layers: int,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.num_heads = num_heads
+        self.segment_interaction_layers = segment_interaction_layers
+        self.example_interaction_layers = example_interaction_layers
+        self.dropout = dropout
+
+        self.segment_pool = LearnedQueryAttentionPool(hidden_dim)
+        self.segment_interaction = nn.ModuleList(
+            [
+                Block(
+                    hidden_dim=hidden_dim,
+                    num_heads=num_heads,
+                    dropout=dropout,
+                    bias=False,
+                    causal=False,
+                    block_size=self.num_segments,
+                )
+                for _ in range(segment_interaction_layers)
+            ]
+        )
+        self.example_pool = LearnedQueryAttentionPool(hidden_dim)
+        self.example_interaction = nn.ModuleList(
+            [
+                Block(
+                    hidden_dim=hidden_dim,
+                    num_heads=num_heads,
+                    dropout=dropout,
+                    bias=False,
+                    causal=False,
+                    block_size=self.num_examples,
+                )
+                for _ in range(example_interaction_layers)
+            ]
+        )
+        self.task_pool = LearnedQueryAttentionPool(hidden_dim)
+
+    def forward(self, hyper_output: torch.Tensor) -> torch.Tensor:
+        batch_size, total_seq_len, hidden_dim = hyper_output.shape
+        if total_seq_len % self.num_segments != 0:
+            msg = (
+                "Hierarchical pooling expects the serialized support token count "
+                f"to be divisible by {self.num_segments}, got {total_seq_len}."
+            )
+            raise ValueError(msg)
+        if hidden_dim != self.hidden_dim:
+            msg = (
+                "Hierarchical pooling hidden width must match the configured "
+                f"hidden_dim={self.hidden_dim}, got {hidden_dim}."
+            )
+            raise ValueError(msg)
+
+        segment_length = total_seq_len // self.num_segments
+        segments = hyper_output.reshape(batch_size, self.num_segments, segment_length, hidden_dim)
+        segment_embeddings = self.segment_pool(
+            segments.reshape(batch_size * self.num_segments, segment_length, hidden_dim)
+        ).reshape(batch_size, self.num_segments, hidden_dim)
+        for block in self.segment_interaction:
+            segment_embeddings = block(segment_embeddings)
+
+        examples = segment_embeddings.reshape(
+            batch_size,
+            self.num_examples,
+            self.segment_pair_size,
+            hidden_dim,
+        )
+        example_embeddings = self.example_pool(
+            examples.reshape(batch_size * self.num_examples, self.segment_pair_size, hidden_dim)
+        ).reshape(batch_size, self.num_examples, hidden_dim)
+        for block in self.example_interaction:
+            example_embeddings = block(example_embeddings)
+
+        return self.task_pool(example_embeddings)
+
+    def describe(self) -> str:
+        return (
+            "hierarchical_pool("
+            "6 segments -> attention_pool -> "
+            f"{self.segment_interaction_layers}x interaction -> "
+            "3 examples -> attention_pool -> "
+            f"{self.example_interaction_layers}x interaction -> "
+            "attention_pool -> 1 task vector)"
+        )
 
 
 class HyperModel(nn.Module):
@@ -39,6 +182,7 @@ class HyperModel(nn.Module):
         target_model: nn.Module,
         hyper_output_dim: int,
         bottleneck_dim: int | None = None,
+        hyper_pooling: nn.Module | None = None,
     ):
         super().__init__()
         self.hypernetwork = hypernetwork
@@ -57,8 +201,7 @@ class HyperModel(nn.Module):
         self.hyper_output_dim = hyper_output_dim
         self.bottleneck_dim = bottleneck_dim if bottleneck_dim is not None else hyper_output_dim
 
-        # Learned query vector for attention pooling over the token sequence.
-        self.pool_query = nn.Parameter(torch.randn(1, 1, self.hyper_output_dim))
+        self.hyper_pooling = hyper_pooling or AttentionPooler(self.hyper_output_dim)
 
         # Deterministic bottleneck.
         self.hyper_bottleneck = nn.Sequential(
@@ -94,8 +237,8 @@ class HyperModel(nn.Module):
             offset += numel
         return params
 
-    def extract_parameter_vectors(self, hyper_output: torch.Tensor) -> torch.Tensor:
-        """Pool tokenwise hypernetwork features and project them to target weights."""
+    def extract_task_representation(self, hyper_output: torch.Tensor) -> torch.Tensor:
+        """Pool tokenwise hypernetwork features into one task representation."""
         if hyper_output.ndim != 3:
             msg = "Expected hypernetwork output with shape (batch, seq_len, hidden_dim)."
             raise ValueError(msg)
@@ -105,17 +248,11 @@ class HyperModel(nn.Module):
                 f"hyper_output_dim={self.hyper_output_dim}, got {hyper_output.shape[-1]}."
             )
             raise ValueError(msg)
+        return self.hyper_pooling(hyper_output)
 
-        # Attention pooling: learned query attends over the token sequence,
-        # allowing the model to focus on the most informative tokens rather
-        # than averaging over all (including many uninformative inactive-bit tokens).
-        attn_weights = torch.bmm(
-            self.pool_query.expand(hyper_output.shape[0], -1, -1),
-            hyper_output.transpose(1, 2),
-        )  # (batch, 1, seq_len)
-        attn_weights = torch.softmax(attn_weights, dim=-1)
-        task_representation = torch.bmm(attn_weights, hyper_output).squeeze(1)  # (batch, hidden)
-
+    def extract_parameter_vectors(self, hyper_output: torch.Tensor) -> torch.Tensor:
+        """Pool tokenwise hypernetwork features and project them to target weights."""
+        task_representation = self.extract_task_representation(hyper_output)
         z = self.hyper_bottleneck(task_representation)
         return self.hyper_out(z)
 
@@ -156,6 +293,7 @@ class HyperModel(nn.Module):
         return (
             f"HyperModel(\n"
             f"  Hypernetwork: {_indent_repr(self.hypernetwork)}\n"
+            f"  Hyper pooling: {_describe_hyper_pooling(self)}\n"
             f"  Hyper projection: {_describe_hyper_projection(self)}\n"
             f"  Target: {_indent_repr(self.target_model)}\n"
             f"  Target params: {n:,}\n"

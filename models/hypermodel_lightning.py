@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 import wandb
 from metrics import accuracy, exact_match_accuracy
 from models.cnn import CNN
-from models.hypermodel import HyperModel
+from models.hypermodel import AttentionPooler, HierarchicalPooler, HyperModel
 from models.rnn import RNN
 from models.task_token_embedder import TaskTokenEmbedder
 from models.transformer import Transformer
@@ -86,6 +86,22 @@ def _apply_owned_params(
     return merged_params
 
 
+def _resolve_positive_int(value: object, config_key: str) -> int:
+    """Validate a positive integer config value."""
+    if not isinstance(value, int) or value < 1:
+        msg = f"{config_key} must be a positive integer."
+        raise ValueError(msg)
+    return value
+
+
+def _resolve_dropout(value: object, config_key: str) -> float:
+    """Validate a dropout config value."""
+    if not isinstance(value, int | float) or not 0.0 <= float(value) < 1.0:
+        msg = f"{config_key} must be a float in [0.0, 1.0)."
+        raise ValueError(msg)
+    return float(value)
+
+
 class HyperModelLightning(pl.LightningModule):
     """ARC1D training wrapper around a generic HyperModel."""
 
@@ -124,15 +140,22 @@ class HyperModelLightning(pl.LightningModule):
         hypernetwork, hyper_output_dim = self.build_hypernetwork(hyper_model, embedding_dim)
         target = self.build_target_model(target_model, embedding_dim)
         hyper_head_cfg = hyper_head or {}
+        if not isinstance(hyper_head_cfg, Mapping):
+            msg = "hyper_head must be a mapping."
+            raise ValueError(msg)
         bottleneck_dim = hyper_head_cfg.get("bottleneck_dim")
-        if bottleneck_dim is not None and (not isinstance(bottleneck_dim, int) or bottleneck_dim < 1):
+        if bottleneck_dim is not None and (
+            not isinstance(bottleneck_dim, int) or bottleneck_dim < 1
+        ):
             msg = "hyper_head.bottleneck_dim must be a positive integer."
             raise ValueError(msg)
+        hyper_pooling = self.build_hyper_pooling(hyper_head_cfg, hyper_output_dim)
         self.hypermodel = HyperModel(
             hypernetwork=hypernetwork,
             target_model=target,
             hyper_output_dim=hyper_output_dim,
             bottleneck_dim=bottleneck_dim,
+            hyper_pooling=hyper_pooling,
         )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
@@ -171,7 +194,7 @@ class HyperModelLightning(pl.LightningModule):
         self,
         task_encoding: Mapping | None,
         runtime_kwargs: Mapping,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, int]:
         """Return (embedding_dim, position_vocab_size) from config."""
         if task_encoding is None:
             task_encoding = {}
@@ -199,7 +222,58 @@ class HyperModelLightning(pl.LightningModule):
 
         return embedding_dim, position_vocab_size, value_vocab_size
 
-    def build_hypernetwork(self, hyper_model: Mapping, embedding_dim: int) -> tuple[torch.nn.Module, int]:
+    def build_hyper_pooling(
+        self,
+        hyper_head: Mapping,
+        hyper_output_dim: int,
+    ) -> torch.nn.Module:
+        """Instantiate the configured pooling path for the hyper head."""
+        pooling_name = hyper_head.get("pooling", "attention")
+        if pooling_name == "attention":
+            return AttentionPooler(hyper_output_dim)
+        if pooling_name != "hierarchical":
+            msg = (
+                f"Unknown hyper_head.pooling {pooling_name!r}. "
+                "Expected one of ['attention', 'hierarchical']."
+            )
+            raise ValueError(msg)
+
+        interaction_num_heads = _resolve_positive_int(
+            hyper_head.get("interaction_num_heads", 1),
+            "hyper_head.interaction_num_heads",
+        )
+        if hyper_output_dim % interaction_num_heads != 0:
+            msg = (
+                "hyper_head.interaction_num_heads must divide hyper_output_dim, got "
+                f"{interaction_num_heads} for hyper_output_dim={hyper_output_dim}."
+            )
+            raise ValueError(msg)
+
+        segment_interaction_layers = _resolve_positive_int(
+            hyper_head.get("segment_interaction_layers", 1),
+            "hyper_head.segment_interaction_layers",
+        )
+        example_interaction_layers = _resolve_positive_int(
+            hyper_head.get("example_interaction_layers", 1),
+            "hyper_head.example_interaction_layers",
+        )
+        dropout = _resolve_dropout(
+            hyper_head.get("dropout", 0.0),
+            "hyper_head.dropout",
+        )
+        return HierarchicalPooler(
+            hidden_dim=hyper_output_dim,
+            num_heads=interaction_num_heads,
+            segment_interaction_layers=segment_interaction_layers,
+            example_interaction_layers=example_interaction_layers,
+            dropout=dropout,
+        )
+
+    def build_hypernetwork(
+        self,
+        hyper_model: Mapping,
+        embedding_dim: int,
+    ) -> tuple[torch.nn.Module, int]:
         """Instantiate the configured hypernetwork and return its output width."""
         if not isinstance(hyper_model, Mapping):
             msg = "hyper_model must be a mapping with name and params fields."
@@ -568,7 +642,7 @@ class HyperModelLightning(pl.LightningModule):
         split_name: str,
         limit: int,
     ) -> list[tuple[str, int]]:
-        """Select at most one (category, task_id) pair per category for recurring visual logging."""
+        """Select at most one recurring visual-logging task per category."""
         if limit < 1:
             return []
 

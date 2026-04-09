@@ -71,6 +71,11 @@ def _describe_hyper_projection(hypermodel) -> str:
     return _hp_repr(hypermodel)
 
 
+def _describe_hyper_pooling(hypermodel) -> str:
+    from models.hypermodel import _describe_hyper_pooling as _pool_repr
+    return _pool_repr(hypermodel)
+
+
 def _build_generic_model_summary(model: torch.nn.Module) -> dict[str, int | str]:
     model_repr = str(model)
     total_params = count_parameters(model)
@@ -99,10 +104,9 @@ def _build_hypermodel_summary(model: torch.nn.Module) -> dict[str, int | str]:
     shared_task_token_embedder = getattr(model, "shared_task_token_embedder", None)
 
     hypernetwork_backbone_params = count_parameters(hypernetwork, trainable_only=True)
-    bottleneck_modules = [hypermodel.hyper_bottleneck]
     hyper_head_params = (
-        sum(count_parameters(m, trainable_only=True) for m in bottleneck_modules)
-        + hypermodel.pool_query.numel()
+        count_parameters(hypermodel.hyper_pooling, trainable_only=True)
+        + count_parameters(hypermodel.hyper_bottleneck, trainable_only=True)
         + count_parameters(hypermodel.hyper_out, trainable_only=True)
     )
     shared_embedding_params = (
@@ -120,6 +124,7 @@ def _build_hypermodel_summary(model: torch.nn.Module) -> dict[str, int | str]:
     summary_lines = [
         "Model architecture:",
         f"Hypernetwork: {hypernetwork!r}",
+        f"Hyper pooling: {_describe_hyper_pooling(hypermodel)}",
         f"Hyper projection: {_describe_hyper_projection(hypermodel)}",
         f"Target: {target_model!r}",
     ]

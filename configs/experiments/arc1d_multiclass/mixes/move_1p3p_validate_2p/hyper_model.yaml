@@ -3,11 +3,11 @@ task: move_1p3p_validate_2p
 
 # Doesnt converge to solving at the moment. Might need more capacity or steps.
 
-experiment_name: ${data}_${task}_${model}_newrepo
+experiment_name: ${data}_${task}_${model}_heirarchical_pooling_4bottleneck_dim
 
 task_categories:
   - 1d_move_1p
-  # - 1d_move_2p
+  - 1d_move_2p
   - 1d_move_3p
   # - 1d_move_dp
   # - 1d_move_2p_dp
@@ -50,6 +50,13 @@ optimizer: RAdam
 gradient_clip_val: 1.0
 batch_size: 32
 
+learning_rate: 0.001
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: ${max_steps}
+    eta_min: 0.00001
+
 # stop_on_perfect_val_exact_match: true
 
 hyper_model:
@@ -59,7 +66,7 @@ hyper_model:
     num_heads: 1
     num_layers: 2
     output_dim: 32
-    # dropout: 0.1
+    dropout: 0.1
 
 target_model:
   name: rnn
@@ -69,4 +76,5 @@ target_model:
     num_layers: 1
 
 hyper_head:
-  bottleneck_dim: 2
+  pooling: hierarchical
+  bottleneck_dim: 4

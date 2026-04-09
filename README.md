@@ -241,6 +241,15 @@ section:
   learned token embedder over `value`, `position`, `example_id`, `role`, and
   `is_query`
 
+The hypermodel wrapper also owns a `hyper_head` section:
+
+- `hyper_head.bottleneck_dim` controls the latent bottleneck before target
+  parameter projection
+- `hyper_head.pooling: attention` keeps the legacy single learned-query pool
+- `hyper_head.pooling: hierarchical` uses hierarchical learned pooling over the
+  6 serialized support segments, then 3 support examples, before the unchanged
+  bottleneck and projection path
+
 ## Data
 
 ### Build task-level ARC1D
