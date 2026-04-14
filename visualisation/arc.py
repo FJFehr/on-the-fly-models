@@ -11,6 +11,8 @@ matplotlib.use("Agg")
 
 from matplotlib import pyplot as plt
 
+from visualisation.style import FONT_SIZES, format_task_category
+
 # Standard ARC color palette (integers 0-9)
 ARC_COLORS = {
     0: "#000000",  # Black
@@ -31,32 +33,6 @@ MASK_CELL_COLOR = "#F4F1EA"
 MASK_EDGE_COLOR = "#B7B0A4"
 PANEL_LABEL_PAD = 8
 ARROW_COLUMN_WIDTH = 0.45
-TASK_CATEGORY_DISPLAY_NAMES = {
-    "1d_move_1p": "Move 1 Pixel",
-    "1d_move_2p": "Move 2 Pixels",
-    "1d_move_3p": "Move 3 Pixels",
-    "1d_move_dp": "Move Dynamic",
-    "1d_move_2p_dp": "Move 2 Pixels Towards",
-    "1d_fill": "Fill",
-    "1d_padded_fill": "Padded Fill",
-    "1d_hollow": "Hollow",
-    "1d_flip": "Flip",
-    "1d_mirror": "Mirror",
-    "1d_denoising_1c": "Denoise",
-    "1d_denoising_mc": "Denoise Multicolor",
-    "1d_pcopy_1c": "Pattern Copy",
-    "1d_pcopy_mc": "Pattern Copy Multicolor",
-    "1d_recolor_oe": "Recolor by Odd Even",
-    "1d_recolor_cnt": "Recolor by Size",
-    "1d_recolor_cmp": "Recolor by Size Comparison",
-    "1d_scale_dp": "Scaling",
-}
-
-
-def format_task_category(category: str) -> str:
-    normalized_category = category.removeprefix("dataset/")
-    return TASK_CATEGORY_DISPLAY_NAMES.get(normalized_category, normalized_category)
-
 
 def draw_sequence(ax: plt.Axes, sequence: list[int], label: str) -> None:
     grid = np.array(sequence).reshape(1, -1)
@@ -65,7 +41,7 @@ def draw_sequence(ax: plt.Axes, sequence: list[int], label: str) -> None:
     ax.set_yticks(np.arange(-0.5, 1, 1), minor=True)
     ax.grid(which="minor", color="white", linewidth=2)
     ax.tick_params(which="both", bottom=False, left=False, labelbottom=False, labelleft=False)
-    ax.set_title(label, fontsize=14, fontweight="bold", pad=PANEL_LABEL_PAD)
+    ax.set_title(label, fontsize=FONT_SIZES["panel_label"], fontweight="bold", pad=PANEL_LABEL_PAD)
     for spine in ax.spines.values():
         spine.set_visible(False)
 
@@ -86,10 +62,13 @@ def draw_masked_sequence(ax: plt.Axes, sequence_length: int, label: str) -> None
                 linewidth=1.5,
             )
         )
-        ax.text(index, 0, "?", ha="center", va="center", fontsize=16, fontweight="bold")
+        ax.text(
+            index, 0, "?",
+            ha="center", va="center", fontsize=FONT_SIZES["title"], fontweight="bold",
+        )
 
     ax.tick_params(which="both", bottom=False, left=False, labelbottom=False, labelleft=False)
-    ax.set_title(label, fontsize=14, fontweight="bold", pad=PANEL_LABEL_PAD)
+    ax.set_title(label, fontsize=FONT_SIZES["panel_label"], fontweight="bold", pad=PANEL_LABEL_PAD)
     for spine in ax.spines.values():
         spine.set_visible(False)
 
@@ -157,7 +136,7 @@ def render_task_figure(task: dict) -> plt.Figure:
     draw_io_arrow(arrow_ax)
 
     task_title = format_task_category(task["task_category"])
-    fig.suptitle(task_title, fontsize=22, fontweight="bold", y=0.98)
+    fig.suptitle(task_title, fontsize=FONT_SIZES["title"], fontweight="bold", y=0.98)
     fig.subplots_adjust(left=0.06, top=0.88)
     return fig
 
@@ -181,7 +160,7 @@ def render_val_example_figure(
     draw_sequence(axes[2], prediction_sequence, "Prediction")
 
     if title:
-        fig.suptitle(title, fontsize=18, fontweight="bold", y=0.98)
+        fig.suptitle(title, fontsize=FONT_SIZES["title"], fontweight="bold", y=0.98)
         fig.subplots_adjust(top=0.86, hspace=0.65)
     else:
         fig.subplots_adjust(top=0.92, hspace=0.65)
@@ -231,7 +210,7 @@ def render_task_prediction_figure(
         if query_exact_match is not None:
             title += f" | query_exact_match={query_exact_match}"
 
-    fig.suptitle(title, fontsize=18, fontweight="bold", y=0.98)
+    fig.suptitle(title, fontsize=FONT_SIZES["title"], fontweight="bold", y=0.98)
     fig.subplots_adjust(top=0.88, hspace=0.65, wspace=0.15)
     return fig
 

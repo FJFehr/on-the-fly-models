@@ -265,9 +265,11 @@ def create_checkpoint_callback(cfg) -> ModelCheckpoint:
     - `best_model.ckpt` for metric-selected evaluation
     - `last.ckpt` for seamless resume
     """
+    metric = cfg.primary_metric
+    mode = "min" if metric.endswith("loss") else "max"
     return ModelCheckpoint(
-        monitor=cfg.primary_metric,
-        mode="max",
+        monitor=metric,
+        mode=mode,
         every_n_epochs=1,
         dirpath=cfg.output_path,
         filename="best_model",

@@ -6,10 +6,11 @@ import os
 import lightning as pl
 from omegaconf import OmegaConf
 
-from training.config import apply_grouped_config_aliases, build_runtime_config_dict
 from data_modules import DATA_REGISTRY
 from models import MODEL_REGISTRY
+from training.config import apply_grouped_config_aliases, build_runtime_config_dict
 from visualisation import render_task_attention_figure, resolve_attention_matrix
+from visualisation.style import apply_latex_style
 
 
 def resolve_checkpoint_path(output_path: str, checkpoint_path: str | None) -> str:
@@ -49,6 +50,7 @@ def get_split_dataloader(datamodule, split_name: str):
 
 
 def main(cli_args) -> None:
+    apply_latex_style()
     cfg = OmegaConf.load(cli_args.config)
     apply_grouped_config_aliases(cfg)
     cfg_dict = build_runtime_config_dict(cfg)

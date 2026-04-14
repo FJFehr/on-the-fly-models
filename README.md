@@ -13,11 +13,14 @@ on-the-fly-models/
 │   ├── base/
 │   │   └── arc1d_simple.yaml
 │   └── experiments/
-│       ├── arc1d_simple_meta_hypermodel/  # Active: simplified binary hypermodel
+│       ├── arc1d_binary/                  # Binary hypermodel experiments
+│       ├── arc1d_multiclass/              # Multiclass hypermodel experiments
+│       ├── arc1d_capacity/                # Exp 1: direct target-model capacity baseline
 │       └── _archived/                     # Legacy experiment configs (deleted models)
 ├── data_modules/
 │   ├── __init__.py                 # Datamodule registry
 │   ├── arc1d_simple.py
+│   ├── arc1d_direct.py             # Flat supervised datamodule (Exp 1)
 │   ├── arc1d_meta_simple.py
 │   ├── arc1d_padded_multiclass.py
 │   └── arc1d_meta_padded_multiclass.py
@@ -25,11 +28,14 @@ on-the-fly-models/
 │   ├── __init__.py                 # Model registry
 │   ├── hypermodel.py               # Generic hypernetwork-target wrapper
 │   ├── hypermodel_lightning.py     # HyperModelLightning training module
+│   ├── direct_supervised_lightning.py  # DirectSupervisedLightning (Exp 1)
 │   ├── cnn.py                      # Generic 1D CNN encoder
+│   ├── mlp.py                      # Global MLP backbone
 │   ├── rnn.py                      # Generic RNN encoder
 │   └── transformer.py              # Generic transformer encoder
 ├── scripts/
 │   ├── build_arc_1d.py
+│   ├── analyze_weight_space_pca.py   # Offline PCA of hyper-generated vs direct RNN weights
 │   ├── visualise_tasks.py
 │   └── eda_arc_1d_boxplots.py
 ├── tests/
@@ -217,6 +223,26 @@ uv run python train.py --config configs/experiments/arc1d_padded_multiclass/move
 Supported model families are:
 
 - `binary_hyper_model` / `hyper_model` — both resolve to `HyperModelLightning`; hypernetwork and target template are selected via `hyper_model.name` and `target_model.name` in the experiment config
+- `direct_supervised` — resolves to `DirectSupervisedLightning`; trains a backbone (RNN, CNN, Transformer, MLP) directly on (input, output) pairs without a hypernetwork; see Experiment 1 configs in `configs/experiments/arc1d_capacity/`
+
+### Experiment 1: Target Model Capacity (direct supervised)
+
+Run a single architecture on all binary task categories:
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_capacity/rnn.yaml
+uv run python train.py --config configs/experiments/arc1d_capacity/cnn.yaml
+uv run python train.py --config configs/experiments/arc1d_capacity/transformer.yaml
+uv run python train.py --config configs/experiments/arc1d_capacity/mlp.yaml
+```
+
+Training pools support examples from all tasks per category; validation uses query examples from held-out tasks. Training stops at `val_all_examples_exact_match == 1.0`. The `base_multiclass.yaml` base config is available for the multiclass variant.
+
+For a quick smoke test (single batch overfit):
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_capacity/rnn.yaml overfit_single_batch=true max_steps=500
+```
 
 The current system is optimized for rapid baseline iteration:
 
@@ -225,6 +251,22 @@ The current system is optimized for rapid baseline iteration:
 - resolved configs and model summaries are saved per run
 - training stops early once the configured primary validation metric reaches `1.0` unless disabled in config
 - validation examples and hard failures can be logged for inspection
+
+Capacity sweeps can be launched across multiple single-GPU workers and multiple
+seeds with:
+
+```bash
+uv run python scripts/run_arc1d_capacity.py \
+  --config-dir configs/experiments/arc1d_capacity_multiclass \
+  --gpus 0,1,2,3 \
+  --seeds 42,43,44
+```
+
+The capacity plotter aggregates seeded runs under one output root:
+
+- `solved_per_model.png` uses the best seed per task/model cell
+- `heatmap_task_model.png` uses mean validation exact match with `mean±std`
+  shown inside each cell
 
 The `HyperModelLightning` path keeps one generated parameter vector per task. Its hypernetwork and target template are selected via `hyper_model.name` and `target_model.name` in the experiment config:
 
@@ -370,6 +412,31 @@ The deleted `BinaryHyperRNNMetaModelLightning` differed from the current `HyperM
 ```bash
 uv run pytest
 ```
+
+## Weight-space PCA analysis
+
+Use the offline PCA script to compare hyper-generated target RNN weights
+against a direct trained `1d_move_1p` baseline in one shared canonical weight
+space:
+
+```bash
+uv run python scripts/analyze_weight_space_pca.py \
+  --hyper-run outputs/arc1d_simple_meta_hypermodel_experiments/<hyper_run> \
+  --direct-run outputs/arc1d_capacity_binary_baseline_experiments/<direct_run> \
+  --split val \
+  --checkpoint best \
+  --output-dir outputs/weight_space_pca/<analysis_name>
+```
+
+This v1 analysis is intentionally narrow:
+
+- binary prediction only
+- `1d_move_1p` only
+- bidirectional 1-layer RNN only
+- PCA only, no t-SNE
+
+The script writes `summary.json`, `hyper_vectors.csv`, `metadata.csv`, and
+`pca.png`.
 
 Coverage is intentionally focused on:
 

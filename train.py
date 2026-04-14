@@ -75,6 +75,11 @@ def parse_args() -> argparse.Namespace:
         type=str,
         help="Path to the experiment YAML config file.",
     )
+    parser.add_argument(
+        "overrides",
+        nargs="*",
+        help="Optional OmegaConf dotlist overrides such as seed=43 devices=1.",
+    )
     return parser.parse_args()
 
 
@@ -94,7 +99,7 @@ def main() -> None:
     # Resolve config inheritance, aliases, and grouped sections before anything
     # is instantiated. The resulting runtime dict is what gets passed to the
     # model and datamodule constructors.
-    cfg = load_config(cli_args.config)
+    cfg = load_config(cli_args.config, cli_args.overrides)
     runtime_cfg = build_runtime_config_dict(cfg)
     configure_torch_runtime(runtime_cfg)
 

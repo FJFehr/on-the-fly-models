@@ -84,7 +84,7 @@ def build_runtime_config_dict(cfg) -> dict:
     return runtime_cfg
 
 
-def load_config(config_path: str):
+def load_config(config_path: str, overrides: list[str] | None = None):
     """Load a config file, apply `_base_`, aliases, and interpolation resolution.
 
     This is the single entry point for config loading so every run benefits
@@ -97,6 +97,9 @@ def load_config(config_path: str):
         base_cfg = OmegaConf.load(cfg._base_)
         del cfg["_base_"]
         cfg = OmegaConf.merge(base_cfg, cfg)
+
+    if overrides:
+        cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(overrides))
 
     apply_grouped_config_aliases(cfg)
     OmegaConf.resolve(cfg)

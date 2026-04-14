@@ -7,6 +7,7 @@ from datasets import Dataset, DatasetDict, concatenate_datasets, load_from_disk
 from matplotlib import pyplot as plt
 
 from visualisation import render_task_figure
+from visualisation.style import apply_latex_style
 
 
 def parse_args() -> argparse.Namespace:
@@ -137,6 +138,7 @@ def build_output_path(output_dir: Path, task: dict) -> Path:
 
 
 def main() -> None:
+    apply_latex_style()
     args = parse_args()
     data = load_task_data(args.data_dir)
     ds = select_dataset(data, args.split)

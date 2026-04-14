@@ -8,7 +8,7 @@ from datasets import Dataset, DatasetDict, load_from_disk
 from matplotlib import pyplot as plt
 from matplotlib.patches import Patch
 
-from visualisation import format_task_category
+from visualisation.style import FONT_SIZES, apply_latex_style, format_task_category
 
 DEFAULT_SPLITS = ("train", "dev", "test")
 SPLIT_SHADES = {
@@ -16,12 +16,6 @@ SPLIT_SHADES = {
     "dev": 0.25,
     "test": -0.15,
 }
-TITLE_FONT_SIZE = 18
-LABEL_FONT_SIZE = 15
-TICK_FONT_SIZE = 15
-LEGEND_FONT_SIZE = 15
-TOKEN_FONT_SIZE = 12
-TOTAL_FONT_SIZE = 15
 
 
 def parse_args() -> argparse.Namespace:
@@ -148,12 +142,12 @@ def plot_grouped_boxplots(data: DatasetDict, output_path: Path) -> None:
     ax.set_xticklabels(
         [format_task_category(category) for category in categories], rotation=55, ha="right"
     )
-    ax.tick_params(axis="x", labelsize=TICK_FONT_SIZE)
-    ax.tick_params(axis="y", labelsize=TICK_FONT_SIZE)
-    ax.set_ylabel("Sequence length", fontsize=LABEL_FONT_SIZE)
+    ax.tick_params(axis="x", labelsize=FONT_SIZES["tick"])
+    ax.tick_params(axis="y", labelsize=FONT_SIZES["tick"])
+    ax.set_ylabel("Sequence length", fontsize=FONT_SIZES["label"])
     ax.set_title(
         "1D-ARC sequence-length distributions by category and split",
-        fontsize=TITLE_FONT_SIZE,
+        fontsize=FONT_SIZES["title"],
         pad=34,
     )
     ax.grid(axis="y", color="#D9D9D9", linewidth=0.8, alpha=0.8)
@@ -174,7 +168,7 @@ def plot_grouped_boxplots(data: DatasetDict, output_path: Path) -> None:
                 f"{lengths.sum() * 2 / 1000:.1f}K",
                 ha="center",
                 va="bottom",
-                fontsize=TOKEN_FONT_SIZE,
+                fontsize=FONT_SIZES["annotation"],
                 rotation=90,
             )
 
@@ -185,7 +179,7 @@ def plot_grouped_boxplots(data: DatasetDict, output_path: Path) -> None:
         transform=ax.transAxes,
         ha="right",
         va="top",
-        fontsize=TOTAL_FONT_SIZE,
+        fontsize=FONT_SIZES["label"],
     )
 
     legend_handles = [
@@ -200,8 +194,8 @@ def plot_grouped_boxplots(data: DatasetDict, output_path: Path) -> None:
         bbox_to_anchor=(0.5, 1.12),
         ncol=3,
         frameon=False,
-        fontsize=LEGEND_FONT_SIZE,
-        title_fontsize=LEGEND_FONT_SIZE,
+        fontsize=FONT_SIZES["legend"],
+        title_fontsize=FONT_SIZES["legend"],
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -211,6 +205,7 @@ def plot_grouped_boxplots(data: DatasetDict, output_path: Path) -> None:
 
 
 def main() -> None:
+    apply_latex_style()
     args = parse_args()
     data = validate_task_dataset(load_task_data(args.data_dir))
     plot_grouped_boxplots(data, args.output_path)

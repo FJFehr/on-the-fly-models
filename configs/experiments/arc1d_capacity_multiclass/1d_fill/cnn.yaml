@@ -1,0 +1,10 @@
+_base_: configs/experiments/arc1d_capacity_multiclass/base_multiclass.yaml
+experiment_name: mc_1d_fill_cnn
+task_categories:
+  - 1d_fill
+backbone_model:
+  name: cnn
+  params:
+    hidden_dim: 32
+    num_layers: 2
+    kernel_size: 5

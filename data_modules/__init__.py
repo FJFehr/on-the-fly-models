@@ -12,6 +12,7 @@
 #   4. No changes to train.py are needed — it looks up data modules by key.
 # ---------------------------------------------------------------------------
 
+from data_modules.arc1d_direct import Arc1dDirectDataModule
 from data_modules.arc1d_meta_padded_multiclass import Arc1dMetaPaddedMulticlassDataModule
 from data_modules.arc1d_meta_simple import Arc1dMetaSimpleDataModule
 
@@ -20,4 +21,5 @@ from data_modules.arc1d_meta_simple import Arc1dMetaSimpleDataModule
 DATA_REGISTRY = {
     "arc_1d_meta_simple": Arc1dMetaSimpleDataModule,
     "arc_1d_meta_padded_multiclass": Arc1dMetaPaddedMulticlassDataModule,
+    "arc_1d_direct": Arc1dDirectDataModule,
 }
