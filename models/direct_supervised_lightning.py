@@ -61,11 +61,12 @@ class DirectSupervisedLightning(pl.LightningModule):
 
         embedding_dim: int = task_encoding["embedding_dim"]
         value_vocab_size: int = task_encoding.get("value_vocab_size", 2)
+        self.padding_idx: int | None = kwargs.get("padding_idx", None)
 
         self.embedder = TaskTokenEmbedder(
             embedding_dim=embedding_dim,
-            position_vocab_size=input_dim,
             value_vocab_size=value_vocab_size,
+            padding_idx=self.padding_idx,
         )
 
         self.backbone, hidden_dim = self._build_backbone(
@@ -86,7 +87,12 @@ class DirectSupervisedLightning(pl.LightningModule):
         """Instantiate the backbone and return (module, hidden_dim)."""
         from models.mlp import MLP  # explicit import to avoid collision with transformer.MLP
 
-        registry = {"rnn": RNN, "cnn": CNN, "transformer": Transformer, "mlp": MLP}
+        registry = {
+            "rnn": RNN,
+            "cnn": CNN,
+            "transformer": Transformer,
+            "mlp": MLP,
+        }
         name = backbone_model["name"]
         if name not in registry:
             msg = f"Unknown backbone {name!r}. Choose from {sorted(registry)}."
@@ -98,6 +104,11 @@ class DirectSupervisedLightning(pl.LightningModule):
         params["output_dim"] = hidden_dim
         if name == "mlp":
             params["seq_len"] = seq_len
+        if name == "transformer":
+            # The transformer has an internal output_head that is redundant when DSL
+            # adds its own head on top. Disable it so the backbone returns hidden states
+            # directly, matching the contract of all other backbones.
+            params["use_output_head"] = False
 
         return registry[name](**params), hidden_dim
 
@@ -116,7 +127,22 @@ class DirectSupervisedLightning(pl.LightningModule):
         B, seq_len = value_ids.shape
         position_ids = torch.arange(seq_len, device=value_ids.device).unsqueeze(0).expand(B, -1)
         embedded = self.embedder(value_ids, position_ids)  # (B, seq_len, emb_dim)
-        hidden = self.backbone(embedded)  # (B, seq_len, hidden_dim)
+
+        # Zero out padding positions so backbones see neutral vectors for PAD tokens.
+        # value_embedding already zeros the value component (padding_idx), but sinusoidal
+        # PE is still added, giving padding tokens a non-zero positional signal.
+        if self.padding_idx is not None:
+            pad_mask = (value_ids == self.padding_idx).unsqueeze(-1)  # (B, seq_len, 1)
+            embedded = embedded.masked_fill(pad_mask, 0.0)
+
+        if isinstance(self.backbone, Transformer) and self.padding_idx is not None:
+            padding_mask = value_ids == self.padding_idx  # (B, seq_len), True = pad
+            hidden = self.backbone(embedded, src_key_padding_mask=padding_mask)
+        elif isinstance(self.backbone, RNN) and self.padding_idx is not None:
+            lengths = (value_ids != self.padding_idx).sum(dim=1)
+            hidden = self.backbone(embedded, lengths=lengths)
+        else:
+            hidden = self.backbone(embedded)  # (B, seq_len, hidden_dim)
         logits = self.head(hidden)  # (B, seq_len, out_dim)
         if self.is_binary_task:
             logits = logits.squeeze(-1)  # (B, seq_len)
@@ -132,13 +158,25 @@ class DirectSupervisedLightning(pl.LightningModule):
         if self.is_binary_task:
             return F.binary_cross_entropy_with_logits(logits, targets.float())
         # logits: (B, seq_len, num_classes) → CrossEntropyLoss expects (B, C, seq_len)
-        return F.cross_entropy(logits.permute(0, 2, 1), targets.long())
+        ignore = self.padding_idx if self.padding_idx is not None else -100
+        return F.cross_entropy(logits.permute(0, 2, 1), targets.long(), ignore_index=ignore)
+
+    def _mask_padding(
+        self, targets_long: torch.Tensor, predictions: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return (targets, predictions) with padding positions zeroed out so
+        metrics treat them as trivially correct (same value on both sides)."""
+        if self.padding_idx is not None:
+            is_pad = targets_long == self.padding_idx
+            targets_long = targets_long.masked_fill(is_pad, 0)
+            predictions = predictions.masked_fill(is_pad, 0)
+        return targets_long, predictions
 
     def compute_metrics(
         self, logits: torch.Tensor, targets: torch.Tensor, prefix: str
     ) -> dict[str, torch.Tensor]:
         predictions = self.decode_logits(logits)
-        targets_long = targets.long()
+        targets_long, predictions = self._mask_padding(targets.long(), predictions)
         key = f"{prefix}_" if prefix else ""
         return {
             f"{key}query_accuracy": accuracy(targets_long, predictions),
@@ -185,37 +223,53 @@ class DirectSupervisedLightning(pl.LightningModule):
                 self._accumulate_val_examples(batch, logits, targets)
         return loss
 
-    def _seq_to_str(self, seq: torch.Tensor) -> str:
-        return " ".join(str(v) for v in seq.detach().cpu().tolist())
+    def _actual_seq_len(self, inp: torch.Tensor) -> int:
+        """Return the unpadded length of a sequence tensor.
+
+        Finds the last position that is NOT the padding sentinel so that
+        trailing padding tokens are excluded from visualisation.
+        """
+        if self.padding_idx is None:
+            return inp.shape[0]
+        values = inp.detach().cpu().tolist()
+        n = len(values)
+        while n > 0 and int(values[n - 1]) == self.padding_idx:
+            n -= 1
+        return n if n > 0 else len(values)
 
     def _accumulate_val_examples(
         self, batch: dict, logits: torch.Tensor, targets: torch.Tensor
     ) -> None:
-        """Store up to 2 (input, target, prediction) rows for W&B logging."""
+        """Store up to 2 (input, target, prediction) rows for W&B logging.
+
+        Sequences are sliced to their actual (unpadded) length so that padding
+        tokens never appear in the rendered visualisation.
+        """
         predictions = self.decode_logits(logits)
-        needed = 2 - len(self._val_examples)
+        targets_long = targets.long()
         for inp, tgt, pred, cat in zip(
             batch["input"],
-            targets,
+            targets_long,
             predictions,
             batch["task_category"],
             strict=True,
         ):
             if len(self._val_examples) >= 2:
                 break
-            exact = bool((pred == tgt.long()).all().item())
+            n = self._actual_seq_len(inp)
+            inp_vals = [int(v) for v in inp[:n].detach().cpu().tolist()]
+            tgt_vals = [int(v) for v in tgt[:n].detach().cpu().tolist()]
+            pred_vals = [int(v) for v in pred[:n].detach().cpu().tolist()]
+            exact = pred_vals == tgt_vals
             self._val_examples.append(
                 {
                     "task_category": cat,
-                    "input": self._seq_to_str(inp),
-                    "target": self._seq_to_str(tgt.long()),
-                    "prediction": self._seq_to_str(pred),
+                    "input": " ".join(str(v) for v in inp_vals),
+                    "target": " ".join(str(v) for v in tgt_vals),
+                    "prediction": " ".join(str(v) for v in pred_vals),
                     "correct": exact,
                 }
             )
-            needed -= 1
-            if needed == 0:
-                break
 
     def accumulate_query_exact_match_by_task_category(
         self,
@@ -225,7 +279,8 @@ class DirectSupervisedLightning(pl.LightningModule):
     ) -> None:
         """Accumulate validation query exact-match totals grouped by task category."""
         predictions = self.decode_logits(logits)
-        query_exact_matches = (predictions == targets.long()).all(dim=1).float()
+        targets_long, predictions = self._mask_padding(targets.long(), predictions)
+        query_exact_matches = (predictions == targets_long).all(dim=1).float()
         for task_category, query_exact_match in zip(
             batch["task_category"],
             query_exact_matches.detach().cpu().tolist(),
@@ -309,6 +364,106 @@ class DirectSupervisedLightning(pl.LightningModule):
             )
             payload[f"val_example_{i}"] = figure_to_wandb_image(fig, caption=title)
         experiment.log(payload)
+
+    def export_hard_examples(
+        self,
+        datamodule,
+        output_path: str,
+        wandb_logger=None,
+        num_examples: int = 3,
+        key_prefix: str = "val_hard_example",
+    ) -> None:
+        """Find the hardest validation failures and log them to W&B and disk.
+
+        A failure is any example where the predicted sequence does not exactly
+        match the target (over valid, non-padding positions). Examples are ranked
+        by position accuracy (lowest first). Sequences are stripped of trailing
+        padding tokens before rendering.
+        """
+        import os
+
+        from training.logging import _log_wandb_payload
+
+        self.eval()
+        device = next(self.parameters()).device
+        wrong_examples: list[dict] = []
+
+        with torch.no_grad():
+            for batch in datamodule.val_dataloader():
+                batch_device = {
+                    k: v.to(device) if isinstance(v, torch.Tensor) else v
+                    for k, v in batch.items()
+                }
+                logits, targets = self(batch_device)
+                predictions = self.decode_logits(logits)
+                targets_long = targets.long()
+
+                for inp, tgt, pred, cat, tid in zip(
+                    batch_device["input"],
+                    targets_long,
+                    predictions,
+                    batch["task_category"],
+                    batch["task_id"],
+                    strict=True,
+                ):
+                    n = self._actual_seq_len(inp)
+                    inp_vals = [int(v) for v in inp[:n].cpu().tolist()]
+                    tgt_vals = [int(v) for v in tgt[:n].cpu().tolist()]
+                    pred_vals = [int(v) for v in pred[:n].cpu().tolist()]
+
+                    if pred_vals == tgt_vals:
+                        continue  # exact match — not a hard example
+
+                    num_correct = sum(p == t for p, t in zip(pred_vals, tgt_vals))
+                    pos_acc = num_correct / n if n > 0 else 0.0
+                    wrong_examples.append(
+                        {
+                            "input": inp_vals,
+                            "target": tgt_vals,
+                            "prediction": pred_vals,
+                            "position_accuracy": pos_acc,
+                            "task_category": cat,
+                            "task_id": int(tid) if isinstance(tid, torch.Tensor) else int(tid),
+                        }
+                    )
+
+        if not wrong_examples:
+            print("No wrong validation examples found — skipping hard example logging.")
+            return
+
+        wrong_examples.sort(key=lambda ex: ex["position_accuracy"])
+        hard = wrong_examples[:num_examples]
+
+        hard_dir = os.path.join(output_path, "hard_examples")
+        os.makedirs(hard_dir, exist_ok=True)
+        wandb_payload = {}
+
+        for i, ex in enumerate(hard):
+            n = len(ex["target"])
+            num_wrong = sum(p != t for p, t in zip(ex["prediction"], ex["target"]))
+            caption = (
+                f"{ex['task_category']}:{ex['task_id']} | "
+                f"pos_acc={ex['position_accuracy']:.2f} | "
+                f"{num_wrong}/{n} wrong"
+            )
+            fig = render_val_example_figure(
+                input_sequence=ex["input"],
+                target_sequence=ex["target"],
+                prediction_sequence=ex["prediction"],
+                title=caption,
+            )
+            filename = (
+                f"hard_{i}_{ex['task_category']}_{ex['task_id']}"
+                f"_acc{ex['position_accuracy']:.2f}.png"
+            )
+            fig.savefig(os.path.join(hard_dir, filename), dpi=150, bbox_inches="tight")
+            wandb_payload[f"{key_prefix}_{i}"] = figure_to_wandb_image(fig, caption=caption)
+
+        _log_wandb_payload(wandb_logger, wandb_payload)
+        print(
+            f"Logged {len(hard)} hard validation examples "
+            f"({len(wrong_examples)} total failures) to {hard_dir}"
+        )
 
     def training_step(self, batch, batch_idx):
         return self.common_step(batch, prefix="train")

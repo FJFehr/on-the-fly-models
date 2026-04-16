@@ -1,0 +1,9 @@
+_base_: configs/experiments/arc1d_capacity_binary/base_binary.yaml
+experiment_name: 1d_denoising_1c_mlp
+task_categories:
+  - 1d_denoising_1c
+backbone_model:
+  name: mlp
+  params:
+    hidden_dim: 11
+    num_layers: 4

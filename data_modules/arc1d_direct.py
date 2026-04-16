@@ -2,8 +2,36 @@
 
 import lightning as pl
 import torch
+import torch.nn.functional as F
 from datasets import DatasetDict
 from torch.utils.data import DataLoader, Dataset
+
+PAD_IDX = 10  # sentinel outside the 0–9 ARC colour range for multiclass padding
+
+
+class Arc1dDirectPaddingCollator:
+    """Collate variable-length Arc1dDirect items by padding to the longest sequence in the batch.
+
+    Pads ``input`` and ``output`` tensors with ``padding_value`` (default PAD_IDX).
+    All other fields (task_category, task_id) are gathered into plain lists.
+    """
+
+    def __init__(self, padding_value: int = PAD_IDX):
+        self.padding_value = padding_value
+
+    def __call__(self, batch: list[dict]) -> dict:
+        max_len = max(item["input"].shape[0] for item in batch)
+        inputs, outputs = [], []
+        for item in batch:
+            pad = max_len - item["input"].shape[0]
+            inputs.append(F.pad(item["input"], (0, pad), value=self.padding_value))
+            outputs.append(F.pad(item["output"], (0, pad), value=self.padding_value))
+        return {
+            "input": torch.stack(inputs),
+            "output": torch.stack(outputs),
+            "task_category": [item["task_category"] for item in batch],
+            "task_id": [item["task_id"] for item in batch],
+        }
 
 from data_modules.arc1d_simple import filter_split
 
@@ -58,6 +86,7 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
         val_split: str = "dev",
         test_split: str = "test",
         overfit_single_batch: bool = False,
+        padding_value: int = PAD_IDX,
         **kwargs,
     ):
         super().__init__()
@@ -72,6 +101,7 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
         self.val_split = val_split
         self.test_split = test_split
         self.overfit_single_batch = overfit_single_batch
+        self.collator = Arc1dDirectPaddingCollator(padding_value=padding_value)
         # binary tasks store values as float32; multiclass uses class indices (long)
         self.dtype = torch.float32 if prediction_task == "binary" else torch.long
 
@@ -159,6 +189,7 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
+            collate_fn=self.collator,
         )
 
     def val_dataloader(self):
@@ -166,6 +197,7 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
             self.val_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            collate_fn=self.collator,
         )
 
     def test_dataloader(self):
@@ -173,4 +205,5 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
             self.test_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            collate_fn=self.collator,
         )

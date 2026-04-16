@@ -421,6 +421,18 @@ def export_hard_validation_examples(
     """Export hard validation artefacts for pair-based and task-based models."""
     datamodule.setup(stage="validate")
 
+    # Models that implement their own hard-example export (e.g. DirectSupervisedLightning)
+    # take priority over the generic pair-based and task-gallery paths below.
+    if hasattr(model, "export_hard_examples"):
+        model.export_hard_examples(
+            datamodule=datamodule,
+            output_path=output_path,
+            wandb_logger=wandb_logger,
+            num_examples=num_hard_examples,
+            key_prefix=key_prefix,
+        )
+        return
+
     if getattr(model, "supports_hard_val_examples", True):
         log_hard_val_examples(
             model=model,
