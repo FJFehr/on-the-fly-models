@@ -265,6 +265,20 @@ Variable-length multiclass sweep (18 tasks × CNN/RNN/Transformer, 3 seeds, 8 GP
 uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_variable_multiclass --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
 ```
 
+Scaling experiment — small/medium/large capacity tiers (run each size independently):
+
+| Size | Params (CNN/RNN/TF) | Steps | WandB project |
+|------|---------------------|-------|---------------|
+| small | ~4K / 5.6K / 5.4K | 4 000 | `arc1d_capacity_small` |
+| medium | ~9K / 9.2K / 10.3K | 4 000 | `arc1d_capacity_medium` |
+| large | ~100K / 100K / 95K | 10 000 | `arc1d_capacity_large` |
+
+```bash
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_small --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_medium --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_large --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+```
+
 The capacity plotter aggregates seeded runs under one output root:
 
 - `solved_per_model.png` uses the best seed per task/model cell

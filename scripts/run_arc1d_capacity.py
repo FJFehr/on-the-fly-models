@@ -122,18 +122,43 @@ def parse_csv_ints(raw: str | None, option_name: str) -> list[int]:
     return values
 
 
-def load_experiment_name(config_path: Path) -> str:
-    """Resolve the config's experiment_name after `_base_` merging."""
+def load_config(config_path: Path):
+    """Load and merge a config (resolving _base_), returning the OmegaConf object."""
     cfg = OmegaConf.load(config_path)
     if "_base_" in cfg:
         base_cfg = OmegaConf.load(cfg._base_)
         del cfg["_base_"]
         cfg = OmegaConf.merge(base_cfg, cfg)
     OmegaConf.resolve(cfg)
+    return cfg
+
+
+def load_experiment_name(config_path: Path) -> str:
+    """Resolve the config's experiment_name after `_base_` merging."""
+    cfg = load_config(config_path)
     experiment_name = cfg.get("experiment_name")
     if isinstance(experiment_name, str) and experiment_name:
         return experiment_name
     return f"{config_path.parent.name}_{config_path.stem}"
+
+
+def resolve_output_root(config_path: Path) -> Path:
+    """Return the output directory root for runs from this config."""
+    cfg = load_config(config_path)
+    output_dir = cfg.get("output_dir", "outputs")
+    project_name = cfg.get("project_name", config_path.parent.name)
+    return Path(output_dir) / project_name
+
+
+def is_run_complete(run: "ScheduledRun", output_root: Path) -> bool:
+    """Return True if results.txt exists for this run.
+
+    results.txt is written by train.py as the very last step after final
+    validation and test passes, so it only exists if training completed
+    successfully. best_model.ckpt alone is not sufficient — Lightning saves
+    it during training, so it can exist even after a crash or kill.
+    """
+    return (output_root / run.run_name / "results.txt").exists()
 
 
 def build_scheduled_runs(configs: Iterable[Path], seeds: list[int]) -> list[ScheduledRun]:
@@ -205,13 +230,27 @@ def _terminate_all() -> None:
                 proc.terminate()
 
 
+SKIP_RETURNCODE = -1  # sentinel: run was skipped (already complete)
+
+
 def run_experiment(
     run: ScheduledRun,
     log_dir: Path,
     print_lock: threading.Lock,
     gpu_queue: Queue[int] | None,
+    output_root: Path,
 ) -> tuple[str, int]:
-    """Run one training job, streaming output to a log file."""
+    """Run one training job, streaming output to a log file.
+
+    Skips the run (without consuming a GPU slot) if best_model.ckpt already
+    exists in the expected output directory — meaning the run finished cleanly.
+    Failed or incomplete runs (no checkpoint) are always retrained.
+    """
+    if is_run_complete(run, output_root):
+        with print_lock:
+            print(f"[SKIP ] {run.run_name}  (results.txt exists — already succeeded)")
+        return run.run_name, SKIP_RETURNCODE
+
     log_path = build_log_path(log_dir, run)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -270,6 +309,8 @@ def main() -> None:
         sys.exit(1)
 
     scheduled_runs = build_scheduled_runs(configs, seeds)
+    # Resolve the output root from the first config (all configs in one dir share project_name).
+    output_root = resolve_output_root(configs[0])
     gpu_mode = bool(gpu_ids)
     gpu_queue = Queue() if gpu_mode else None
     if gpu_queue is not None:
@@ -288,6 +329,9 @@ def main() -> None:
 
     if args.dry_run:
         for index, run in enumerate(scheduled_runs):
+            if is_run_complete(run, output_root):
+                print(f"  [SKIP ] {run.run_name}  (results.txt exists — already succeeded)")
+                continue
             cmd = build_train_command(run)
             device_label = f"gpu:{gpu_ids[index % len(gpu_ids)]}" if gpu_mode else "cpu"
             print(f"  [{run.run_name}] ({device_label}) {' '.join(cmd)}")
@@ -304,7 +348,7 @@ def main() -> None:
 
     with ThreadPoolExecutor(max_workers=max_parallel) as pool:
         futures = {
-            pool.submit(run_experiment, run, log_dir, print_lock, gpu_queue): run
+            pool.submit(run_experiment, run, log_dir, print_lock, gpu_queue, output_root): run
             for run in scheduled_runs
         }
         for future in as_completed(futures):
@@ -315,14 +359,17 @@ def main() -> None:
     print("=" * 60)
     print("SUMMARY")
     print("=" * 60)
-    passed = [(n, rc) for n, rc in sorted(results) if rc == 0]
-    failed = [(n, rc) for n, rc in sorted(results) if rc != 0]
+    skipped = [(n, rc) for n, rc in sorted(results) if rc == SKIP_RETURNCODE]
+    passed  = [(n, rc) for n, rc in sorted(results) if rc == 0]
+    failed  = [(n, rc) for n, rc in sorted(results) if rc not in (0, SKIP_RETURNCODE)]
+    for name, _ in skipped:
+        print(f"  SKIP  {name}")
     for name, _ in passed:
         print(f"  PASS  {name}")
     for name, rc in failed:
         print(f"  FAIL  {name}  (exit {rc})")
     print()
-    print(f"{len(passed)}/{len(results)} seeded runs succeeded.")
+    print(f"{len(passed)}/{len(results) - len(skipped)} seeded runs succeeded  ({len(skipped)} skipped).")
 
     if failed:
         sys.exit(1)
