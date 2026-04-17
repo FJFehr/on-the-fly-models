@@ -256,10 +256,13 @@ Capacity sweeps can be launched across multiple single-GPU workers and multiple
 seeds with:
 
 ```bash
-uv run python scripts/run_arc1d_capacity.py \
-  --config-dir configs/experiments/arc1d_capacity_multiclass \
-  --gpus 0,1,2,3 \
-  --seeds 42,43,44
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_multiclass --gpus 0,1,2,3 --seeds 42,43,44
+```
+
+Variable-length multiclass sweep (18 tasks × CNN/RNN/Transformer, 3 seeds, 8 GPUs):
+
+```bash
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_variable_multiclass --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
 ```
 
 The capacity plotter aggregates seeded runs under one output root:

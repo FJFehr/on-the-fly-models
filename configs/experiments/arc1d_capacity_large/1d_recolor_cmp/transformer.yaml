@@ -1,0 +1,11 @@
+_base_: configs/experiments/arc1d_capacity_large/base_large.yaml
+experiment_name: var_mc_large_1d_recolor_cmp_transformer
+task_categories:
+  - 1d_recolor_cmp
+backbone_model:
+  name: transformer
+  params:
+    hidden_dim: 44
+    num_layers: 4
+    num_heads: 4
+    dropout: 0.0

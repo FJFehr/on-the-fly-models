@@ -1,0 +1,66 @@
+# Base config for small capacity variable-length multiclass ARC-1D experiments.
+# arc1d_capacity_small: small models, 4000 steps, CosineAnnealingLR.
+project_name: arc1d_capacity_small
+entity: fjfehr
+output_dir: outputs
+seed: 42
+experiment_name: var_mc_small_${model}
+output_path: ${output_dir}/${project_name}/${experiment_name}
+
+data: arc_1d_direct
+data_dir: data/arc_1d
+model: direct_supervised
+primary_metric: val_loss
+stop_on_perfect_val_exact_match: false
+
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_padded_fill
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_cmp
+  - 1d_recolor_cnt
+  - 1d_recolor_oe
+  - 1d_scale_dp
+task_ids: null
+val_task_categories: null
+train_split: train
+val_split: val
+test_split: test
+overfit_single_batch: false
+
+accelerator: auto
+float32_matmul_precision: medium
+devices: 1
+num_workers: 1
+optimizer: RAdam
+batch_size: 32
+learning_rate: 0.001
+gradient_clip_val: 1.0
+weight_decay: 0.01
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: ${max_steps}
+    eta_min: 0.0001
+max_steps: 4000
+log_task_examples: true
+log_task_examples_every_n_epochs: 100
+
+prediction_task: multiclass
+num_classes: 10
+padding_idx: 10
+
+task_encoding:
+  embedding_dim: 16
+  value_vocab_size: 11
