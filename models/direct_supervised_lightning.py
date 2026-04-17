@@ -57,6 +57,7 @@ class DirectSupervisedLightning(pl.LightningModule):
         self.weight_decay = weight_decay
         self.lr_scheduler_cfg = lr_scheduler
         self.log_task_examples = kwargs.get("log_task_examples", False)
+        self.log_task_examples_every_n_epochs = kwargs.get("log_task_examples_every_n_epochs", 100)
         self.supports_hard_val_examples = False
 
         embedding_dim: int = task_encoding["embedding_dim"]
@@ -343,7 +344,12 @@ class DirectSupervisedLightning(pl.LightningModule):
                 sync_dist=False,
             )
 
-        if self.log_task_examples and self._val_examples:
+        epoch = self.trainer.current_epoch + 1
+        if (
+            self.log_task_examples
+            and self._val_examples
+            and epoch % self.log_task_examples_every_n_epochs == 0
+        ):
             self._log_val_examples_to_wandb()
 
     def _log_val_examples_to_wandb(self) -> None:
