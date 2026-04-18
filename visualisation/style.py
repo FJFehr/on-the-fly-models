@@ -4,6 +4,7 @@ Import constants directly; call ``apply_latex_style()`` explicitly in plot
 scripts to avoid matplotlib side-effects when this module is imported during
 training.
 """
+import re
 
 # ── Model palette ─────────────────────────────────────────────────────────────
 MODEL_DISPLAY_NAMES: dict[str, str] = {
@@ -44,10 +45,10 @@ TASK_CATEGORY_DISPLAY_NAMES: dict[str, str] = {
     "1d_scale_dp": "Scaling",
 }
 
-
 def normalize_task_category(category: str) -> str:
     """Return a canonical task-category key used by plot label lookups."""
-    return category.removeprefix("dataset/").removeprefix("mc_")
+    # Strip any variant prefix (e.g. mc_, var_mc_small_, var_mc_medium_, var_mc_large_)
+    return re.sub(r"^(?:var_mc_(?:small|medium|large)_|mc_)", "", category)
 
 
 def format_task_category(category: str) -> str:
