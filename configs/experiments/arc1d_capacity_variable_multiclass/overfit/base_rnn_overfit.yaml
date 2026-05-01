@@ -1,0 +1,26 @@
+_base_: configs/experiments/arc1d_capacity_variable_multiclass/base_variable_multiclass.yaml
+experiment_name: var_mc_overfit_rnn
+
+task_categories:
+  - 1d_move_1p
+val_task_categories:
+  - 1d_move_1p
+task_ids:
+  - 8
+train_split: train
+val_split: train
+test_split: train
+overfit_single_batch: true
+
+batch_size: 1
+learning_rate: 0.01
+weight_decay: 0.0
+lr_scheduler: null
+max_steps: 200
+
+backbone_model:
+  name: rnn
+  params:
+    hidden_dim: 32
+    bidirectional: true
+    num_layers: 1

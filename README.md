@@ -2,7 +2,7 @@
 
 Task-conditioned modelling research repo focused on generating or adapting a small target model from a task's examples instead of training a separate model per task.
 
-The long-term goal is a hypernetwork-style system that consumes support examples, predicts a task-specific target model, and solves the query example. The current implemented system is the baseline stage of that roadmap: config-driven target-model experiments on padded 1D ARC tasks.
+The current codebase is a config-driven 1D ARC experimentation workspace with two active tracks: task-level hypermodel experiments and direct-supervised capacity baselines. Shared registries and runtime utilities let the same training and evaluation entrypoints run both tracks from YAML configs.
 
 ## Repository layout
 
@@ -10,33 +10,45 @@ The long-term goal is a hypernetwork-style system that consumes support examples
 on-the-fly-models/
 ├── .agents/                        # Agent contract, style guide, task briefs
 ├── configs/
-│   ├── base/
-│   │   └── arc1d_simple.yaml
 │   └── experiments/
-│       ├── arc1d_simple_meta_hypermodel/  # Active: simplified binary hypermodel
-│       └── _archived/                     # Legacy experiment configs (deleted models)
+│       ├── arc1d_binary/                  # Binary hypermodel experiments
+│       ├── arc1d_multiclass/              # Multiclass hypermodel experiments
+│       ├── arc1d_capacity_binary/         # Binary direct-supervised baselines
+│       ├── arc1d_capacity_multiclass/     # Fixed-length multiclass baselines
+│       ├── arc1d_capacity_variable_multiclass/
+│       ├── arc1d_capacity_small/
+│       ├── arc1d_capacity_medium/
+│       └── arc1d_capacity_large/
+├── data/
+│   ├── arc_1d/                      # Task-level DatasetDict
+│   ├── arc_1d_simple/               # Binary padded baseline dataset
+│   └── arc_1d_padded_multiclass/    # Multiclass padded baseline dataset
 ├── data_modules/
 │   ├── __init__.py                 # Datamodule registry
-│   ├── arc1d_simple.py
-│   ├── arc1d_meta_simple.py
-│   ├── arc1d_padded_multiclass.py
+│   ├── arc1d_direct.py             # Flat supervised datamodule (Exp 1)
+│   ├── arc1d_meta_simple.py        # Binary task-level datamodule
+│   ├── arc1d_meta_multiclass.py    # Multiclass task-level datamodule
 │   └── arc1d_meta_padded_multiclass.py
 ├── models/
 │   ├── __init__.py                 # Model registry
+│   ├── direct_supervised_lightning.py  # DirectSupervisedLightning (Exp 1)
 │   ├── hypermodel.py               # Generic hypernetwork-target wrapper
 │   ├── hypermodel_lightning.py     # HyperModelLightning training module
+│   ├── task_token_embedder.py      # Shared task-token embedding components
 │   ├── cnn.py                      # Generic 1D CNN encoder
+│   ├── mlp.py                      # Global MLP backbone
 │   ├── rnn.py                      # Generic RNN encoder
 │   └── transformer.py              # Generic transformer encoder
 ├── scripts/
-│   ├── build_arc_1d.py
-│   ├── visualise_tasks.py
-│   └── eda_arc_1d_boxplots.py
+│   ├── build_arc_1d.py             # Build task-level and derived ARC1D datasets
+│   ├── run_arc1d_capacity.py       # Batch launcher for capacity sweeps
+│   └── analyze_weight_space_pca.py # Offline PCA of hyper-generated vs direct RNN weights
 ├── tests/
+├── training/                       # Shared config, logging, and trainer utilities
 ├── visualisation/
 ├── metrics.py
 ├── train.py
-├── train_utils.py                 # Shared runtime, checkpoint, and visualisation helpers
+├── validate.py
 ├── pyproject.toml
 └── README.md
 ```
@@ -45,9 +57,9 @@ on-the-fly-models/
 
 The training entrypoint is [train.py](/home/fabio/Projects/on-the-fly-models/train.py). It loads a YAML config, instantiates a registered datamodule and model, trains with PyTorch Lightning, saves the resolved config to the output directory, evaluates the best checkpoint, and writes a `results.txt` summary.
 
-The active track is `arc1d_simple_meta_hypermodel`: task-level binary meta-learning using the simplified `HyperModelLightning` pipeline with one generated parameter vector per task.
+The evaluation entrypoint is [validate.py](/home/fabio/Projects/on-the-fly-models/validate.py). It reloads a saved run from a config plus checkpoint selection (`auto`, `best`, `last`, or an explicit path) and runs validation, test, or both.
 
-The repo supports task-level dataloaders for the binary hypermodel meta-learning track.
+Model and datamodule selection are registry-driven via `models/__init__.py` and `data_modules/__init__.py`, so new experiment YAMLs can reuse the shared runtime without adding new entrypoints.
 
 ## Setup
 
@@ -206,17 +218,43 @@ with `train`, `val`, and `test` all pointed at the training split and
 
 ## Training
 
-Training is config-driven. Each experiment YAML inherits from a shared base config and overrides only the fields that differ.
+Training is config-driven. Each experiment YAML selects a registered model/data pair and overrides only the fields that differ from its inherited base configs.
 
-Example:
+Hypermodel example:
 
 ```bash
-uv run python train.py --config configs/experiments/arc1d_padded_multiclass/move_1p/cnn.yaml
+uv run python train.py --config configs/experiments/arc1d_binary/overfit/hyper_model.yaml
+```
+
+Multiclass hypermodel example:
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_multiclass/move_1p/hyper_model.yaml
 ```
 
 Supported model families are:
 
 - `binary_hyper_model` / `hyper_model` — both resolve to `HyperModelLightning`; hypernetwork and target template are selected via `hyper_model.name` and `target_model.name` in the experiment config
+- `direct_supervised` — resolves to `DirectSupervisedLightning`; trains a backbone (RNN, CNN, Transformer, MLP) directly on (input, output) pairs without a hypernetwork; see the capacity baselines under `configs/experiments/arc1d_capacity_*`
+
+### Experiment 1: Target Model Capacity (direct supervised)
+
+Run one binary direct-supervised baseline config for `1d_move_1p`:
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_capacity_binary/1d_move_1p/rnn.yaml
+uv run python train.py --config configs/experiments/arc1d_capacity_binary/1d_move_1p/cnn.yaml
+uv run python train.py --config configs/experiments/arc1d_capacity_binary/1d_move_1p/transformer.yaml
+uv run python train.py --config configs/experiments/arc1d_capacity_binary/1d_move_1p/mlp.yaml
+```
+
+Training pools support examples from all tasks per category; validation uses query examples from held-out tasks. Training stops at `val_all_examples_exact_match == 1.0`. For full multi-category sweeps, use [scripts/run_arc1d_capacity.py](/home/fabio/Projects/on-the-fly-models/scripts/run_arc1d_capacity.py) against one of the `arc1d_capacity_*` config directories.
+
+For a quick smoke test (single batch overfit):
+
+```bash
+uv run python train.py --config configs/experiments/arc1d_capacity_binary/1d_move_1p/rnn.yaml overfit_single_batch=true max_steps=500
+```
 
 The current system is optimized for rapid baseline iteration:
 
@@ -226,10 +264,43 @@ The current system is optimized for rapid baseline iteration:
 - training stops early once the configured primary validation metric reaches `1.0` unless disabled in config
 - validation examples and hard failures can be logged for inspection
 
+Capacity sweeps can be launched across multiple single-GPU workers and multiple
+seeds with:
+
+```bash
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_multiclass --gpus 0,1,2,3 --seeds 42,43,44
+```
+
+Variable-length multiclass sweep (18 tasks × CNN/RNN/Transformer, 3 seeds, 8 GPUs):
+
+```bash
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_variable_multiclass --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+```
+
+Scaling experiment — small/medium/large capacity tiers (run each size independently):
+
+| Size | Params (CNN/RNN/TF) | Steps | WandB project |
+|------|---------------------|-------|---------------|
+| small | ~4K / 5.6K / 5.4K | 4 000 | `arc1d_capacity_small` |
+| medium | ~9K / 9.2K / 10.3K | 4 000 | `arc1d_capacity_medium` |
+| large | ~100K / 100K / 95K | 10 000 | `arc1d_capacity_large` |
+
+```bash
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_small --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_medium --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_large --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+```
+
+The capacity plotter aggregates seeded runs under one output root:
+
+- `solved_per_model.png` uses the best seed per task/model cell
+- `heatmap_task_model.png` uses mean validation exact match with `mean±std`
+  shown inside each cell
+
 The `HyperModelLightning` path keeps one generated parameter vector per task. Its hypernetwork and target template are selected via `hyper_model.name` and `target_model.name` in the experiment config:
 
 ```bash
-uv run python train.py --config configs/experiments/arc1d_simple_meta_hypermodel/move_1p/hyper_model.yaml
+uv run python train.py --config configs/experiments/arc1d_multiclass/move_1p/hyper_model.yaml
 ```
 
 The binary hypermodel path also supports a wrapper-owned `task_encoding`
@@ -249,6 +320,22 @@ The hypermodel wrapper also owns a `hyper_head` section:
 - `hyper_head.pooling: hierarchical` uses hierarchical learned pooling over the
   6 serialized support segments, then 3 support examples, before the unchanged
   bottleneck and projection path
+
+## Validation
+
+After a training run, validate or test a saved run with the resolved config in
+its output directory:
+
+```bash
+uv run python validate.py --config outputs/<run_name>/config.yaml --checkpoint best --mode both
+```
+
+Key flags from [validate.py](/home/fabio/Projects/on-the-fly-models/validate.py):
+
+- `--checkpoint auto|best|last|<path>` selects which checkpoint to evaluate
+- `--mode validate|test|both` controls which evaluation pass runs
+- `--log-hard-examples --num-hard-examples N` exports the hardest validation failures
+- `--log-to-wandb` opens a separate evaluation run for metrics and artifacts
 
 ## Data
 
@@ -361,15 +448,40 @@ The deleted `BinaryHyperRNNMetaModelLightning` differed from the current `HyperM
 
 ## Current scope and limitations
 
-- active path is binary `arc1d_simple_meta_hypermodel`; multiclass and variable-length ARC1D are future stages
+- active paths are 1D ARC hypermodel experiments plus direct-supervised capacity baselines; full 2D ARC is still a future stage
 - `HyperModelLightning` always applies loss on both support and query; selective masking is a future addition
-- full 2D ARC is a future stage
 
 ## Tests
 
 ```bash
 uv run pytest
+uv run ruff check .
 ```
+
+## Weight-space PCA analysis
+
+Use the offline PCA script to compare hyper-generated target RNN weights
+against a direct trained `1d_move_1p` baseline in one shared canonical weight
+space:
+
+```bash
+uv run python scripts/analyze_weight_space_pca.py \
+  --hyper-run outputs/arc1d_simple_meta_hypermodel_experiments/<hyper_run> \
+  --direct-run outputs/arc1d_capacity_binary_baseline_experiments/<direct_run> \
+  --split val \
+  --checkpoint best \
+  --output-dir outputs/weight_space_pca/<analysis_name>
+```
+
+This v1 analysis is intentionally narrow:
+
+- binary prediction only
+- `1d_move_1p` only
+- bidirectional 1-layer RNN only
+- PCA only, no t-SNE
+
+The script writes `summary.json`, `hyper_vectors.csv`, `metadata.csv`, and
+`pca.png`.
 
 Coverage is intentionally focused on:
 

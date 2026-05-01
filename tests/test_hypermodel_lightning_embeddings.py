@@ -6,6 +6,7 @@ import torch.nn as nn
 from models.hypermodel import AttentionPooler, HierarchicalPooler, HyperModel
 from models.hypermodel_lightning import HyperModelLightning
 from models.rnn import RNN
+from models.transformer import Transformer
 
 
 def build_model(
@@ -129,6 +130,19 @@ def test_forward_runs_with_expected_shapes():
     assert example_targets.shape == (1, 4, 4)
     assert logits.shape == (1, 4, 4)
     assert torch.equal(targets, example_targets)
+
+
+def test_transformer_hypernetwork_builds_and_runs_with_canonical_wrapper():
+    """The config-facing transformer hypernetwork should remain constructible end to end."""
+    model = build_model({"embedding_dim": 8})
+    batch = make_batch()
+
+    assert isinstance(model.hypermodel.hypernetwork, Transformer)
+
+    logits, targets = model(batch)
+
+    assert logits.shape == (1, 4, 4)
+    assert targets.shape == (1, 4, 4)
 
 
 def test_forward_runs_with_hierarchical_pooling():

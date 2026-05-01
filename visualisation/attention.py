@@ -3,7 +3,7 @@
 import matplotlib.pyplot as plt
 import torch
 
-from visualisation.arc import format_task_category
+from visualisation.style import FONT_SIZES, format_task_category
 
 
 def resolve_attention_matrix(
@@ -18,7 +18,10 @@ def resolve_attention_matrix(
 
     if head_index is not None:
         if head_index < 0 or head_index >= attention_by_head.shape[0]:
-            msg = f"head_index must be in [0, {attention_by_head.shape[0] - 1}] but got {head_index}."
+            msg = (
+                f"head_index must be in [0, {attention_by_head.shape[0] - 1}] "
+                f"but got {head_index}."
+            )
             raise ValueError(msg)
         return attention_by_head[head_index], f"head_{head_index}"
 
@@ -93,9 +96,9 @@ def render_task_attention_figure(
     tick_locations = [position + 0.5 for position in tick_positions]
     tick_labels = [token_labels[position] for position in tick_positions]
     token_axis.set_xticks(tick_locations)
-    token_axis.set_xticklabels(tick_labels, rotation=90, fontsize=6)
+    token_axis.set_xticklabels(tick_labels, rotation=90, fontsize=FONT_SIZES["tick"])
     token_axis.set_yticks(tick_locations)
-    token_axis.set_yticklabels(tick_labels, rotation=0, fontsize=6)
+    token_axis.set_yticklabels(tick_labels, rotation=0, fontsize=FONT_SIZES["tick"])
 
     for boundary in boundaries:
         token_axis.axhline(boundary, color="white", linewidth=0.6)
@@ -103,12 +106,17 @@ def render_task_attention_figure(
 
     token_axis_top = token_axis.secondary_xaxis("top")
     token_axis_top.set_xticks(segment_centers)
-    token_axis_top.set_xticklabels(segment_labels, rotation=45, ha="left", fontsize=8)
+    token_axis_top.set_xticklabels(
+        segment_labels,
+        rotation=45,
+        ha="left",
+        fontsize=FONT_SIZES["annotation"],
+    )
     token_axis_top.tick_params(length=0, pad=6)
 
     token_axis_right = token_axis.secondary_yaxis("right")
     token_axis_right.set_yticks(segment_centers)
-    token_axis_right.set_yticklabels(segment_labels, rotation=0, fontsize=8)
+    token_axis_right.set_yticklabels(segment_labels, rotation=0, fontsize=FONT_SIZES["annotation"])
     token_axis_right.tick_params(length=0, pad=6)
 
     token_axis.set_xlabel("Key tokens")
@@ -124,6 +132,6 @@ def render_task_attention_figure(
     if query_accuracy is not None:
         title += f" | query_acc={query_accuracy:.2f}"
 
-    figure.suptitle(title, fontsize=16, fontweight="bold", y=0.98)
+    figure.suptitle(title, fontsize=FONT_SIZES["title"], fontweight="bold", y=0.98)
     figure.subplots_adjust(top=0.9, bottom=0.24)
     return figure

@@ -1,0 +1,10 @@
+_base_: configs/experiments/arc1d_capacity_large/base_large.yaml
+experiment_name: var_mc_large_1d_move_2p_dp_rnn
+task_categories:
+  - 1d_move_2p_dp
+backbone_model:
+  name: rnn
+  params:
+    hidden_dim: 66
+    num_layers: 4
+    bidirectional: true

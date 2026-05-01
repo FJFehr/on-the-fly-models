@@ -38,6 +38,7 @@ class SelfAttention(nn.Module):
 
         self.c_attn = nn.Linear(hidden_dim, 3 * hidden_dim, bias=bias)
         self.c_proj = nn.Linear(hidden_dim, hidden_dim, bias=bias)
+        self.c_proj._is_residual_proj = True  # scaled down in _init_weights
         self.attn_dropout = nn.Dropout(dropout)
         self.resid_dropout = nn.Dropout(dropout)
         self.num_heads = num_heads
@@ -103,6 +104,7 @@ class MLP(nn.Module):
         self.c_fc = nn.Linear(hidden_dim, 4 * hidden_dim, bias=bias)
         self.gelu = nn.GELU()
         self.c_proj = nn.Linear(4 * hidden_dim, hidden_dim, bias=bias)
+        self.c_proj._is_residual_proj = True  # scaled down in _init_weights
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
@@ -162,7 +164,7 @@ class Block(nn.Module):
 
 
 class Transformer(nn.Module):
-    """Transformer encoder over dense per-token features."""
+    """Transformer encoder wrapper over dense per-token features."""
 
     def __init__(
         self,
@@ -172,80 +174,46 @@ class Transformer(nn.Module):
         num_heads: int,
         output_dim: int,
         dropout: float = 0.0,
+        bias: bool = False,
+        use_output_head: bool = True,
     ):
         super().__init__()
+        if hidden_dim % num_heads != 0:
+            msg = "hidden_dim must be divisible by num_heads."
+            raise ValueError(msg)
+
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.num_heads = num_heads
         self.output_dim = output_dim
-        # This is just the maximum sequence length this simplified encoder accepts.
-        self.block_size = 8192
-
-        bias = False
-        causal = False
+        self.use_output_head = use_output_head
 
         self.input_projection = nn.Linear(input_dim, hidden_dim, bias=bias)
-        self.dropout = nn.Dropout(dropout)
-        self.blocks = nn.ModuleList(
-            [
-                Block(
-                    hidden_dim=hidden_dim,
-                    num_heads=num_heads,
-                    dropout=dropout,
-                    bias=bias,
-                    causal=causal,
-                    block_size=self.block_size,
-                )
-                for _ in range(num_layers)
-            ]
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hidden_dim,
+            nhead=num_heads,
+            dim_feedforward=4 * hidden_dim,
+            dropout=dropout,
+            batch_first=True,
+            norm_first=True,
+            bias=bias,
         )
-        self.ln_f = LayerNorm(hidden_dim, bias=bias)
-        self.output_head = nn.Linear(hidden_dim, output_dim, bias=False)
-
-        self.apply(self._init_weights)
-
-    def _init_weights(self, module: nn.Module) -> None:
-        if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        if use_output_head:
+            self.output_head = nn.Linear(hidden_dim, output_dim, bias=False)
 
     def forward(
         self,
         inputs: torch.Tensor,
-        return_attentions: bool = False,
-    ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
-        _, seq_len, _ = inputs.shape
-        if seq_len > self.block_size:
-            msg = (
-                f"Cannot forward sequence of length {seq_len}, block size is only "
-                f"{self.block_size}."
-            )
-            raise ValueError(msg)
-
+        src_key_padding_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         # Project raw input features into the transformer hidden width.
         hidden_states = self.input_projection(inputs)
-        hidden_states = self.dropout(hidden_states)
-
-        attentions = []
-        # Each block refines the token states with attention, then an MLP update.
-        for block in self.blocks:
-            if return_attentions:
-                hidden_states, attention_weights = block(
-                    hidden_states,
-                    return_attention_weights=True,
-                )
-                attentions.append(attention_weights)
-            else:
-                hidden_states = block(hidden_states)
-
-        # Final normalization and output projection produce per-token outputs.
-        hidden_states = self.ln_f(hidden_states)
-        outputs = self.output_head(hidden_states)
-        if return_attentions:
-            return outputs, attentions
-        return outputs
+        hidden_states = self.encoder(hidden_states, src_key_padding_mask=src_key_padding_mask)
+        if self.use_output_head:
+            hidden_states = self.output_head(hidden_states)
+        return hidden_states
 
     def __repr__(self) -> str:
         return (

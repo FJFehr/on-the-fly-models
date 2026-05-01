@@ -1,0 +1,10 @@
+_base_: configs/experiments/arc1d_capacity_small/base_small.yaml
+experiment_name: var_mc_small_1d_pcopy_mc_rnn
+task_categories:
+  - 1d_pcopy_mc
+backbone_model:
+  name: rnn
+  params:
+    hidden_dim: 32
+    num_layers: 1
+    bidirectional: true

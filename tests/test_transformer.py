@@ -21,21 +21,20 @@ def test_transformer_forward_keeps_expected_output_shape():
     assert outputs.shape == (3, 11, 7)
 
 
-def test_transformer_return_attentions_emits_one_matrix_per_layer():
+def test_transformer_forward_without_output_head_returns_hidden_states():
     model = Transformer(
         input_dim=5,
         hidden_dim=16,
         num_layers=3,
         num_heads=4,
         output_dim=7,
+        use_output_head=False,
     )
     inputs = torch.randn(2, 9, 5)
 
-    outputs, attentions = model(inputs, return_attentions=True)
+    outputs = model(inputs)
 
-    assert outputs.shape == (2, 9, 7)
-    assert len(attentions) == 3
-    assert all(attention.shape == (2, 4, 9, 9) for attention in attentions)
+    assert outputs.shape == (2, 9, 16)
 
 
 def test_transformer_rejects_hidden_dim_not_divisible_by_num_heads():

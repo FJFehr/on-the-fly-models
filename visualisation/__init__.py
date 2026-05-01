@@ -13,19 +13,33 @@
 
 from visualisation.arc import (
     figure_to_wandb_image,
-    format_task_category,
     render_task_figure,
     render_task_prediction_figure,
     render_val_example_figure,
 )
 from visualisation.attention import render_task_attention_figure, resolve_attention_matrix
+from visualisation.style import (
+    FONT_SIZES,
+    MODEL_COLORS,
+    MODEL_DISPLAY_NAMES,
+    TASK_CATEGORY_DISPLAY_NAMES,
+    apply_latex_style,
+    format_task_category,
+    normalize_task_category,
+)
 
 __all__ = [
+    "FONT_SIZES",
+    "MODEL_COLORS",
+    "MODEL_DISPLAY_NAMES",
+    "TASK_CATEGORY_DISPLAY_NAMES",
+    "apply_latex_style",
     "figure_to_wandb_image",
     "format_task_category",
+    "normalize_task_category",
     "render_task_attention_figure",
     "render_task_figure",
     "render_task_prediction_figure",
-    "resolve_attention_matrix",
     "render_val_example_figure",
+    "resolve_attention_matrix",
 ]
