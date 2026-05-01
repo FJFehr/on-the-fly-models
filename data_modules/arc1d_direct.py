@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from datasets import DatasetDict
 from torch.utils.data import DataLoader, Dataset
 
+from data_modules.arc1d_simple import filter_split
+
 PAD_IDX = 10  # sentinel outside the 0–9 ARC colour range for multiclass padding
 
 
@@ -32,8 +34,6 @@ class Arc1dDirectPaddingCollator:
             "task_category": [item["task_category"] for item in batch],
             "task_id": [item["task_id"] for item in batch],
         }
-
-from data_modules.arc1d_simple import filter_split
 
 
 class Arc1dDirectDataset(Dataset):

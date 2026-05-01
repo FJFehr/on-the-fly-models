@@ -150,7 +150,7 @@ def resolve_output_root(config_path: Path) -> Path:
     return Path(output_dir) / project_name
 
 
-def is_run_complete(run: "ScheduledRun", output_root: Path) -> bool:
+def is_run_complete(run: ScheduledRun, output_root: Path) -> bool:
     """Return True if results.txt exists for this run.
 
     results.txt is written by train.py as the very last step after final
@@ -360,8 +360,8 @@ def main() -> None:
     print("SUMMARY")
     print("=" * 60)
     skipped = [(n, rc) for n, rc in sorted(results) if rc == SKIP_RETURNCODE]
-    passed  = [(n, rc) for n, rc in sorted(results) if rc == 0]
-    failed  = [(n, rc) for n, rc in sorted(results) if rc not in (0, SKIP_RETURNCODE)]
+    passed = [(n, rc) for n, rc in sorted(results) if rc == 0]
+    failed = [(n, rc) for n, rc in sorted(results) if rc not in (0, SKIP_RETURNCODE)]
     for name, _ in skipped:
         print(f"  SKIP  {name}")
     for name, _ in passed:
@@ -369,7 +369,10 @@ def main() -> None:
     for name, rc in failed:
         print(f"  FAIL  {name}  (exit {rc})")
     print()
-    print(f"{len(passed)}/{len(results) - len(skipped)} seeded runs succeeded  ({len(skipped)} skipped).")
+    print(
+        f"{len(passed)}/{len(results) - len(skipped)} seeded runs succeeded "
+        f"({len(skipped)} skipped)."
+    )
 
     if failed:
         sys.exit(1)

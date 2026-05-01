@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 
 def _build_sinusoidal_pe(position_vocab_size: int, embedding_dim: int) -> torch.Tensor:
-    """Build a fixed sinusoidal position encoding table of shape (position_vocab_size, embedding_dim)."""
+    """Build a fixed sinusoidal encoding table for one position vocabulary."""
     pe = torch.zeros(position_vocab_size, embedding_dim)
     position = torch.arange(position_vocab_size).unsqueeze(1).float()
     div_term = torch.exp(
@@ -56,8 +56,7 @@ class TaskTokenEmbedder(nn.Module):
         max_id = int(ids.max().item())
         if min_id < 0 or max_id >= upper_bound:
             msg = (
-                f"{name} ids must stay in [0, {upper_bound - 1}], got "
-                f"min={min_id}, max={max_id}."
+                f"{name} ids must stay in [0, {upper_bound - 1}], got min={min_id}, max={max_id}."
             )
             raise ValueError(msg)
 

@@ -62,7 +62,7 @@ class DirectSupervisedLightning(pl.LightningModule):
 
         embedding_dim: int = task_encoding["embedding_dim"]
         value_vocab_size: int = task_encoding.get("value_vocab_size", 2)
-        self.padding_idx: int | None = kwargs.get("padding_idx", None)
+        self.padding_idx: int | None = kwargs.get("padding_idx")
 
         self.embedder = TaskTokenEmbedder(
             embedding_dim=embedding_dim,
@@ -397,8 +397,7 @@ class DirectSupervisedLightning(pl.LightningModule):
         with torch.no_grad():
             for batch in datamodule.val_dataloader():
                 batch_device = {
-                    k: v.to(device) if isinstance(v, torch.Tensor) else v
-                    for k, v in batch.items()
+                    k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()
                 }
                 logits, targets = self(batch_device)
                 predictions = self.decode_logits(logits)
@@ -420,7 +419,7 @@ class DirectSupervisedLightning(pl.LightningModule):
                     if pred_vals == tgt_vals:
                         continue  # exact match — not a hard example
 
-                    num_correct = sum(p == t for p, t in zip(pred_vals, tgt_vals))
+                    num_correct = sum(p == t for p, t in zip(pred_vals, tgt_vals, strict=True))
                     pos_acc = num_correct / n if n > 0 else 0.0
                     wrong_examples.append(
                         {
@@ -446,7 +445,7 @@ class DirectSupervisedLightning(pl.LightningModule):
 
         for i, ex in enumerate(hard):
             n = len(ex["target"])
-            num_wrong = sum(p != t for p, t in zip(ex["prediction"], ex["target"]))
+            num_wrong = sum(p != t for p, t in zip(ex["prediction"], ex["target"], strict=True))
             caption = (
                 f"{ex['task_category']}:{ex['task_id']} | "
                 f"pos_acc={ex['position_accuracy']:.2f} | "

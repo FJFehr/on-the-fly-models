@@ -133,7 +133,11 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
         dataset_dict = DatasetDict.load_from_disk(self.data_dir)
         val_cats = self.val_task_categories or self.task_categories
-        self.train_dataset = self.build_dataset(dataset_dict, self.train_split, self.task_categories)
+        self.train_dataset = self.build_dataset(
+            dataset_dict,
+            self.train_split,
+            self.task_categories,
+        )
         self.val_dataset = self.build_dataset(dataset_dict, self.val_split, val_cats)
         self.test_dataset = self.build_dataset(dataset_dict, self.test_split, val_cats)
 

@@ -18,7 +18,10 @@ def resolve_attention_matrix(
 
     if head_index is not None:
         if head_index < 0 or head_index >= attention_by_head.shape[0]:
-            msg = f"head_index must be in [0, {attention_by_head.shape[0] - 1}] but got {head_index}."
+            msg = (
+                f"head_index must be in [0, {attention_by_head.shape[0] - 1}] "
+                f"but got {head_index}."
+            )
             raise ValueError(msg)
         return attention_by_head[head_index], f"head_{head_index}"
 
@@ -103,7 +106,12 @@ def render_task_attention_figure(
 
     token_axis_top = token_axis.secondary_xaxis("top")
     token_axis_top.set_xticks(segment_centers)
-    token_axis_top.set_xticklabels(segment_labels, rotation=45, ha="left", fontsize=FONT_SIZES["annotation"])
+    token_axis_top.set_xticklabels(
+        segment_labels,
+        rotation=45,
+        ha="left",
+        fontsize=FONT_SIZES["annotation"],
+    )
     token_axis_top.tick_params(length=0, pad=6)
 
     token_axis_right = token_axis.secondary_yaxis("right")
