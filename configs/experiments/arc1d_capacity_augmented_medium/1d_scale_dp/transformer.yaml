@@ -1,0 +1,11 @@
+_base_: configs/experiments/arc1d_capacity_augmented_medium/base_augmented_medium.yaml
+experiment_name: aug_medium_1d_scale_dp_transformer
+task_categories:
+  - 1d_scale_dp
+backbone_model:
+  name: transformer
+  params:
+    hidden_dim: 20
+    num_layers: 2
+    num_heads: 4
+    dropout: 0.1

@@ -100,15 +100,28 @@ def main() -> None:
 
     if cli_args.log_hard_examples:
         load_checkpoint_state(model, checkpoint_path)
-        export_hard_validation_examples(
-            model=model,
-            datamodule=datamodule,
-            output_path=cfg.output_path,
-            wandb_logger=wandb_logger,
-            num_hard_examples=cli_args.num_hard_examples,
-            key_prefix="validate_hard_example",
-            snapshot_label="validate_cli",
-        )
+        if cli_args.mode in {"validate", "both"}:
+            export_hard_validation_examples(
+                model=model,
+                datamodule=datamodule,
+                output_path=cfg.output_path,
+                wandb_logger=wandb_logger,
+                num_hard_examples=cli_args.num_hard_examples,
+                key_prefix="validate_hard_example",
+                snapshot_label="validate_cli",
+                split="val",
+            )
+        if cli_args.mode in {"test", "both"}:
+            export_hard_validation_examples(
+                model=model,
+                datamodule=datamodule,
+                output_path=cfg.output_path,
+                wandb_logger=wandb_logger,
+                num_hard_examples=cli_args.num_hard_examples,
+                key_prefix="test_hard_example",
+                snapshot_label="test_cli",
+                split="test",
+            )
 
     if cli_args.mode in {"validate", "both"}:
         val_results = trainer.validate(

@@ -68,11 +68,13 @@ def _format_parameter_count(num_parameters: int) -> str:
 
 def _describe_hyper_projection(hypermodel) -> str:
     from models.hypermodel import _describe_hyper_projection as _hp_repr
+
     return _hp_repr(hypermodel)
 
 
 def _describe_hyper_pooling(hypermodel) -> str:
     from models.hypermodel import _describe_hyper_pooling as _pool_repr
+
     return _pool_repr(hypermodel)
 
 
@@ -417,9 +419,17 @@ def export_hard_validation_examples(
     num_hard_examples: int = 3,
     key_prefix: str = "val_hard_example",
     snapshot_label: str | None = None,
+    split: str = "val",
 ) -> None:
-    """Export hard validation artefacts for pair-based and task-based models."""
-    datamodule.setup(stage="validate")
+    """Export hard example artefacts for pair-based and task-based models.
+
+    split: "val" (default) or "test" — controls which dataloader is used.
+    """
+    if split not in {"val", "test"}:
+        msg = f"split must be 'val' or 'test', got {split!r}."
+        raise ValueError(msg)
+    stage = "test" if split == "test" else "validate"
+    datamodule.setup(stage=stage)
 
     # Models that implement their own hard-example export (e.g. DirectSupervisedLightning)
     # take priority over the generic pair-based and task-gallery paths below.
@@ -430,6 +440,7 @@ def export_hard_validation_examples(
             wandb_logger=wandb_logger,
             num_examples=num_hard_examples,
             key_prefix=key_prefix,
+            split=split,
         )
         return
 
@@ -445,9 +456,10 @@ def export_hard_validation_examples(
         )
         return
 
+    dataloader = datamodule.test_dataloader() if split == "test" else datamodule.val_dataloader()
     hard_task_records = _select_hard_task_records(
         model,
-        datamodule.val_dataloader(),
+        dataloader,
         limit=num_hard_examples,
     )
     if not hard_task_records:

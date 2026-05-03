@@ -47,15 +47,23 @@ class DirectSupervisedLightning(pl.LightningModule):
         optimizer_name: str = "Adam",
         weight_decay: float = 0.01,
         lr_scheduler: dict | None = None,
+        non_background_loss_weight: float = 1.0,
         **kwargs,
     ):
         super().__init__()
+        if (
+            not isinstance(non_background_loss_weight, int | float)
+            or non_background_loss_weight <= 0
+        ):
+            msg = "non_background_loss_weight must be a positive number."
+            raise ValueError(msg)
         self.prediction_task = prediction_task
         self.num_classes = num_classes
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
         self.weight_decay = weight_decay
         self.lr_scheduler_cfg = lr_scheduler
+        self.non_background_loss_weight = float(non_background_loss_weight)
         self.log_task_examples = kwargs.get("log_task_examples", False)
         self.log_task_examples_every_n_epochs = kwargs.get("log_task_examples_every_n_epochs", 100)
         self.supports_hard_val_examples = False
@@ -157,10 +165,33 @@ class DirectSupervisedLightning(pl.LightningModule):
 
     def compute_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         if self.is_binary_task:
-            return F.binary_cross_entropy_with_logits(logits, targets.float())
+            targets_float = targets.float()
+            losses = F.binary_cross_entropy_with_logits(
+                logits,
+                targets_float,
+                reduction="none",
+            )
+            weights = torch.ones_like(losses)
+            weights = weights.masked_fill(targets_float != 0, self.non_background_loss_weight)
+            return (losses * weights).mean()
+
         # logits: (B, seq_len, num_classes) → CrossEntropyLoss expects (B, C, seq_len)
         ignore = self.padding_idx if self.padding_idx is not None else -100
-        return F.cross_entropy(logits.permute(0, 2, 1), targets.long(), ignore_index=ignore)
+        targets_long = targets.long()
+        losses = F.cross_entropy(
+            logits.permute(0, 2, 1),
+            targets_long,
+            ignore_index=ignore,
+            reduction="none",
+        )
+        valid_mask = targets_long != ignore
+        weights = torch.ones_like(losses)
+        weights = weights.masked_fill(
+            valid_mask & (targets_long != 0),
+            self.non_background_loss_weight,
+        )
+        weighted_losses = losses * weights
+        return weighted_losses.sum() / valid_mask.sum().clamp_min(1)
 
     def _mask_padding(
         self, targets_long: torch.Tensor, predictions: torch.Tensor
@@ -378,8 +409,9 @@ class DirectSupervisedLightning(pl.LightningModule):
         wandb_logger=None,
         num_examples: int = 3,
         key_prefix: str = "val_hard_example",
+        split: str = "val",
     ) -> None:
-        """Find the hardest validation failures and log them to W&B and disk.
+        """Find the hardest failures on split and log them to W&B and disk.
 
         A failure is any example where the predicted sequence does not exactly
         match the target (over valid, non-padding positions). Examples are ranked
@@ -394,8 +426,11 @@ class DirectSupervisedLightning(pl.LightningModule):
         device = next(self.parameters()).device
         wrong_examples: list[dict] = []
 
+        dataloader = (
+            datamodule.test_dataloader() if split == "test" else datamodule.val_dataloader()
+        )
         with torch.no_grad():
-            for batch in datamodule.val_dataloader():
+            for batch in dataloader:
                 batch_device = {
                     k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()
                 }
@@ -433,13 +468,13 @@ class DirectSupervisedLightning(pl.LightningModule):
                     )
 
         if not wrong_examples:
-            print("No wrong validation examples found — skipping hard example logging.")
+            print(f"No wrong {split} examples found — skipping hard example logging.")
             return
 
         wrong_examples.sort(key=lambda ex: ex["position_accuracy"])
         hard = wrong_examples[:num_examples]
 
-        hard_dir = os.path.join(output_path, "hard_examples")
+        hard_dir = os.path.join(output_path, f"hard_examples_{split}")
         os.makedirs(hard_dir, exist_ok=True)
         wandb_payload = {}
 
@@ -466,7 +501,7 @@ class DirectSupervisedLightning(pl.LightningModule):
 
         _log_wandb_payload(wandb_logger, wandb_payload)
         print(
-            f"Logged {len(hard)} hard validation examples "
+            f"Logged {len(hard)} hard {split} examples "
             f"({len(wrong_examples)} total failures) to {hard_dir}"
         )
 

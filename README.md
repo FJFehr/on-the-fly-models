@@ -59,6 +59,77 @@ uv run python scripts/build_arc_1d.py --padded-multiclass
 
 This writes `data/arc_1d_padded_multiclass`.
 
+Build the augmented variable-length dataset used by the augmented capacity experiments:
+
+```bash
+uv run python scripts/augment_arc_1d.py
+```
+
+This writes `data/arc_1d_augmented`. Only the train split is augmented; dev and test are
+passed through unchanged so results are directly comparable to the baseline.
+Default settings produce up to 110 variants per task (21 additional colour permutations × 5
+shift positions), giving ~4,400 tasks per category in train. For `1d_mirror` tasks, colour 9
+(the semantic pivot) is kept fixed and excluded from permutation targets.
+
+## Data Augmentation
+
+`scripts/augment_arc_1d.py` augments the train split of `data/arc_1d` with two
+transforms applied in order: colour permutation → shift. All transforms
+apply consistently to every sequence in a task (support inputs, support outputs,
+query input, and query output) so the rule relationship between input and output
+is preserved.
+
+### 1 — Colour permutation
+
+Non-zero colours in a task are remapped via a random injective mapping to `{1…9}`.
+Background (0) is always preserved. The same mapping is applied to every sequence,
+so the transformation is semantically valid for all multiclass tasks.
+
+For `1d_mirror` tasks, colour 9 is the semantic pivot and is excluded from both the
+permutable set and the available target set.
+
+**Example** — original task colours `{1, 3}` remapped to `{5, 2}`:
+
+```
+Before:  support_input  = [0, 1, 0, 3, 0]
+         support_output = [0, 3, 0, 1, 0]
+
+After:   support_input  = [0, 5, 0, 2, 0]
+         support_output = [0, 2, 0, 5, 0]
+```
+
+### 2 — Shift (translation)
+
+All sequences are extended by prepending or appending zeros. Content is never
+discarded. The `sequence_length` field increases by `abs(shift)`.
+
+- Positive shift: prepend zeros → content moves right.
+- Negative shift: append zeros → content moves left.
+
+**Example** — shift +2 on a task with sequence length 5:
+
+```
+Before (length 5):  [0, 1, 3, 0, 0]
+After  (length 7):  [0, 0, 0, 1, 3, 0, 0]
+```
+
+Sequences can grow beyond the 33-token fixed-length limit used in the padded
+track; the variable-length collator (`Arc1dDirectPaddingCollator`) handles any
+length dynamically at batch time.
+
+### Using the augmented dataset
+
+The schema of `data/arc_1d_augmented` is identical to `data/arc_1d`, so no new
+data module is needed. Point the `data_dir` field in any YAML config at the new
+directory:
+
+```yaml
+data_dir: data/arc_1d_augmented
+```
+
+Both `Arc1dDirectDataModule` (capacity track) and `Arc1dMetaDataModule`
+(hypernetwork / meta-learning track) are compatible.
+
 ## Training
 
 Training is config-driven. Each experiment YAML selects a registered model/data pair and overrides only the fields that differ from its inherited base configs.
@@ -124,6 +195,15 @@ uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc
 uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_large --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
 ```
 
+Augmented capacity tiers mirror the small/medium/large model and training
+settings, but read train examples from `data/arc_1d_augmented`:
+
+```bash
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_augmented_small --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_augmented_medium --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_augmented_large --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+```
+
 The capacity plotter aggregates seeded runs under one output root:
 
 - `solved_per_model.png` uses the best seed per task/model cell
@@ -178,11 +258,15 @@ on-the-fly-models/
 │       ├── arc1d_capacity_variable_multiclass/
 │       ├── arc1d_capacity_small/
 │       ├── arc1d_capacity_medium/
-│       └── arc1d_capacity_large/
+│       ├── arc1d_capacity_large/
+│       ├── arc1d_capacity_augmented_small/
+│       ├── arc1d_capacity_augmented_medium/
+│       └── arc1d_capacity_augmented_large/
 ├── data/
-│   ├── arc_1d/                      # Task-level DatasetDict
+│   ├── arc_1d/                      # Task-level DatasetDict (variable-length, 18 categories)
 │   ├── arc_1d_simple/               # Binary padded baseline dataset
-│   └── arc_1d_padded_multiclass/    # Multiclass padded baseline dataset
+│   ├── arc_1d_padded_multiclass/    # Multiclass padded baseline dataset
+│   └── arc_1d_augmented/            # Augmented variable-length dataset (train only)
 ├── data_modules/
 │   ├── __init__.py                 # Datamodule registry
 │   ├── arc1d_direct.py             # Flat supervised datamodule (Exp 1)
@@ -201,6 +285,8 @@ on-the-fly-models/
 │   └── transformer.py              # Generic transformer encoder
 ├── scripts/
 │   ├── build_arc_1d.py             # Build task-level and derived ARC1D datasets
+│   ├── augment_arc_1d.py           # Colour and shift augmentation for ARC1D train split
+│   ├── visualise_augmentation.py   # Visualise augmentation effects per task category
 │   ├── run_arc1d_capacity.py       # Batch launcher for capacity sweeps
 │   └── analyze_weight_space_pca.py # Offline PCA of hyper-generated vs direct RNN weights
 ├── tests/

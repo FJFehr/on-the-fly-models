@@ -1,0 +1,10 @@
+_base_: configs/experiments/arc1d_capacity_augmented_medium/base_augmented_medium.yaml
+experiment_name: aug_medium_1d_recolor_oe_rnn
+task_categories:
+  - 1d_recolor_oe
+backbone_model:
+  name: rnn
+  params:
+    hidden_dim: 28
+    num_layers: 2
+    bidirectional: true

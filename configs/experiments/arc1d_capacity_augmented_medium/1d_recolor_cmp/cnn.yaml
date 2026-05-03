@@ -1,0 +1,10 @@
+_base_: configs/experiments/arc1d_capacity_augmented_medium/base_augmented_medium.yaml
+experiment_name: aug_medium_1d_recolor_cmp_cnn
+task_categories:
+  - 1d_recolor_cmp
+backbone_model:
+  name: cnn
+  params:
+    hidden_dim: 32
+    num_layers: 2
+    kernel_size: 5

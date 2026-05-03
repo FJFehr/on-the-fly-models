@@ -7,9 +7,12 @@ from scripts.run_arc1d_capacity import (
     build_process_env,
     build_scheduled_runs,
     build_train_command,
+    discover_configs,
+    load_config,
     load_experiment_name,
     parse_csv_ints,
     resolve_max_parallel,
+    resolve_output_root,
 )
 
 
@@ -78,3 +81,46 @@ def test_parse_csv_ints_parses_seeds_and_gpus():
     """Comma-separated integer parsing should preserve order."""
     assert parse_csv_ints("42,43,44", "--seeds") == [42, 43, 44]
     assert parse_csv_ints("0,2", "--gpus") == [0, 2]
+
+
+def test_augmented_capacity_tiers_are_discoverable_and_named():
+    """Each augmented tier should expose the full 18-task by 3-model sweep."""
+    tiers = ["small", "medium", "large"]
+
+    for tier in tiers:
+        root = Path(f"configs/experiments/arc1d_capacity_augmented_{tier}")
+        configs = discover_configs(root)
+        names = [load_experiment_name(config_path) for config_path in configs]
+
+        assert len(configs) == 54
+        assert len(set(names)) == 54
+        assert all(name.startswith(f"aug_{tier}_") for name in names)
+        assert resolve_output_root(configs[0]) == Path(f"outputs/arc1d_capacity_augmented_{tier}")
+
+
+def test_augmented_capacity_tiers_match_baseline_model_configs():
+    """Augmented tiers should differ from baseline tiers only by dataset and naming."""
+    tiers = ["small", "medium", "large"]
+
+    for tier in tiers:
+        baseline_root = Path(f"configs/experiments/arc1d_capacity_{tier}")
+        augmented_root = Path(f"configs/experiments/arc1d_capacity_augmented_{tier}")
+        baseline_configs = {
+            path.relative_to(baseline_root): path for path in discover_configs(baseline_root)
+        }
+        augmented_configs = {
+            path.relative_to(augmented_root): path for path in discover_configs(augmented_root)
+        }
+
+        assert augmented_configs.keys() == baseline_configs.keys()
+
+        for relative_path, baseline_path in baseline_configs.items():
+            baseline_cfg = load_config(baseline_path)
+            augmented_cfg = load_config(augmented_configs[relative_path])
+
+            assert augmented_cfg.data_dir == "data/arc_1d_augmented"
+            assert augmented_cfg.task_categories == baseline_cfg.task_categories
+            assert augmented_cfg.backbone_model == baseline_cfg.backbone_model
+            assert augmented_cfg.max_steps == baseline_cfg.max_steps
+            assert augmented_cfg.batch_size == baseline_cfg.batch_size
+            assert augmented_cfg.non_background_loss_weight == 2.0

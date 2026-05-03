@@ -20,6 +20,11 @@ Usage
     uv run python scripts/run_arc1d_capacity.py \\
         --config-dir configs/experiments/arc1d_capacity_binary \\
         --dry-run
+
+    uv run python scripts/run_arc1d_capacity.py \\
+        --config-dir configs/experiments/arc1d_capacity_augmented_medium \\
+        --gpus 0,1,2,3 \\
+        --seeds 0,1,2
 """
 
 from __future__ import annotations
