@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+from models.activations import resolve_activation_fn
+
 
 class LayerNorm(nn.Module):
     """LayerNorm with an optional bias parameter."""
@@ -174,6 +176,7 @@ class Transformer(nn.Module):
         num_heads: int,
         output_dim: int,
         dropout: float = 0.0,
+        activation: str = "relu",
         bias: bool = False,
         use_output_head: bool = True,
     ):
@@ -187,6 +190,8 @@ class Transformer(nn.Module):
         self.num_layers = num_layers
         self.num_heads = num_heads
         self.output_dim = output_dim
+        self.dropout = dropout
+        self.activation = activation
         self.use_output_head = use_output_head
 
         self.input_projection = nn.Linear(input_dim, hidden_dim, bias=bias)
@@ -195,6 +200,7 @@ class Transformer(nn.Module):
             nhead=num_heads,
             dim_feedforward=4 * hidden_dim,
             dropout=dropout,
+            activation=resolve_activation_fn(activation),
             batch_first=True,
             norm_first=True,
             bias=bias,
@@ -218,5 +224,6 @@ class Transformer(nn.Module):
     def __repr__(self) -> str:
         return (
             f"Transformer(input={self.input_dim}, hidden={self.hidden_dim}, "
-            f"layers={self.num_layers}, heads={self.num_heads}, output={self.output_dim})"
+            f"layers={self.num_layers}, heads={self.num_heads}, output={self.output_dim}, "
+            f"activation={self.activation}, dropout={self.dropout})"
         )

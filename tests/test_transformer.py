@@ -13,6 +13,7 @@ def test_transformer_forward_keeps_expected_output_shape():
         num_layers=2,
         num_heads=2,
         output_dim=7,
+        activation="silu",
     )
     inputs = torch.randn(3, 11, 5)
 
@@ -28,6 +29,7 @@ def test_transformer_forward_without_output_head_returns_hidden_states():
         num_layers=3,
         num_heads=4,
         output_dim=7,
+        activation="silu",
         use_output_head=False,
     )
     inputs = torch.randn(2, 9, 5)
@@ -45,4 +47,16 @@ def test_transformer_rejects_hidden_dim_not_divisible_by_num_heads():
             num_layers=2,
             num_heads=3,
             output_dim=7,
+        )
+
+
+def test_transformer_rejects_unknown_activation():
+    with pytest.raises(ValueError, match="Unsupported activation"):
+        Transformer(
+            input_dim=5,
+            hidden_dim=16,
+            num_layers=2,
+            num_heads=4,
+            output_dim=7,
+            activation="bogus",
         )

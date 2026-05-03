@@ -9,3 +9,4 @@ backbone_model:
     num_layers: 4
     num_heads: 4
     dropout: 0.1
+    activation: silu

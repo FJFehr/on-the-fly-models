@@ -124,17 +124,13 @@ def canonicalize_direct_rnn_state_dict(
 ) -> dict[str, torch.Tensor]:
     """Map a direct supervised RNN checkpoint into the hyper target parameter space."""
     output_projection = state_dict["head.weight"] @ state_dict["backbone.output_projection.weight"]
-    return {
-        "rnn.weight_ih_l0": state_dict["backbone.rnn.weight_ih_l0"],
-        "rnn.weight_hh_l0": state_dict["backbone.rnn.weight_hh_l0"],
-        "rnn.bias_ih_l0": state_dict["backbone.rnn.bias_ih_l0"],
-        "rnn.bias_hh_l0": state_dict["backbone.rnn.bias_hh_l0"],
-        "rnn.weight_ih_l0_reverse": state_dict["backbone.rnn.weight_ih_l0_reverse"],
-        "rnn.weight_hh_l0_reverse": state_dict["backbone.rnn.weight_hh_l0_reverse"],
-        "rnn.bias_ih_l0_reverse": state_dict["backbone.rnn.bias_ih_l0_reverse"],
-        "rnn.bias_hh_l0_reverse": state_dict["backbone.rnn.bias_hh_l0_reverse"],
-        "output_projection.weight": output_projection,
+    canonical_params = {
+        name.removeprefix("backbone."): tensor
+        for name, tensor in state_dict.items()
+        if name.startswith("backbone.") and name != "backbone.output_projection.weight"
     }
+    canonical_params["output_projection.weight"] = output_projection
+    return canonical_params
 
 
 def flatten_param_dict(

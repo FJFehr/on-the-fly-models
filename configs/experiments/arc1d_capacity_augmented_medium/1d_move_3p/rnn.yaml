@@ -8,3 +8,6 @@ backbone_model:
     hidden_dim: 28
     num_layers: 2
     bidirectional: true
+    activation: silu
+    dropout: 0.1
+    use_residual: true
