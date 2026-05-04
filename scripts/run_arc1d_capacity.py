@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -136,6 +137,49 @@ def load_config(config_path: Path):
         cfg = OmegaConf.merge(base_cfg, cfg)
     OmegaConf.resolve(cfg)
     return cfg
+
+
+def get_commented_task_categories(base_config_path: Path) -> set[str]:
+    """Return task category names that appear as commented-out list items under
+    ``task_categories:`` in the given base config file.
+
+    YAML comments are stripped by the parser, so this reads the raw text.
+    """
+    commented: set[str] = set()
+    in_section = False
+    for line in base_config_path.read_text().splitlines():
+        stripped = line.strip()
+        if stripped == "task_categories:":
+            in_section = True
+            continue
+        if not in_section:
+            continue
+        if re.match(r"^#\s*-\s+\S", stripped):
+            commented.add(re.sub(r"^#\s*-\s+", "", stripped))
+        elif stripped.startswith("- ") or stripped.startswith("#") or stripped == "":
+            continue  # active entry or other comment — stay in section
+        else:
+            break  # new root-level key — section ended
+    return commented
+
+
+def is_experiment_disabled(config_path: Path) -> bool:
+    """Return True when every task_category the config targets is commented out
+    in its base config, meaning the experiment is intentionally disabled."""
+    raw = OmegaConf.load(config_path)
+    base_key = raw.get("_base_")
+    if not base_key:
+        return False
+    base_path = Path(str(base_key))
+    if not base_path.exists():
+        return False
+    commented = get_commented_task_categories(base_path)
+    if not commented:
+        return False
+    task_categories = raw.get("task_categories")
+    if not task_categories:
+        return False
+    return bool(task_categories) and all(str(t) in commented for t in task_categories)
 
 
 def load_experiment_name(config_path: Path) -> str:
@@ -311,6 +355,23 @@ def main() -> None:
     configs = discover_configs(args.config_dir)
     if not configs:
         print(f"No experiment configs found under {args.config_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    enabled_configs, disabled_configs = [], []
+    for cfg in configs:
+        (disabled_configs if is_experiment_disabled(cfg) else enabled_configs).append(cfg)
+    if disabled_configs:
+        print(
+            f"Skipping {len(disabled_configs)} disabled config(s) "
+            f"(all task_categories commented out in base):"
+        )
+        for cfg in disabled_configs:
+            print(f"  [DISABLED] {cfg}")
+        print()
+    configs = enabled_configs
+
+    if not configs:
+        print("All configs are disabled; nothing to run.", file=sys.stderr)
         sys.exit(1)
 
     scheduled_runs = build_scheduled_runs(configs, seeds)
