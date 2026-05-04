@@ -14,16 +14,16 @@ primary_metric: val_loss
 stop_on_perfect_val_exact_match: false
 
 task_categories:
-  - 1d_denoising_1c
-  - 1d_denoising_mc
+  # - 1d_denoising_1c
+  # - 1d_denoising_mc
   - 1d_fill
   - 1d_flip
   - 1d_hollow
   - 1d_mirror
-  - 1d_move_1p
-  - 1d_move_2p
-  - 1d_move_2p_dp
-  - 1d_move_3p
+  # - 1d_move_1p
+  # - 1d_move_2p
+  # - 1d_move_2p_dp
+  # - 1d_move_3p
   - 1d_move_dp
   - 1d_padded_fill
   - 1d_pcopy_1c
@@ -53,7 +53,7 @@ lr_scheduler:
   params:
     T_max: ${max_steps}
     eta_min: 0.0001
-max_steps: 8000
+max_steps: 12000
 log_task_examples: true
 log_task_examples_every_n_epochs: 200
 

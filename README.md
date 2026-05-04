@@ -67,9 +67,9 @@ uv run python scripts/augment_arc_1d.py
 
 This writes `data/arc_1d_augmented`. Only the train split is augmented; dev and test are
 passed through unchanged so results are directly comparable to the baseline.
-Default settings produce up to 110 variants per task (21 additional colour permutations × 5
-shift positions), giving ~4,400 tasks per category in train. For `1d_mirror` tasks, colour 9
-(the semantic pivot) is kept fixed and excluded from permutation targets.
+Default settings produce up to 242 variants per task (22 colour variants × 11 shift positions:
+0, ±1, ±2, ±3, ±4, ±5), giving ~9,680 tasks per category in train. For `1d_mirror` tasks,
+colour 9 (the semantic pivot) is kept fixed and excluded from permutation targets.
 
 ## Data Augmentation
 

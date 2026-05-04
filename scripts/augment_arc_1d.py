@@ -52,7 +52,7 @@ def parse_args() -> argparse.Namespace:
         "--shifts",
         type=int,
         nargs="*",
-        default=[1, 2, -1, -2],
+        default=[1, 2, 3, 4, 5, -1, -2, -3, -4, -5],
         help="Shift offsets to apply. 0 (no shift) is always included.",
     )
     parser.add_argument(
