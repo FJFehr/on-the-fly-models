@@ -25,13 +25,11 @@ class TaskTokenEmbedder(nn.Module):
     def __init__(
         self,
         embedding_dim: int,
-        position_vocab_size: int = 0,  # deprecated; PE is now computed dynamically
         value_vocab_size: int = 2,
         num_examples: int = 4,
         num_roles: int = 2,
         padding_idx: int | None = None,
     ):
-        del position_vocab_size  # deprecated; PE is now computed dynamically in forward()
         super().__init__()
         self.embedding_dim = embedding_dim
         self.value_vocab_size = value_vocab_size

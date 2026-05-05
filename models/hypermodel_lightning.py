@@ -128,13 +128,13 @@ class HyperModelLightning(pl.LightningModule):
             prediction_task, num_classes
         )
         self.target_output_dim = 1 if self.is_binary_task else self.num_classes
-        embedding_dim, position_vocab_size, value_vocab_size = self._resolve_embedding_params(
+        self.padding_idx: int | None = kwargs.get("padding_idx")
+        embedding_dim, value_vocab_size = self._resolve_embedding_params(
             task_encoding, kwargs
         )
         self.embedding_dim = embedding_dim
         self.shared_task_token_embedder = TaskTokenEmbedder(
             embedding_dim=embedding_dim,
-            position_vocab_size=position_vocab_size,
             value_vocab_size=value_vocab_size,
         )
         hypernetwork, hyper_output_dim = self.build_hypernetwork(hyper_model, embedding_dim)
@@ -194,8 +194,8 @@ class HyperModelLightning(pl.LightningModule):
         self,
         task_encoding: Mapping | None,
         runtime_kwargs: Mapping,
-    ) -> tuple[int, int, int]:
-        """Return (embedding_dim, position_vocab_size) from config."""
+    ) -> tuple[int, int]:
+        """Return (embedding_dim, value_vocab_size) from config."""
         if task_encoding is None:
             task_encoding = {}
         if not isinstance(task_encoding, Mapping):
@@ -207,20 +207,12 @@ class HyperModelLightning(pl.LightningModule):
             msg = "task_encoding.embedding_dim must be a positive integer."
             raise ValueError(msg)
 
-        position_vocab_size = runtime_kwargs.get("input_dim")
-        if not isinstance(position_vocab_size, int) or position_vocab_size < 1:
-            msg = (
-                "task_encoding requires a positive integer top-level input_dim so "
-                "position embeddings know their vocabulary size."
-            )
-            raise ValueError(msg)
-
         value_vocab_size = task_encoding.get("value_vocab_size", 2)
         if not isinstance(value_vocab_size, int) or value_vocab_size < 2:
             msg = "task_encoding.value_vocab_size must be an integer >= 2."
             raise ValueError(msg)
 
-        return embedding_dim, position_vocab_size, value_vocab_size
+        return embedding_dim, value_vocab_size
 
     def build_hyper_pooling(
         self,
@@ -439,9 +431,11 @@ class HyperModelLightning(pl.LightningModule):
         """Return the task loss for backprop."""
         if self.is_binary_task:
             return F.binary_cross_entropy_with_logits(logits, targets)
+        ignore_index = self.padding_idx if self.padding_idx is not None else -100
         return F.cross_entropy(
             logits.reshape(-1, self.num_classes),
             targets.long().reshape(-1),
+            ignore_index=ignore_index,
         )
 
     def compute_metrics(
@@ -542,7 +536,8 @@ class HyperModelLightning(pl.LightningModule):
             predictions[:, NUM_SUPPORT_EXAMPLES].detach().cpu().long().tolist()
         )
         task_categories = list(batch["task_category"])
-        task_ids = batch["task_id"].detach().cpu().tolist()
+        raw_ids = batch["task_id"]
+        task_ids = raw_ids.detach().cpu().tolist() if isinstance(raw_ids, torch.Tensor) else list(raw_ids)
 
         records = []
         for row in zip(

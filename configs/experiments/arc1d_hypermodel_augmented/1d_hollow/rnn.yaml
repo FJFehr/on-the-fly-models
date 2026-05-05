@@ -1,0 +1,17 @@
+_base_: configs/experiments/arc1d_hypermodel_augmented/base_hypermodel_augmented.yaml
+task: hollow
+experiment_name: aug_hyper_hollow_rnn
+task_categories:
+  - 1d_hollow
+val_task_categories:
+  - 1d_hollow
+
+target_model:
+  name: rnn
+  params:
+    hidden_dim: 22
+    num_layers: 2
+    bidirectional: true
+    activation: silu
+    dropout: 0.0
+    use_residual: true
