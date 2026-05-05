@@ -2,11 +2,13 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from models.hypermodel import AttentionPooler, HierarchicalPooler, HyperModel
 from models.hypermodel_lightning import HyperModelLightning
 from models.rnn import RNN
 from models.transformer import Transformer
+from training.trainer import StopOnMetricThreshold, build_callbacks
 
 
 def build_model(
@@ -35,6 +37,37 @@ def build_model(
         task_encoding=task_encoding,
         input_dim=4,
     )
+
+
+def build_multiclass_model() -> HyperModelLightning:
+    return HyperModelLightning(
+        hyper_model={
+            "name": "transformer",
+            "params": {
+                "hidden_dim": 16,
+                "num_layers": 1,
+                "num_heads": 1,
+                "output_dim": 8,
+            },
+        },
+        target_model={
+            "name": "rnn",
+            "params": {
+                "hidden_dim": 8,
+                "num_layers": 1,
+                "bidirectional": True,
+            },
+        },
+        task_encoding={"embedding_dim": 8, "value_vocab_size": 11},
+        prediction_task="multiclass",
+        num_classes=10,
+        padding_idx=10,
+        input_dim=4,
+    )
+
+
+def logits_from_predictions(predictions: torch.Tensor, num_classes: int = 10) -> torch.Tensor:
+    return F.one_hot(predictions, num_classes=num_classes).float()
 
 
 def make_batch() -> dict:
@@ -175,3 +208,104 @@ def test_attention_pooling_remains_the_default_hyper_head_behavior():
 
     assert isinstance(default_model.hypermodel.hyper_pooling, AttentionPooler)
     assert isinstance(explicit_model.hypermodel.hyper_pooling, AttentionPooler)
+
+
+def test_compute_metrics_ignore_padding_positions_for_accuracy_and_exact_match():
+    """Padding targets must be excluded from both accuracy and exact-match scoring."""
+    model = build_multiclass_model()
+    predictions = torch.tensor(
+        [
+            [
+                [1, 2, 4, 4],
+                [3, 0, 5, 0],
+                [6, 7, 8, 0],
+                [9, 1, 4, 3],
+            ]
+        ],
+        dtype=torch.long,
+    )
+    targets = torch.tensor(
+        [
+            [
+                [1, 2, 10, 10],
+                [3, 4, 5, 10],
+                [6, 7, 8, 10],
+                [9, 1, 10, 10],
+            ]
+        ],
+        dtype=torch.long,
+    )
+
+    metrics = model.compute_metrics(logits_from_predictions(predictions), targets, prefix="val")
+
+    assert torch.isclose(metrics["val_support_accuracy"], torch.tensor(7.0 / 8.0))
+    assert torch.isclose(metrics["val_support_exact_match"], torch.tensor(2.0 / 3.0))
+    assert torch.isclose(metrics["val_query_accuracy"], torch.tensor(1.0))
+    assert torch.isclose(metrics["val_query_exact_match"], torch.tensor(1.0))
+    assert "val_all_examples_exact_match" not in metrics
+
+
+def test_build_task_records_trim_padding_from_visualized_sequences():
+    """Task-record visualizations should drop padded suffixes before scoring or rendering."""
+    model = build_multiclass_model()
+    batch = {
+        "support_inputs": torch.tensor(
+            [[[1, 2, 10, 10], [3, 4, 5, 10], [6, 7, 8, 10]]],
+            dtype=torch.long,
+        ),
+        "task_category": ["1d_hollow"],
+        "task_id": torch.tensor([6], dtype=torch.long),
+        "query_input": torch.tensor([[8, 9, 10, 10]], dtype=torch.long),
+    }
+    predictions = torch.tensor(
+        [
+            [
+                [1, 2, 0, 0],
+                [9, 4, 5, 0],
+                [6, 7, 8, 0],
+                [1, 0, 3, 4],
+            ]
+        ],
+        dtype=torch.long,
+    )
+    targets = torch.tensor(
+        [
+            [
+                [1, 2, 10, 10],
+                [3, 4, 5, 10],
+                [6, 7, 8, 10],
+                [1, 2, 10, 10],
+            ]
+        ],
+        dtype=torch.long,
+    )
+
+    records = model.build_task_records(batch, predictions, targets)
+
+    assert len(records) == 1
+    record = records[0]
+    assert record["support_inputs"] == [[1, 2], [3, 4, 5], [6, 7, 8]]
+    assert record["query_input"] == [8, 9]
+    assert record["query_output"] == [1, 2]
+    assert record["query_prediction"] == [1, 0]
+    assert record["query_exact_match"] is False
+    assert record["query_accuracy"] == 0.5
+
+
+def test_stop_on_perfect_exact_match_monitors_query_metric():
+    """The perfect-exact-match stop callback should follow the query exact-match metric."""
+
+    class DummyCfg:
+        primary_metric = "val_query_exact_match"
+        output_path = "/tmp"
+
+        def get(self, key, default=None):
+            if key == "stop_on_perfect_val_exact_match":
+                return True
+            return default
+
+    callbacks, _ = build_callbacks(DummyCfg(), build_multiclass_model(), wandb_logger=False)
+    stop_callbacks = [cb for cb in callbacks if isinstance(cb, StopOnMetricThreshold)]
+
+    assert len(stop_callbacks) == 1
+    assert stop_callbacks[0].monitor == "val_query_exact_match"

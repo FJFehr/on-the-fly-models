@@ -1,4 +1,4 @@
-"""Lightning training wrapper for the simplified HyperModel path."""
+/home/fabio/Projects/on-the-fly-models/outputs/arc1d_hypermodel_augmented/aug_hyper_hollow_cnn"""Lightning training wrapper for the simplified HyperModel path."""
 
 import os
 from collections.abc import Mapping
@@ -9,7 +9,6 @@ import torch.nn.functional as F
 from matplotlib import pyplot as plt
 
 import wandb
-from metrics import accuracy, exact_match_accuracy
 from models.cnn import CNN
 from models.hypermodel import AttentionPooler, HierarchicalPooler, HyperModel
 from models.rnn import RNN
@@ -166,6 +165,8 @@ class HyperModelLightning(pl.LightningModule):
         self.num_periodic_train_task_examples = kwargs.get("num_periodic_train_task_examples", 1)
         self.num_periodic_val_task_examples = kwargs.get("num_periodic_val_task_examples", 1)
         self.selected_representative_task_ids: dict[str, list[int]] = {"train": [], "val": []}
+        self._val_metric_totals: dict[str, float] = {}
+        self._test_metric_totals: dict[str, float] = {}
 
     @property
     def is_binary_task(self) -> bool:
@@ -438,46 +439,193 @@ class HyperModelLightning(pl.LightningModule):
             ignore_index=ignore_index,
         )
 
+    def _metric_sums(self, logits: torch.Tensor, targets: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Return raw metric numerators and denominators for one task batch."""
+        predictions = self.decode_logits(logits)
+        targets_long = targets.long()
+        if self.padding_idx is None:
+            valid_mask = torch.ones_like(targets_long, dtype=torch.bool)
+        else:
+            valid_mask = targets_long != self.padding_idx
+
+        matches = predictions == targets_long
+        exact_matches = (matches | ~valid_mask).all(dim=2)
+
+        support_valid = valid_mask[:, :NUM_SUPPORT_EXAMPLES]
+        query_valid = valid_mask[:, NUM_SUPPORT_EXAMPLES:]
+        support_matches = matches[:, :NUM_SUPPORT_EXAMPLES] & support_valid
+        query_matches = matches[:, NUM_SUPPORT_EXAMPLES:] & query_valid
+
+        metric_value = targets_long.new_tensor
+        return {
+            "support_correct": support_matches.sum().float(),
+            "support_total": support_valid.sum().float(),
+            "support_exact": exact_matches[:, :NUM_SUPPORT_EXAMPLES].sum().float(),
+            "support_examples": metric_value(
+                float(exact_matches[:, :NUM_SUPPORT_EXAMPLES].numel()),
+                dtype=torch.float32,
+            ),
+            "query_correct": query_matches.sum().float(),
+            "query_total": query_valid.sum().float(),
+            "query_exact": exact_matches[:, NUM_SUPPORT_EXAMPLES:].sum().float(),
+            "query_examples": metric_value(
+                float(exact_matches[:, NUM_SUPPORT_EXAMPLES:].numel()),
+                dtype=torch.float32,
+            ),
+            "all_examples_exact": exact_matches.all(dim=1).sum().float(),
+            "task_count": metric_value(float(exact_matches.shape[0]), dtype=torch.float32),
+        }
+
+    def _metrics_from_sums(
+        self,
+        metric_sums: dict[str, torch.Tensor],
+        prefix: str = "",
+    ) -> dict[str, torch.Tensor]:
+        """Convert raw metric sums into logged ratios."""
+        key = f"{prefix}_" if prefix else ""
+
+        def ratio(numerator: str, denominator: str) -> torch.Tensor:
+            return metric_sums[numerator] / metric_sums[denominator].clamp_min(1.0)
+
+        metrics = {
+            f"{key}support_accuracy": ratio("support_correct", "support_total"),
+            f"{key}support_exact_match": ratio("support_exact", "support_examples"),
+            f"{key}query_accuracy": ratio("query_correct", "query_total"),
+            f"{key}query_exact_match": ratio("query_exact", "query_examples"),
+        }
+        if prefix == "train":
+            metrics[f"{key}all_examples_exact_match"] = ratio(
+                "all_examples_exact",
+                "task_count",
+            )
+        return metrics
+
     def compute_metrics(
         self,
         logits: torch.Tensor,
         targets: torch.Tensor,
         prefix: str = "",
     ) -> dict[str, torch.Tensor]:
-        predictions = self.decode_logits(logits)
-        targets_long = targets.long()
-        exact_matches = (predictions == targets_long).all(dim=2).float()
+        return self._metrics_from_sums(self._metric_sums(logits, targets), prefix=prefix)
 
-        support_predictions = predictions[:, :NUM_SUPPORT_EXAMPLES].reshape(
-            -1, predictions.shape[-1]
-        )
-        support_targets = targets_long[:, :NUM_SUPPORT_EXAMPLES].reshape(
-            -1, targets_long.shape[-1]
-        )
-        query_predictions = predictions[:, NUM_SUPPORT_EXAMPLES:].reshape(
-            -1, predictions.shape[-1]
-        )
-        query_targets = targets_long[:, NUM_SUPPORT_EXAMPLES:].reshape(-1, targets_long.shape[-1])
+    def _reset_epoch_metric_totals(self, prefix: str) -> None:
+        if prefix == "val":
+            self._val_metric_totals = {
+                "support_correct": 0.0,
+                "support_total": 0.0,
+                "support_exact": 0.0,
+                "support_examples": 0.0,
+                "query_correct": 0.0,
+                "query_total": 0.0,
+                "query_exact": 0.0,
+                "query_examples": 0.0,
+            }
+        elif prefix == "test":
+            self._test_metric_totals = {
+                "support_correct": 0.0,
+                "support_total": 0.0,
+                "support_exact": 0.0,
+                "support_examples": 0.0,
+                "query_correct": 0.0,
+                "query_total": 0.0,
+                "query_exact": 0.0,
+                "query_examples": 0.0,
+            }
 
-        key = f"{prefix}_" if prefix else ""
-        return {
-            f"{key}support_accuracy": accuracy(support_targets, support_predictions),
-            f"{key}support_exact_match": exact_match_accuracy(
-                support_targets,
-                support_predictions,
-            ),
-            f"{key}query_accuracy": accuracy(query_targets, query_predictions),
-            f"{key}query_exact_match": exact_match_accuracy(
-                query_targets,
-                query_predictions,
-            ),
-            f"{key}all_examples_exact_match": exact_matches.all(dim=1).float().mean(),
+    def _accumulate_epoch_metric_totals(
+        self,
+        prefix: str,
+        metric_sums: dict[str, torch.Tensor],
+    ) -> None:
+        if prefix not in {"val", "test"}:
+            return
+
+        totals = self._val_metric_totals if prefix == "val" else self._test_metric_totals
+        for key in totals:
+            totals[key] += float(metric_sums[key].detach().cpu().item())
+
+    def _gather_epoch_metric_totals(self, prefix: str) -> dict[str, float]:
+        totals = dict(self._val_metric_totals if prefix == "val" else self._test_metric_totals)
+        if not torch.distributed.is_available() or not torch.distributed.is_initialized():
+            return totals
+
+        gathered_payloads: list[dict[str, float] | None] = [
+            None
+        ] * torch.distributed.get_world_size()
+        torch.distributed.all_gather_object(gathered_payloads, totals)
+
+        merged_totals = {key: 0.0 for key in totals}
+        for payload in gathered_payloads:
+            if payload is None:
+                continue
+            for key, value in payload.items():
+                merged_totals[key] += float(value)
+        return merged_totals
+
+    def _log_epoch_metrics(self, prefix: str) -> None:
+        totals = self._gather_epoch_metric_totals(prefix)
+        metric_names = {
+            f"{prefix}_support_accuracy": ("support_correct", "support_total"),
+            f"{prefix}_support_exact_match": ("support_exact", "support_examples"),
+            f"{prefix}_query_accuracy": ("query_correct", "query_total"),
+            f"{prefix}_query_exact_match": ("query_exact", "query_examples"),
         }
+
+        for name, (numerator_key, denominator_key) in metric_names.items():
+            denominator = totals[denominator_key]
+            if denominator <= 0:
+                continue
+            self.log(
+                name,
+                totals[numerator_key] / denominator,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=name.endswith("query_exact_match"),
+                batch_size=max(1, int(round(denominator))),
+                sync_dist=False,
+            )
+
+    def _actual_seq_len(self, sequence: torch.Tensor | list[int]) -> int:
+        """Return the unpadded length of one serialized sequence."""
+        if isinstance(sequence, torch.Tensor):
+            values = sequence.detach().cpu().tolist()
+        else:
+            values = list(sequence)
+        if self.padding_idx is None:
+            return len(values)
+        n = len(values)
+        while n > 0 and int(values[n - 1]) == self.padding_idx:
+            n -= 1
+        return n if n > 0 else len(values)
+
+    def _trim_sequence(self, sequence: torch.Tensor | list[int]) -> list[int]:
+        """Return one sequence without trailing padding."""
+        if isinstance(sequence, torch.Tensor):
+            values = sequence.detach().cpu().tolist()
+        else:
+            values = list(sequence)
+        n = self._actual_seq_len(values)
+        return [int(value) for value in values[:n]]
+
+    def _sequence_accuracy(
+        self,
+        target_sequence: list[int],
+        prediction_sequence: list[int],
+    ) -> float:
+        """Return token accuracy over an already-trimmed sequence."""
+        if not target_sequence:
+            return 0.0
+        correct = sum(
+            int(prediction == target)
+            for target, prediction in zip(target_sequence, prediction_sequence, strict=True)
+        )
+        return correct / len(target_sequence)
 
     def common_step(self, batch: dict, prefix: str) -> torch.Tensor:
         logits, targets = self(batch)
         loss = self.compute_loss(logits, targets)
-        metrics = self.compute_metrics(logits, targets, prefix=prefix)
+        metric_sums = self._metric_sums(logits, targets)
+        metrics = self._metrics_from_sums(metric_sums, prefix=prefix)
         batch_size = batch["support_inputs"].shape[0]
         log_on_step = prefix == "train"
         sync_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
@@ -488,16 +636,19 @@ class HyperModelLightning(pl.LightningModule):
             "sync_dist": sync_dist,
         }
         self.log(f"{prefix}_loss", loss, prog_bar=True, **log_kwargs)
-        for name, value in metrics.items():
-            self.log(
-                name,
-                value,
-                on_step=log_on_step,
-                on_epoch=True,
-                prog_bar=name.endswith("query_exact_match"),
-                batch_size=batch_size,
-                sync_dist=sync_dist,
-            )
+        if prefix == "train":
+            for name, value in metrics.items():
+                self.log(
+                    name,
+                    value,
+                    on_step=log_on_step,
+                    on_epoch=True,
+                    prog_bar=name.endswith("query_exact_match"),
+                    batch_size=batch_size,
+                    sync_dist=sync_dist,
+                )
+        else:
+            self._accumulate_epoch_metric_totals(prefix, metric_sums)
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -508,6 +659,18 @@ class HyperModelLightning(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         self.common_step(batch, prefix="test")
+
+    def on_validation_epoch_start(self) -> None:
+        self._reset_epoch_metric_totals("val")
+
+    def on_validation_epoch_end(self) -> None:
+        self._log_epoch_metrics("val")
+
+    def on_test_epoch_start(self) -> None:
+        self._reset_epoch_metric_totals("test")
+
+    def on_test_epoch_end(self) -> None:
+        self._log_epoch_metrics("test")
 
     def predict_batch(
         self,
@@ -537,7 +700,11 @@ class HyperModelLightning(pl.LightningModule):
         )
         task_categories = list(batch["task_category"])
         raw_ids = batch["task_id"]
-        task_ids = raw_ids.detach().cpu().tolist() if isinstance(raw_ids, torch.Tensor) else list(raw_ids)
+        task_ids = (
+            raw_ids.detach().cpu().tolist()
+            if isinstance(raw_ids, torch.Tensor)
+            else list(raw_ids)
+        )
 
         records = []
         for row in zip(
@@ -561,21 +728,39 @@ class HyperModelLightning(pl.LightningModule):
                 task_category,
                 task_id,
             ) = row
-            query_exact_match = query_prediction == query_target
-            query_accuracy = (
-                (torch.tensor(query_prediction) == torch.tensor(query_target))
-                .float()
-                .mean()
-                .item()
+            trimmed_support_inputs = []
+            trimmed_support_targets = []
+            trimmed_support_predictions = []
+            for example_input, example_target, example_prediction in zip(
+                support_input,
+                support_target,
+                support_prediction,
+                strict=True,
+            ):
+                n = self._actual_seq_len(example_input)
+                trimmed_support_inputs.append([int(value) for value in example_input[:n]])
+                trimmed_support_targets.append([int(value) for value in example_target[:n]])
+                trimmed_support_predictions.append(
+                    [int(value) for value in example_prediction[:n]]
+                )
+
+            query_n = self._actual_seq_len(query_input)
+            trimmed_query_input = [int(value) for value in query_input[:query_n]]
+            trimmed_query_target = [int(value) for value in query_target[:query_n]]
+            trimmed_query_prediction = [int(value) for value in query_prediction[:query_n]]
+            query_exact_match = trimmed_query_prediction == trimmed_query_target
+            query_accuracy = self._sequence_accuracy(
+                trimmed_query_target,
+                trimmed_query_prediction,
             )
             records.append(
                 {
-                    "support_inputs": support_input,
-                    "support_outputs": support_target,
-                    "support_predictions": support_prediction,
-                    "query_input": query_input,
-                    "query_output": query_target,
-                    "query_prediction": query_prediction,
+                    "support_inputs": trimmed_support_inputs,
+                    "support_outputs": trimmed_support_targets,
+                    "support_predictions": trimmed_support_predictions,
+                    "query_input": trimmed_query_input,
+                    "query_output": trimmed_query_target,
+                    "query_prediction": trimmed_query_prediction,
                     "task_category": task_category,
                     "task_id": task_id,
                     "query_exact_match": query_exact_match,

@@ -120,9 +120,7 @@ class TaskVisualizationCallback(Callback):
                 limit=limit,
             )
 
-        selected_task_ids = _select_representative_task_ids(
-            getattr(dataset, "tasks", []), limit
-        )
+        selected_task_ids = _select_representative_task_ids(getattr(dataset, "tasks", []), limit)
         pl_module.selected_representative_task_ids[split_name] = selected_task_ids
         return selected_task_ids
 
@@ -287,7 +285,7 @@ def build_callbacks(
     if cfg.get("stop_on_perfect_val_exact_match", False):
         callbacks.append(
             StopOnMetricThreshold(
-                monitor="val_all_examples_exact_match",
+                monitor="val_query_exact_match",
                 threshold=1.0,
                 mode="max",
             )
