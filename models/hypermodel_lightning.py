@@ -1,4 +1,4 @@
-/home/fabio/Projects/on-the-fly-models/outputs/arc1d_hypermodel_augmented/aug_hyper_hollow_cnn"""Lightning training wrapper for the simplified HyperModel path."""
+"""Lightning training wrapper for the simplified HyperModel path."""
 
 import os
 from collections.abc import Mapping
@@ -128,9 +128,7 @@ class HyperModelLightning(pl.LightningModule):
         )
         self.target_output_dim = 1 if self.is_binary_task else self.num_classes
         self.padding_idx: int | None = kwargs.get("padding_idx")
-        embedding_dim, value_vocab_size = self._resolve_embedding_params(
-            task_encoding, kwargs
-        )
+        embedding_dim, value_vocab_size = self._resolve_embedding_params(task_encoding, kwargs)
         self.embedding_dim = embedding_dim
         self.shared_task_token_embedder = TaskTokenEmbedder(
             embedding_dim=embedding_dim,
@@ -426,9 +424,7 @@ class HyperModelLightning(pl.LightningModule):
             return (torch.sigmoid(logits) >= 0.5).long()
         return logits.argmax(dim=-1)
 
-    def compute_loss(
-        self, logits: torch.Tensor, targets: torch.Tensor
-    ) -> torch.Tensor:
+    def compute_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """Return the task loss for backprop."""
         if self.is_binary_task:
             return F.binary_cross_entropy_with_logits(logits, targets)
@@ -690,20 +686,14 @@ class HyperModelLightning(pl.LightningModule):
         """Convert a task batch into visualisation-friendly prediction records."""
         support_inputs = batch["support_inputs"].detach().cpu().long().tolist()
         support_targets = targets[:, :NUM_SUPPORT_EXAMPLES].detach().cpu().long().tolist()
-        support_predictions = (
-            predictions[:, :NUM_SUPPORT_EXAMPLES].detach().cpu().long().tolist()
-        )
+        support_predictions = predictions[:, :NUM_SUPPORT_EXAMPLES].detach().cpu().long().tolist()
         query_inputs = batch["query_input"].detach().cpu().long().tolist()
         query_targets = targets[:, NUM_SUPPORT_EXAMPLES].detach().cpu().long().tolist()
-        query_predictions = (
-            predictions[:, NUM_SUPPORT_EXAMPLES].detach().cpu().long().tolist()
-        )
+        query_predictions = predictions[:, NUM_SUPPORT_EXAMPLES].detach().cpu().long().tolist()
         task_categories = list(batch["task_category"])
         raw_ids = batch["task_id"]
         task_ids = (
-            raw_ids.detach().cpu().tolist()
-            if isinstance(raw_ids, torch.Tensor)
-            else list(raw_ids)
+            raw_ids.detach().cpu().tolist() if isinstance(raw_ids, torch.Tensor) else list(raw_ids)
         )
 
         records = []
