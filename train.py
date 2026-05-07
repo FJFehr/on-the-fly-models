@@ -12,6 +12,8 @@ That split keeps this file readable when you want to answer
 """
 
 import argparse
+import os
+import sys
 
 import lightning as pl
 import torch
@@ -36,6 +38,25 @@ from training.trainer import (
     resolve_resume_checkpoint_path,
     run_post_training_artifacts,
 )
+
+
+class _DualStreamWriter:
+    """Mirror writes to both the original stream and a log file."""
+
+    def __init__(self, stream, filepath: str) -> None:
+        self._stream = stream
+        self._file = open(filepath, "a", buffering=1)  # noqa: SIM115
+
+    def write(self, data: str) -> None:
+        self._stream.write(data)
+        self._file.write(data)
+
+    def flush(self) -> None:
+        self._stream.flush()
+        self._file.flush()
+
+    def fileno(self) -> int:
+        return self._stream.fileno()
 
 
 def configure_torch_runtime(runtime_cfg: dict) -> None:
@@ -107,6 +128,10 @@ def main() -> None:
     # config snapshot, model summary, checkpoints, visualisations, and results.
     ensure_output_path(cfg.output_path)
     save_resolved_config(cfg)
+
+    log_file_path = os.path.join(cfg.output_path, "train.log")
+    sys.stdout = _DualStreamWriter(sys.__stdout__, log_file_path)
+    sys.stderr = _DualStreamWriter(sys.__stderr__, log_file_path)
 
     # Seed after the config is loaded so the chosen seed comes from the run
     # definition rather than from the shell environment.

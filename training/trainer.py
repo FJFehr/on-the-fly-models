@@ -131,6 +131,23 @@ class TaskVisualizationCallback(Callback):
         example_split_prefix: str,
         attention_split_prefix: str,
     ) -> None:
+        try:
+            self._emit_task_visualizations_impl(
+                pl_module, datamodule, example_split_prefix, attention_split_prefix
+            )
+        except Exception as exc:
+            print(
+                f"[TaskVisualizationCallback] WARNING: skipping task viz — {exc}",
+                flush=True,
+            )
+
+    def _emit_task_visualizations_impl(
+        self,
+        pl_module: pl.LightningModule,
+        datamodule,
+        example_split_prefix: str,
+        attention_split_prefix: str,
+    ) -> None:
         train_task_ids = self._resolve_task_ids(
             pl_module,
             datamodule.train_dataset,
