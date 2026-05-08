@@ -12,7 +12,7 @@ from pathlib import Path
 
 import lightning as pl
 import torch
-from lightning.pytorch.callbacks import Callback, ModelCheckpoint
+from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 
 from training.logging import (
     export_hard_validation_examples,
@@ -315,6 +315,8 @@ def build_callbacks(
                 wandb_logger=wandb_logger,
             )
         )
+
+    callbacks.append(LearningRateMonitor(logging_interval="step"))
 
     return callbacks, checkpoint_callback
 

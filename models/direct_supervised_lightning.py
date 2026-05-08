@@ -47,6 +47,7 @@ class DirectSupervisedLightning(pl.LightningModule):
         optimizer_name: str = "Adam",
         weight_decay: float = 0.01,
         lr_scheduler: dict | None = None,
+        warmup_steps: int = 0,
         non_background_loss_weight: float = 1.0,
         **kwargs,
     ):
@@ -63,6 +64,7 @@ class DirectSupervisedLightning(pl.LightningModule):
         self.optimizer_name = optimizer_name or optimizer
         self.weight_decay = weight_decay
         self.lr_scheduler_cfg = lr_scheduler
+        self.warmup_steps = warmup_steps
         self.non_background_loss_weight = float(non_background_loss_weight)
         self.log_task_examples = kwargs.get("log_task_examples", False)
         self.log_task_examples_every_n_epochs = kwargs.get("log_task_examples_every_n_epochs", 100)
@@ -522,13 +524,27 @@ class DirectSupervisedLightning(pl.LightningModule):
             weight_decay=self.weight_decay,
         )
         if self.lr_scheduler_cfg:
-            sched_cls = getattr(torch.optim.lr_scheduler, self.lr_scheduler_cfg["name"])
-            scheduler = sched_cls(optimizer, **self.lr_scheduler_cfg.get("params", {}))
+            scheduler = self._build_scheduler(optimizer)
             return {
                 "optimizer": optimizer,
                 "lr_scheduler": {"scheduler": scheduler, "interval": "step", "frequency": 1},
             }
         return optimizer
+
+    def _build_scheduler(self, optimizer):
+        sched_cls = getattr(torch.optim.lr_scheduler, self.lr_scheduler_cfg["name"])
+        params = dict(self.lr_scheduler_cfg.get("params", {}))
+        if self.warmup_steps > 0:
+            if "T_max" in params:
+                params["T_max"] = max(1, params["T_max"] - self.warmup_steps)
+            main_scheduler = sched_cls(optimizer, **params)
+            warmup = torch.optim.lr_scheduler.LinearLR(
+                optimizer, start_factor=1e-6, end_factor=1.0, total_iters=self.warmup_steps
+            )
+            return torch.optim.lr_scheduler.SequentialLR(
+                optimizer, schedulers=[warmup, main_scheduler], milestones=[self.warmup_steps]
+            )
+        return sched_cls(optimizer, **params)
 
     def on_fit_start(self) -> None:
         print(repr(self.backbone))
