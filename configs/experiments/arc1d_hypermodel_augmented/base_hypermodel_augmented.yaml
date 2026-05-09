@@ -14,7 +14,7 @@ output_path: ${output_dir}/${project_name}/${experiment_name}
 data: arc_1d_meta_multiclass
 data_dir: data/arc_1d_augmented
 model: hyper_model
-primary_metric: val_query_exact_match
+primary_metric: val_loss
 num_workers: 0
 task_categories:
   - "1d_${task}"
@@ -29,7 +29,7 @@ accelerator: auto
 float32_matmul_precision: medium
 devices: 1
 optimizer: RAdam
-batch_size: 1024
+batch_size: 2048
 learning_rate: 0.001
 gradient_clip_val: 1.0
 weight_decay: 0.01
@@ -38,7 +38,7 @@ lr_scheduler:
   params:
     T_max: ${max_steps}
     eta_min: 0.0001
-max_steps: 5000
+max_steps: 10000
 warmup_steps: 500
 log_task_examples: true
 log_task_examples_every_n_epochs: 100
@@ -63,4 +63,5 @@ hyper_model:
     output_dim: 64
 
 hyper_head:
+  pooling: hierarchical
   bottleneck_dim: 128

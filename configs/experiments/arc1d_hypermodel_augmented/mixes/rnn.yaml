@@ -7,7 +7,7 @@ output_path: outputs/arc1d_hypermodel_augmented/aug_hyper_all_rnn
 data: arc_1d_meta_multiclass
 data_dir: data/arc_1d_augmented
 model: hyper_model
-primary_metric: val_query_exact_match
+primary_metric: val_loss
 num_workers: 0
 task_categories:
   - 1d_move_1p
