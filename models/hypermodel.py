@@ -14,11 +14,12 @@ def _indent_repr(value: object, prefix: str = "    ") -> str:
 
 def _describe_hyper_projection(model: "HyperModel") -> str:
     """Build a compact one-line description of the hyper projection head."""
-    parts = [
-        f"Linear({model.hyper_output_dim} -> {model.bottleneck_dim})",
-        "GELU",
-        f"Linear({model.bottleneck_dim} -> {model.total_target_params})",
-    ]
+    parts = []
+    for layer in model.hyper_projection:
+        if isinstance(layer, nn.Linear):
+            parts.append(f"Linear({layer.in_features} -> {layer.out_features})")
+        elif isinstance(layer, nn.GELU):
+            parts.append("GELU")
     return " + ".join(parts)
 
 

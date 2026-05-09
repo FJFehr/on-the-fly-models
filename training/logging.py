@@ -108,8 +108,7 @@ def _build_hypermodel_summary(model: torch.nn.Module) -> dict[str, int | str]:
     hypernetwork_backbone_params = count_parameters(hypernetwork, trainable_only=True)
     hyper_head_params = (
         count_parameters(hypermodel.hyper_pooling, trainable_only=True)
-        + count_parameters(hypermodel.hyper_bottleneck, trainable_only=True)
-        + count_parameters(hypermodel.hyper_out, trainable_only=True)
+        + count_parameters(hypermodel.hyper_projection, trainable_only=True)
     )
     shared_embedding_params = (
         count_parameters(shared_task_token_embedder, trainable_only=True)
