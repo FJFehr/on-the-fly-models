@@ -147,12 +147,14 @@ class HyperModelLightning(pl.LightningModule):
         ):
             msg = "hyper_head.bottleneck_dim must be a positive integer."
             raise ValueError(msg)
+        projection_dims = hyper_head_cfg.get("projection_dims")
         hyper_pooling = self.build_hyper_pooling(hyper_head_cfg, hyper_output_dim)
         self.hypermodel = HyperModel(
             hypernetwork=hypernetwork,
             target_model=target,
             hyper_output_dim=hyper_output_dim,
             bottleneck_dim=bottleneck_dim,
+            projection_dims=projection_dims,
             hyper_pooling=hyper_pooling,
         )
         self.learning_rate = learning_rate

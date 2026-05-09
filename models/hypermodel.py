@@ -182,6 +182,7 @@ class HyperModel(nn.Module):
         target_model: nn.Module,
         hyper_output_dim: int,
         bottleneck_dim: int | None = None,
+        projection_dims: list[int] | None = None,
         hyper_pooling: nn.Module | None = None,
     ):
         super().__init__()
@@ -199,18 +200,18 @@ class HyperModel(nn.Module):
         ]
 
         self.hyper_output_dim = hyper_output_dim
-        self.bottleneck_dim = bottleneck_dim if bottleneck_dim is not None else hyper_output_dim
-
         self.hyper_pooling = hyper_pooling or AttentionPooler(self.hyper_output_dim)
 
-        # Deterministic bottleneck.
-        self.hyper_bottleneck = nn.Sequential(
-            nn.Linear(self.hyper_output_dim, self.bottleneck_dim, bias=False),
-            nn.GELU(),
-        )
-
-        # Projects the bottleneck code to the full target model parameter vector.
-        self.hyper_out = nn.Linear(self.bottleneck_dim, self.total_target_params, bias=False)
+        # Build the projection MLP from hyper_output_dim to total_target_params.
+        # projection_dims specifies intermediate hidden sizes; bottleneck_dim is the
+        # legacy single-intermediate fallback.
+        intermediate = projection_dims if projection_dims is not None else [bottleneck_dim if bottleneck_dim is not None else hyper_output_dim]
+        dims = [hyper_output_dim] + list(intermediate) + [self.total_target_params]
+        layers: list[nn.Module] = []
+        for in_d, out_d in zip(dims[:-2], dims[1:-1]):
+            layers += [nn.Linear(in_d, out_d, bias=False), nn.GELU()]
+        layers.append(nn.Linear(dims[-2], dims[-1], bias=False))
+        self.hyper_projection = nn.Sequential(*layers)
 
     @property
     def total_target_params(self) -> int:
@@ -253,8 +254,7 @@ class HyperModel(nn.Module):
     def extract_parameter_vectors(self, hyper_output: torch.Tensor) -> torch.Tensor:
         """Pool tokenwise hypernetwork features and project them to target weights."""
         task_representation = self.extract_task_representation(hyper_output)
-        z = self.hyper_bottleneck(task_representation)
-        return self.hyper_out(z)
+        return self.hyper_projection(task_representation)
 
     def apply_target(
         self, params: dict[str, torch.Tensor], example_inputs: torch.Tensor
