@@ -32,6 +32,7 @@ from training.logging import (
     write_model_summary,
     write_results_file,
 )
+from training.gpu_utils import resolve_free_gpus
 from training.trainer import (
     build_callbacks,
     build_trainer,
@@ -123,6 +124,16 @@ def main() -> None:
     cfg = load_config(cli_args.config, cli_args.overrides)
     runtime_cfg = build_runtime_config_dict(cfg)
     configure_torch_runtime(runtime_cfg)
+
+    if runtime_cfg.get("devices") == "auto":
+        gpu_ids, count = resolve_free_gpus()
+        if count > 0:
+            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in gpu_ids)
+            runtime_cfg["devices"] = count
+            print(f"[gpu_utils] Free GPUs: {gpu_ids} → using {count} (CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']})")
+        else:
+            runtime_cfg["devices"] = 1
+            print("[gpu_utils] No free GPUs found, falling back to 1 device")
 
     # The output directory is treated as the canonical home for this run:
     # config snapshot, model summary, checkpoints, visualisations, and results.
