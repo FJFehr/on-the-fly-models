@@ -170,13 +170,16 @@ def test_apply_shift_extends_sequence_length():
 
 
 def test_augment_task_count():
-    """Full pipeline returns exactly (1+n_perms) × (1+len(shifts)) variants."""
+    """Full pipeline returns exactly (1+n_perms) × (1+len(shifts)) × n_mirror variants."""
     task = make_task([[1, 2]], [[2, 1]], [1, 0], [2, 0], seq_len=2)
     n_perms = 5
     shifts = [1, -1]
-    variants = augment_task(task, n_perms, shifts, rng=random.Random(0))
-    expected = (1 + n_perms) * (1 + len(shifts))
-    assert len(variants) == expected
+    variants_no_mirror = augment_task(task, n_perms, shifts, rng=random.Random(0), mirror=False)
+    expected_no_mirror = (1 + n_perms) * (1 + len(shifts))
+    assert len(variants_no_mirror) == expected_no_mirror
+
+    variants_mirror = augment_task(task, n_perms, shifts, rng=random.Random(0), mirror=True)
+    assert len(variants_mirror) == expected_no_mirror * 2
 
 
 def test_augment_task_ids_unique():

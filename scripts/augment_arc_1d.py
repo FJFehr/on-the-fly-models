@@ -1,4 +1,4 @@
-"""Augment the 1D-ARC dataset with colour permutations and shifts.
+"""Augment the 1D-ARC dataset with colour permutations, shifts, and mirroring.
 
 Reads from data/arc_1d (variable-length), augments the train split only,
 and writes to data/arc_1d_augmented in the same schema. Dev and test splits
@@ -7,6 +7,7 @@ are passed through unchanged so results remain comparable to the baseline.
 Augmentation pipeline per task (applied in this order):
   1. colour permutations — remap non-zero colours consistently across all sequences
   2. shifts             — extend sequences with zero-padding at one end
+  3. mirror             — reverse all sequences left-right (optional, default on)
 
 For 1d_mirror tasks, colour 9 (the semantic pivot) is never permuted and no
 other colour is remapped to 9.
@@ -52,8 +53,14 @@ def parse_args() -> argparse.Namespace:
         "--shifts",
         type=int,
         nargs="*",
-        default=[1, 2, 3, 4, 5, -1, -2, -3, -4, -5],
+        default=[1, 2, -1, -2],
         help="Shift offsets to apply. 0 (no shift) is always included.",
+    )
+    parser.add_argument(
+        "--mirror",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Include horizontally mirrored variants of each augmented example.",
     )
     parser.add_argument(
         "--seed",
@@ -162,15 +169,32 @@ def apply_shift(task: dict, shift: int) -> dict:
     }
 
 
+def apply_mirror(task: dict) -> dict:
+    """Reverse all sequences left-right, preserving sequence_length."""
+
+    def flip(seq: list[int]) -> list[int]:
+        return list(reversed(seq))
+
+    return {
+        **task,
+        "support_inputs": [flip(s) for s in task["support_inputs"]],
+        "support_outputs": [flip(s) for s in task["support_outputs"]],
+        "query_input": flip(task["query_input"]),
+        "query_output": flip(task["query_output"]),
+    }
+
+
 def augment_task(
     task: dict,
     n_color_perms: int,
     shifts: list[int],
     rng: random.Random,
+    *,
+    mirror: bool = True,
 ) -> list[dict]:
     """Apply the full augmentation pipeline to one task.
 
-    Pipeline: colour → shift.
+    Pipeline: colour → shift → mirror.
     For 1d_mirror tasks, colour 9 is kept fixed (see FIXED_RULE_COLOURS).
     Returned tasks have new task_ids: original_task_id * 10000 + aug_index.
     """
@@ -185,6 +209,14 @@ def augment_task(
     all_shifts = [0] + [s for s in shifts if s != 0]
     all_variants = [apply_shift(cv, s) for cv in color_variants for s in all_shifts]
 
+    # Step 3: mirror (each variant becomes original + mirrored)
+    if mirror:
+        mirrored: list[dict] = []
+        for v in all_variants:
+            mirrored.append(v)
+            mirrored.append(apply_mirror(v))
+        all_variants = mirrored
+
     orig_id = task["task_id"]
     return [{**v, "task_id": orig_id * 10000 + i} for i, v in enumerate(all_variants)]
 
@@ -194,11 +226,13 @@ def augment_split(
     n_color_perms: int,
     shifts: list[int],
     rng: random.Random,
+    *,
+    mirror: bool = True,
 ) -> list[dict]:
     """Augment every task in the split and return the combined list."""
     augmented: list[dict] = []
     for task in split:
-        augmented.extend(augment_task(task, n_color_perms, shifts, rng))
+        augmented.extend(augment_task(task, n_color_perms, shifts, rng, mirror=mirror))
     return augmented
 
 
@@ -221,13 +255,14 @@ def main() -> None:
 
     n_color = args.n_color_permutations
     n_shifts = 1 + len([s for s in shifts if s != 0])
-    variants_per_task = (1 + n_color) * n_shifts
+    n_mirror = 2 if args.mirror else 1
+    variants_per_task = (1 + n_color) * n_shifts * n_mirror
     print(
         f"Augmenting train split: {n_color} colour permutations, "
-        f"shifts={shifts} → {variants_per_task} variants per task"
+        f"shifts={shifts}, mirror={args.mirror} → {variants_per_task} variants per task"
     )
 
-    aug_train = augment_split(base["train"], n_color, shifts, rng)
+    aug_train = augment_split(base["train"], n_color, shifts, rng, mirror=args.mirror)
 
     splits: dict[str, Dataset] = {"train": Dataset.from_list(aug_train)}
     for split_name in ("dev", "test"):

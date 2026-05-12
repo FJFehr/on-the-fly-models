@@ -1,6 +1,7 @@
 """Lightning training wrapper for the simplified HyperModel path."""
 
 import os
+import re
 from collections.abc import Mapping
 
 import lightning as pl
@@ -51,6 +52,11 @@ TARGET_MODEL_REGISTRY = {
         "owned_params": {},
     },
 }
+
+
+def _task_category_metric_suffix(task_category: str) -> str:
+    """Convert a task category string into a safe metric name suffix."""
+    return re.sub(r"[^a-zA-Z0-9]", "_", task_category)
 
 
 def _ensure_typed_model_config(config: Mapping, config_name: str) -> tuple[str, dict]:
@@ -169,6 +175,9 @@ class HyperModelLightning(pl.LightningModule):
         self.selected_representative_task_ids: dict[str, list[int]] = {"train": [], "val": []}
         self._val_metric_totals: dict[str, float] = {}
         self._test_metric_totals: dict[str, float] = {}
+        self.puzzle_loss_weight: float = float(kwargs.get("puzzle_loss_weight", 0.0))
+        self._val_query_exact_match_totals_by_task: dict[str, float] = {}
+        self._val_query_exact_match_counts_by_task: dict[str, int] = {}
 
     @property
     def is_binary_task(self) -> bool:
@@ -431,11 +440,47 @@ class HyperModelLightning(pl.LightningModule):
     def compute_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """Return the task loss for backprop."""
         if self.is_binary_task:
-            return F.binary_cross_entropy_with_logits(logits, targets)
+            base_loss = F.binary_cross_entropy_with_logits(logits, targets)
+        else:
+            ignore_index = self.padding_idx if self.padding_idx is not None else -100
+            base_loss = F.cross_entropy(
+                logits.reshape(-1, self.num_classes),
+                targets.long().reshape(-1),
+                ignore_index=ignore_index,
+            )
+        if self.puzzle_loss_weight > 0.0:
+            return base_loss + self.puzzle_loss_weight * self.compute_puzzle_loss(logits, targets)
+        return base_loss
+
+    def compute_puzzle_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """CE loss restricted to puzzles where the query is not yet exactly solved.
+
+        Applies cross-entropy only over examples the model currently gets wrong at the
+        sequence level, giving a sharper signal once per-token accuracy is high.
+        """
+        predictions = self.decode_logits(logits)
+        targets_long = targets.long()
+        if self.padding_idx is not None:
+            valid_mask = targets_long != self.padding_idx
+            exact_matches = ((predictions == targets_long) | ~valid_mask).all(dim=2)
+        else:
+            exact_matches = (predictions == targets_long).all(dim=2)
+        # exact_matches: (B, 4) — True where each example is solved
+        # A puzzle is "solved" if the query (last example) is exact
+        query_solved = exact_matches[:, NUM_SUPPORT_EXAMPLES]  # (B,)
+        unsolved_mask = ~query_solved  # (B,)
+        if not unsolved_mask.any():
+            return logits.new_tensor(0.0)
+        query_logits = logits[unsolved_mask, NUM_SUPPORT_EXAMPLES]  # (B', seq_len[, C])
+        query_targets = targets_long[unsolved_mask, NUM_SUPPORT_EXAMPLES]  # (B', seq_len)
+        if self.is_binary_task:
+            return F.binary_cross_entropy_with_logits(
+                query_logits, query_targets.float()
+            )
         ignore_index = self.padding_idx if self.padding_idx is not None else -100
         return F.cross_entropy(
-            logits.reshape(-1, self.num_classes),
-            targets.long().reshape(-1),
+            query_logits.permute(0, 2, 1) if query_logits.dim() == 3 else query_logits,
+            query_targets,
             ignore_index=ignore_index,
         )
 
@@ -585,6 +630,56 @@ class HyperModelLightning(pl.LightningModule):
                 sync_dist=False,
             )
 
+    def _accumulate_query_exact_match_by_task_category(
+        self,
+        batch: dict,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+    ) -> None:
+        """Accumulate validation query exact-match totals grouped by task category."""
+        predictions = self.decode_logits(logits)
+        targets_long = targets.long()
+        if self.padding_idx is not None:
+            valid_mask = targets_long != self.padding_idx
+            exact_matches = ((predictions == targets_long) | ~valid_mask).all(dim=2)
+        else:
+            exact_matches = (predictions == targets_long).all(dim=2)
+        query_exact = exact_matches[:, NUM_SUPPORT_EXAMPLES].float()
+        for task_category, val in zip(
+            batch["task_category"],
+            query_exact.detach().cpu().tolist(),
+            strict=True,
+        ):
+            self._val_query_exact_match_totals_by_task[task_category] = (
+                self._val_query_exact_match_totals_by_task.get(task_category, 0.0) + float(val)
+            )
+            self._val_query_exact_match_counts_by_task[task_category] = (
+                self._val_query_exact_match_counts_by_task.get(task_category, 0) + 1
+            )
+
+    def _gather_query_exact_match_by_task_category(
+        self,
+    ) -> tuple[dict[str, float], dict[str, int]]:
+        """Gather per-task-category query exact-match totals across distributed ranks."""
+        totals = dict(self._val_query_exact_match_totals_by_task)
+        counts = dict(self._val_query_exact_match_counts_by_task)
+        if not torch.distributed.is_available() or not torch.distributed.is_initialized():
+            return totals, counts
+        gathered: list[dict | None] = [None] * torch.distributed.get_world_size()
+        torch.distributed.all_gather_object(
+            gathered, {"totals": totals, "counts": counts}
+        )
+        merged_totals: dict[str, float] = {}
+        merged_counts: dict[str, int] = {}
+        for payload in gathered:
+            if payload is None:
+                continue
+            for cat, v in payload["totals"].items():
+                merged_totals[cat] = merged_totals.get(cat, 0.0) + float(v)
+            for cat, v in payload["counts"].items():
+                merged_counts[cat] = merged_counts.get(cat, 0) + int(v)
+        return merged_totals, merged_counts
+
     def _actual_seq_len(self, sequence: torch.Tensor | list[int]) -> int:
         """Return the unpadded length of one serialized sequence."""
         if isinstance(sequence, torch.Tensor):
@@ -649,6 +744,8 @@ class HyperModelLightning(pl.LightningModule):
                 )
         else:
             self._accumulate_epoch_metric_totals(prefix, metric_sums)
+            if prefix == "val":
+                self._accumulate_query_exact_match_by_task_category(batch, logits, targets)
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -662,9 +759,24 @@ class HyperModelLightning(pl.LightningModule):
 
     def on_validation_epoch_start(self) -> None:
         self._reset_epoch_metric_totals("val")
+        self._val_query_exact_match_totals_by_task = {}
+        self._val_query_exact_match_counts_by_task = {}
 
     def on_validation_epoch_end(self) -> None:
         self._log_epoch_metrics("val")
+        category_totals, category_counts = self._gather_query_exact_match_by_task_category()
+        for task_category, count in category_counts.items():
+            if count < 1:
+                continue
+            self.log(
+                f"val_query_exact_match_by_task_{_task_category_metric_suffix(task_category)}",
+                category_totals[task_category] / count,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=False,
+                batch_size=count,
+                sync_dist=False,
+            )
 
     def on_test_epoch_start(self) -> None:
         self._reset_epoch_metric_totals("test")
