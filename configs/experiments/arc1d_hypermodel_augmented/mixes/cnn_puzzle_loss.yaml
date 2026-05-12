@@ -1,0 +1,69 @@
+_base_: configs/experiments/arc1d_hypermodel_augmented/base_hypermodel_augmented.yaml
+experiment_name: aug_hyper_all_cnn_puzzle_loss
+
+batch_size: 1024
+learning_rate: 0.001
+puzzle_loss_weight: 1.0
+
+devices: auto
+task_categories:
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_move_2p_dp
+  - 1d_fill
+  - 1d_hollow
+  - 1d_flip
+  - 1d_mirror
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_oe
+  - 1d_recolor_cnt
+  - 1d_recolor_cmp
+  - 1d_scale_dp
+  - 1d_padded_fill
+val_task_categories:
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_move_2p_dp
+  - 1d_fill
+  - 1d_hollow
+  - 1d_flip
+  - 1d_mirror
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_oe
+  - 1d_recolor_cnt
+  - 1d_recolor_cmp
+  - 1d_scale_dp
+  - 1d_padded_fill
+
+hyper_model:
+  name: transformer
+  params:
+    hidden_dim: 128
+    num_heads: 8
+    num_layers: 4
+    output_dim: 128
+
+hyper_head:
+  pooling: hierarchical
+  projection_dims: [128, 256, 512, 1024]
+
+target_model:
+  name: cnn
+  params:
+    hidden_dim: 32
+    num_layers: 2
+    kernel_size: 5
+    activation: silu
+    dropout: 0.0
+    use_residual: true
+
