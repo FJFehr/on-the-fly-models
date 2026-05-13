@@ -388,6 +388,7 @@ class DirectSupervisedLightning(pl.LightningModule):
         self._val_examples = []
 
     def on_validation_epoch_end(self) -> None:
+        sync_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
         category_totals, category_counts = self.gather_query_exact_match_by_task_category()
         for task_category, count in category_counts.items():
             if count < 1:
@@ -402,7 +403,7 @@ class DirectSupervisedLightning(pl.LightningModule):
                 on_epoch=True,
                 prog_bar=False,
                 batch_size=count,
-                sync_dist=False,
+                sync_dist=sync_dist,
             )
 
         epoch = self.trainer.current_epoch + 1

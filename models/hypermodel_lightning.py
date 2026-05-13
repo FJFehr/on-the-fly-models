@@ -763,6 +763,7 @@ class HyperModelLightning(pl.LightningModule):
         self._val_query_exact_match_counts_by_task = {}
 
     def on_validation_epoch_end(self) -> None:
+        sync_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
         self._log_epoch_metrics("val")
         category_totals, category_counts = self._gather_query_exact_match_by_task_category()
         for task_category, count in category_counts.items():
@@ -775,7 +776,7 @@ class HyperModelLightning(pl.LightningModule):
                 on_epoch=True,
                 prog_bar=False,
                 batch_size=count,
-                sync_dist=False,
+                sync_dist=sync_dist,
             )
 
     def on_test_epoch_start(self) -> None:

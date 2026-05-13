@@ -41,8 +41,18 @@ from training.trainer import (
 )
 
 
+import re as _re
+
+_ANSI_ESCAPE = _re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\r")
+
+
 class _DualStreamWriter:
-    """Mirror writes to both the original stream and a log file."""
+    """Mirror writes to both the original stream and a log file.
+
+    The terminal receives raw bytes (including ANSI/carriage-return sequences
+    so progress bars render correctly). The log file receives a cleaned version
+    with those sequences stripped so the file stays human-readable.
+    """
 
     def __init__(self, stream, filepath: str) -> None:
         self._stream = stream
@@ -50,7 +60,7 @@ class _DualStreamWriter:
 
     def write(self, data: str) -> None:
         self._stream.write(data)
-        self._file.write(data)
+        self._file.write(_ANSI_ESCAPE.sub("", data))
 
     def flush(self) -> None:
         self._stream.flush()
@@ -58,6 +68,9 @@ class _DualStreamWriter:
 
     def fileno(self) -> int:
         return self._stream.fileno()
+
+    def isatty(self) -> bool:
+        return self._stream.isatty()
 
 
 def configure_torch_runtime(runtime_cfg: dict) -> None:
