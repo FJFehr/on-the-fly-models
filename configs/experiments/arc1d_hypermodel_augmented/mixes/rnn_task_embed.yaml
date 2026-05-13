@@ -1,5 +1,6 @@
 _base_: configs/experiments/arc1d_hypermodel_augmented/base_hypermodel_augmented.yaml
-experiment_name: aug_hyper_all_cnn
+experiment_name: aug_hyper_all_rnn_task_embed
+num_workers: 4
 batch_size: 1024
 learning_rate: 0.001
 devices: auto
@@ -56,11 +57,11 @@ hyper_head:
   num_tasks: 1000
 
 target_model:
-  name: cnn
+  name: rnn
   params:
-    hidden_dim: 32
+    hidden_dim: 22
     num_layers: 2
-    kernel_size: 5
+    bidirectional: true
     activation: silu
     dropout: 0.0
     use_residual: true

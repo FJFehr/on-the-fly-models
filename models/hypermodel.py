@@ -185,6 +185,7 @@ class HyperModel(nn.Module):
         bottleneck_dim: int | None = None,
         projection_dims: list[int] | None = None,
         hyper_pooling: nn.Module | None = None,
+        num_tasks: int | None = None,
     ):
         super().__init__()
         self.hypernetwork = hypernetwork
@@ -202,6 +203,9 @@ class HyperModel(nn.Module):
 
         self.hyper_output_dim = hyper_output_dim
         self.hyper_pooling = hyper_pooling or AttentionPooler(self.hyper_output_dim)
+        self.task_embedding = (
+            nn.Embedding(num_tasks, hyper_output_dim) if num_tasks is not None else None
+        )
 
         # Build the projection MLP from hyper_output_dim to total_target_params.
         # projection_dims specifies intermediate hidden sizes; bottleneck_dim is the
@@ -252,9 +256,13 @@ class HyperModel(nn.Module):
             raise ValueError(msg)
         return self.hyper_pooling(hyper_output)
 
-    def extract_parameter_vectors(self, hyper_output: torch.Tensor) -> torch.Tensor:
+    def extract_parameter_vectors(
+        self, hyper_output: torch.Tensor, task_ids: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """Pool tokenwise hypernetwork features and project them to target weights."""
         task_representation = self.extract_task_representation(hyper_output)
+        if self.task_embedding is not None and task_ids is not None:
+            task_representation = task_representation + self.task_embedding(task_ids)
         return self.hyper_projection(task_representation)
 
     def apply_target(
@@ -268,11 +276,17 @@ class HyperModel(nn.Module):
         out = functional_call(self.target_model, params, example_inputs)
         return out.squeeze(-1)
 
-    def forward(self, task_features: torch.Tensor, target_inputs: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        task_features: torch.Tensor,
+        target_inputs: torch.Tensor,
+        task_ids: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Apply hypernetwork to task context, then run target model for each batch item.
 
         task_features  : (batch, task_seq_len, hyper_input_dim)
         target_inputs  : (batch, n_examples, seq_len, target_input_dim)
+        task_ids       : (batch,) canonical task indices for the task embedding (optional)
 
         Returns logits  : (batch, n_examples, seq_len)
 
@@ -280,7 +294,7 @@ class HyperModel(nn.Module):
         # The hypernetwork produces one hidden feature vector per serialized task token.
         hyper_output = self.hypernetwork(task_features)
 
-        parameter_vectors = self.extract_parameter_vectors(hyper_output)
+        parameter_vectors = self.extract_parameter_vectors(hyper_output, task_ids)
 
         outputs = []
         # Each task in the batch gets its own generated parameter mapping.

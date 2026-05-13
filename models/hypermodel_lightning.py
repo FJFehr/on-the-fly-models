@@ -154,6 +154,7 @@ class HyperModelLightning(pl.LightningModule):
             msg = "hyper_head.bottleneck_dim must be a positive integer."
             raise ValueError(msg)
         projection_dims = hyper_head_cfg.get("projection_dims")
+        num_tasks = hyper_head_cfg.get("num_tasks")
         hyper_pooling = self.build_hyper_pooling(hyper_head_cfg, hyper_output_dim)
         self.hypermodel = HyperModel(
             hypernetwork=hypernetwork,
@@ -162,6 +163,7 @@ class HyperModelLightning(pl.LightningModule):
             bottleneck_dim=bottleneck_dim,
             projection_dims=projection_dims,
             hyper_pooling=hyper_pooling,
+            num_tasks=num_tasks,
         )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
@@ -428,7 +430,10 @@ class HyperModelLightning(pl.LightningModule):
     def forward(self, batch: dict) -> tuple[torch.Tensor, torch.Tensor]:
         """batch -> (logits, targets) with shape (batch, 4, seq_len)."""
         task_features, example_inputs, example_targets = self.prepare_inputs(batch)
-        logits = self.hypermodel(task_features, example_inputs)
+        canonical_ids = None
+        if self.hypermodel.task_embedding is not None:
+            canonical_ids = batch["task_id"].to(self.device) // 10000
+        logits = self.hypermodel(task_features, example_inputs, task_ids=canonical_ids)
         return logits, example_targets
 
     def decode_logits(self, logits: torch.Tensor) -> torch.Tensor:
