@@ -432,7 +432,7 @@ class HyperModelLightning(pl.LightningModule):
         task_features, example_inputs, example_targets = self.prepare_inputs(batch)
         canonical_ids = None
         if self.hypermodel.task_embedding is not None:
-            canonical_ids = batch["task_id"].to(self.device) // 10000
+            canonical_ids = torch.tensor(batch["task_id"], device=self.device) // 10000
         logits = self.hypermodel(task_features, example_inputs, task_ids=canonical_ids)
         return logits, example_targets
 
