@@ -405,10 +405,10 @@ class HyperModelLightning(pl.LightningModule):
 
     def prepare_inputs(self, batch: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Convert a task batch into hypernetwork features, target inputs, and targets."""
-        support_inputs = batch["support_inputs"].float()
-        support_outputs = batch["support_outputs"].float()
-        query_input = batch["query_input"].float()
-        query_output = batch["query_output"].float()
+        support_inputs = batch["support_inputs"]
+        support_outputs = batch["support_outputs"]
+        query_input = batch["query_input"]
+        query_output = batch["query_output"]
 
         # Hypernetwork sees support pairs only (6 segments): value + pos + example + role
         flat_values, position_ids, example_ids, role_ids = self.build_task_context_token_ids(

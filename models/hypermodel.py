@@ -2,7 +2,7 @@
 
 import torch
 import torch.nn as nn
-from torch.func import functional_call
+from torch.func import functional_call, vmap
 
 from models.transformer import Block
 
@@ -265,17 +265,6 @@ class HyperModel(nn.Module):
             task_representation = task_representation + self.task_embedding(task_ids)
         return self.hyper_projection(task_representation)
 
-    def apply_target(
-        self, params: dict[str, torch.Tensor], example_inputs: torch.Tensor
-    ) -> torch.Tensor:
-        """Run target_model with generated params on a single batch item's examples.
-
-        example_inputs: (n_examples, seq_len, input_dim)
-        returns:        (n_examples, seq_len)
-        """
-        out = functional_call(self.target_model, params, example_inputs)
-        return out.squeeze(-1)
-
     def forward(
         self,
         task_features: torch.Tensor,
@@ -291,17 +280,16 @@ class HyperModel(nn.Module):
         Returns logits  : (batch, n_examples, seq_len)
 
         """
-        # The hypernetwork produces one hidden feature vector per serialized task token.
         hyper_output = self.hypernetwork(task_features)
-
         parameter_vectors = self.extract_parameter_vectors(hyper_output, task_ids)
 
-        outputs = []
-        # Each task in the batch gets its own generated parameter mapping.
-        for i in range(parameter_vectors.shape[0]):
-            params = self.build_param_dict(parameter_vectors[i])
-            outputs.append(self.apply_target(params, target_inputs[i]))
-        return torch.stack(outputs)
+        # Build batched param dict: each value is (batch, *param_shape).
+        batched_params = self.build_batched_param_dict(parameter_vectors)
+
+        def apply_single(params: dict[str, torch.Tensor], inputs: torch.Tensor) -> torch.Tensor:
+            return functional_call(self.target_model, params, inputs).squeeze(-1)
+
+        return vmap(apply_single)(batched_params, target_inputs)
 
     def __repr__(self) -> str:
         n = self.total_target_params
