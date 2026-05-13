@@ -2,7 +2,7 @@
 
 import torch
 import torch.nn as nn
-from torch.func import functional_call, vmap
+from torch.func import functional_call
 
 from models.transformer import Block
 
@@ -282,14 +282,12 @@ class HyperModel(nn.Module):
         """
         hyper_output = self.hypernetwork(task_features)
         parameter_vectors = self.extract_parameter_vectors(hyper_output, task_ids)
-
-        # Build batched param dict: each value is (batch, *param_shape).
-        batched_params = self.build_batched_param_dict(parameter_vectors)
-
-        def apply_single(params: dict[str, torch.Tensor], inputs: torch.Tensor) -> torch.Tensor:
-            return functional_call(self.target_model, params, inputs).squeeze(-1)
-
-        return vmap(apply_single)(batched_params, target_inputs)
+        outputs = []
+        for i in range(parameter_vectors.shape[0]):
+            params = self.build_param_dict(parameter_vectors[i])
+            out = functional_call(self.target_model, params, target_inputs[i])
+            outputs.append(out.squeeze(-1))
+        return torch.stack(outputs)
 
     def __repr__(self) -> str:
         n = self.total_target_params
