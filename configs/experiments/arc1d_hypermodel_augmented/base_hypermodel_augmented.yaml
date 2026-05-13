@@ -27,6 +27,7 @@ overfit_single_batch: false
 
 accelerator: auto
 float32_matmul_precision: medium
+precision: bf16-mixed
 devices: 1
 optimizer: RAdam
 batch_size: 2048

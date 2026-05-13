@@ -348,6 +348,9 @@ def build_trainer(
     if runtime_cfg.get("gradient_clip_val") is not None:
         trainer_kwargs["gradient_clip_val"] = runtime_cfg["gradient_clip_val"]
 
+    if runtime_cfg.get("precision") is not None:
+        trainer_kwargs["precision"] = runtime_cfg["precision"]
+
     return pl.Trainer(
         **trainer_kwargs,
         max_steps=runtime_cfg["max_steps"],
