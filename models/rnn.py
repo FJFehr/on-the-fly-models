@@ -45,12 +45,15 @@ class ResidualRNNLayer(nn.Module):
             packed = nn.utils.rnn.pack_padded_sequence(
                 inputs, lengths.cpu(), batch_first=True, enforce_sorted=False
             )
-            rnn_out_packed, _ = self.rnn(packed)
+            # cuDNN RNN does not support bf16; disable autocast for the kernel only.
+            with torch.autocast(device_type="cuda", enabled=False):
+                rnn_out_packed, _ = self.rnn(packed.float())
             rnn_out, _ = nn.utils.rnn.pad_packed_sequence(rnn_out_packed, batch_first=True)
             if rnn_out.shape[1] < inputs.shape[1]:
                 rnn_out = F.pad(rnn_out, (0, 0, 0, inputs.shape[1] - rnn_out.shape[1]))
         else:
-            rnn_out, _ = self.rnn(inputs)
+            with torch.autocast(device_type="cuda", enabled=False):
+                rnn_out, _ = self.rnn(inputs.float())
 
         hidden = self.activation(self.update_projection(rnn_out))
         hidden = self.dropout(hidden)
