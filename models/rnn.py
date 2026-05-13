@@ -41,21 +41,23 @@ class ResidualRNNLayer(nn.Module):
             self.residual_projection = nn.Identity()
 
     def forward(self, inputs: torch.Tensor, lengths: torch.Tensor | None = None) -> torch.Tensor:
-        if lengths is not None:
-            packed = nn.utils.rnn.pack_padded_sequence(
-                inputs, lengths.cpu(), batch_first=True, enforce_sorted=False
-            )
-            # cuDNN RNN does not support bf16; disable autocast for the kernel only.
-            with torch.autocast(device_type="cuda", enabled=False):
-                rnn_out_packed, _ = self.rnn(packed.float())
-            rnn_out, _ = nn.utils.rnn.pad_packed_sequence(rnn_out_packed, batch_first=True)
-            rnn_out = rnn_out.to(inputs.dtype)
-            if rnn_out.shape[1] < inputs.shape[1]:
-                rnn_out = F.pad(rnn_out, (0, 0, 0, inputs.shape[1] - rnn_out.shape[1]))
-        else:
-            with torch.autocast(device_type="cuda", enabled=False):
-                rnn_out, _ = self.rnn(inputs.float())
-            rnn_out = rnn_out.to(inputs.dtype)
+        # cuDNN RNN does not support bf16; fall back to PyTorch's own matmul-based
+        # implementation which handles bf16 fine. Disabled only for this call.
+        prev_cudnn = torch.backends.cudnn.enabled
+        torch.backends.cudnn.enabled = False
+        try:
+            if lengths is not None:
+                packed = nn.utils.rnn.pack_padded_sequence(
+                    inputs, lengths.cpu(), batch_first=True, enforce_sorted=False
+                )
+                rnn_out_packed, _ = self.rnn(packed)
+                rnn_out, _ = nn.utils.rnn.pad_packed_sequence(rnn_out_packed, batch_first=True)
+                if rnn_out.shape[1] < inputs.shape[1]:
+                    rnn_out = F.pad(rnn_out, (0, 0, 0, inputs.shape[1] - rnn_out.shape[1]))
+            else:
+                rnn_out, _ = self.rnn(inputs)
+        finally:
+            torch.backends.cudnn.enabled = prev_cudnn
 
         hidden = self.activation(self.update_projection(rnn_out))
         hidden = self.dropout(hidden)
