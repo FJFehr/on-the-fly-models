@@ -284,7 +284,7 @@ class HyperModel(nn.Module):
         parameter_vectors = self.extract_parameter_vectors(hyper_output, task_ids)
         outputs = []
         for i in range(parameter_vectors.shape[0]):
-            params = self.build_param_dict(parameter_vectors[i])
+            params = self.build_param_dict(parameter_vectors[i].float())
             out = functional_call(self.target_model, params, target_inputs[i])
             outputs.append(out.squeeze(-1))
         return torch.stack(outputs)
