@@ -49,11 +49,13 @@ class ResidualRNNLayer(nn.Module):
             with torch.autocast(device_type="cuda", enabled=False):
                 rnn_out_packed, _ = self.rnn(packed.float())
             rnn_out, _ = nn.utils.rnn.pad_packed_sequence(rnn_out_packed, batch_first=True)
+            rnn_out = rnn_out.to(inputs.dtype)
             if rnn_out.shape[1] < inputs.shape[1]:
                 rnn_out = F.pad(rnn_out, (0, 0, 0, inputs.shape[1] - rnn_out.shape[1]))
         else:
             with torch.autocast(device_type="cuda", enabled=False):
                 rnn_out, _ = self.rnn(inputs.float())
+            rnn_out = rnn_out.to(inputs.dtype)
 
         hidden = self.activation(self.update_projection(rnn_out))
         hidden = self.dropout(hidden)
