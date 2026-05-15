@@ -1,7 +1,8 @@
 _base_: configs/experiments/arc1d_hypermodel_augmented/base_hypermodel_augmented.yaml
 experiment_name: aug_hyper_all_rnn_task_embed
-batch_size: 1024
-learning_rate: 0.001
+batch_size: 2048
+puzzle_loss_weight: 1.0
+learning_rate: 0.0005
 devices: auto
 task_categories:
   - 1d_move_1p
