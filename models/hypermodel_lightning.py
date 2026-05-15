@@ -22,6 +22,27 @@ NUM_TASK_EXAMPLES = 4
 PREDICTION_TASK_BINARY = "binary"
 PREDICTION_TASK_MULTICLASS = "multiclass"
 
+TASK_CATEGORY_INDEX: dict[str, int] = {
+    "1d_move_1p": 0,
+    "1d_move_2p": 1,
+    "1d_move_3p": 2,
+    "1d_move_dp": 3,
+    "1d_move_2p_dp": 4,
+    "1d_fill": 5,
+    "1d_hollow": 6,
+    "1d_flip": 7,
+    "1d_mirror": 8,
+    "1d_denoising_1c": 9,
+    "1d_denoising_mc": 10,
+    "1d_pcopy_1c": 11,
+    "1d_pcopy_mc": 12,
+    "1d_recolor_oe": 13,
+    "1d_recolor_cnt": 14,
+    "1d_recolor_cmp": 15,
+    "1d_scale_dp": 16,
+    "1d_padded_fill": 17,
+}
+
 
 HYPERNETWORK_REGISTRY = {
     "cnn": {
@@ -431,8 +452,11 @@ class HyperModelLightning(pl.LightningModule):
         """batch -> (logits, targets) with shape (batch, 4, seq_len)."""
         task_features, example_inputs, example_targets = self.prepare_inputs(batch)
         canonical_ids = None
-        if self.hypermodel.task_embedding is not None:
-            canonical_ids = torch.tensor(batch["task_id"], device=self.device) // 10000
+        if self.hypermodel.task_indicator_proj is not None:
+            canonical_ids = torch.tensor(
+                [TASK_CATEGORY_INDEX[c] for c in batch["task_category"]],
+                device=self.device,
+            )
         logits = self.hypermodel(task_features, example_inputs, task_ids=canonical_ids)
         return logits, example_targets
 

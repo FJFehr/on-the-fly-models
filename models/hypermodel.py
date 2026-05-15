@@ -203,8 +203,10 @@ class HyperModel(nn.Module):
 
         self.hyper_output_dim = hyper_output_dim
         self.hyper_pooling = hyper_pooling or AttentionPooler(self.hyper_output_dim)
-        self.task_embedding = (
-            nn.Embedding(num_tasks, hyper_output_dim) if num_tasks is not None else None
+        self.num_tasks = num_tasks
+        self.task_indicator_proj = (
+            nn.Linear(num_tasks, hyper_output_dim, bias=False)
+            if num_tasks is not None else None
         )
 
         # Build the projection MLP from hyper_output_dim to total_target_params.
@@ -261,8 +263,9 @@ class HyperModel(nn.Module):
     ) -> torch.Tensor:
         """Pool tokenwise hypernetwork features and project them to target weights."""
         task_representation = self.extract_task_representation(hyper_output)
-        if self.task_embedding is not None and task_ids is not None:
-            task_representation = task_representation + self.task_embedding(task_ids)
+        if self.task_indicator_proj is not None and task_ids is not None:
+            one_hot = torch.nn.functional.one_hot(task_ids, num_classes=self.num_tasks).float()
+            task_representation = task_representation + self.task_indicator_proj(one_hot)
         return self.hyper_projection(task_representation)
 
     def forward(
