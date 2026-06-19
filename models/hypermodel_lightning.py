@@ -186,6 +186,12 @@ class HyperModelLightning(pl.LightningModule):
             hyper_pooling=hyper_pooling,
             num_tasks=num_tasks,
         )
+        num_input_tasks = kwargs.get("num_input_tasks", None)
+        self.input_task_embed = (
+            torch.nn.Embedding(num_input_tasks, embedding_dim)
+            if num_input_tasks is not None
+            else None
+        )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
         self.weight_decay = weight_decay
@@ -439,6 +445,15 @@ class HyperModelLightning(pl.LightningModule):
             flat_values, position_ids, example_ids, role_ids
         )
 
+        # Task features put in the hypernetwork's input space Similar to positional embeddings.
+        if self.input_task_embed is not None:
+            canonical_ids = torch.tensor(
+                [TASK_CATEGORY_INDEX[c] for c in batch["task_category"]],
+                device=self.device,
+            )
+            task_embed = self.input_task_embed(canonical_ids)  # (batch, embedding_dim)
+            task_features = task_features + task_embed.unsqueeze(1)  # broadcast over seq_len
+
         # Target model sees value + position only (no task-specific metadata)
         t_value_ids, t_pos_ids = self.build_target_token_ids(support_inputs, query_input)
         example_inputs = self.shared_task_token_embedder(t_value_ids, t_pos_ids)
@@ -503,9 +518,7 @@ class HyperModelLightning(pl.LightningModule):
         query_logits = logits[unsolved_mask, NUM_SUPPORT_EXAMPLES]  # (B', seq_len[, C])
         query_targets = targets_long[unsolved_mask, NUM_SUPPORT_EXAMPLES]  # (B', seq_len)
         if self.is_binary_task:
-            return F.binary_cross_entropy_with_logits(
-                query_logits, query_targets.float()
-            )
+            return F.binary_cross_entropy_with_logits(query_logits, query_targets.float())
         ignore_index = self.padding_idx if self.padding_idx is not None else -100
         return F.cross_entropy(
             query_logits.permute(0, 2, 1) if query_logits.dim() == 3 else query_logits,
@@ -695,9 +708,7 @@ class HyperModelLightning(pl.LightningModule):
         if not torch.distributed.is_available() or not torch.distributed.is_initialized():
             return totals, counts
         gathered: list[dict | None] = [None] * torch.distributed.get_world_size()
-        torch.distributed.all_gather_object(
-            gathered, {"totals": totals, "counts": counts}
-        )
+        torch.distributed.all_gather_object(gathered, {"totals": totals, "counts": counts})
         merged_totals: dict[str, float] = {}
         merged_counts: dict[str, int] = {}
         for payload in gathered:
