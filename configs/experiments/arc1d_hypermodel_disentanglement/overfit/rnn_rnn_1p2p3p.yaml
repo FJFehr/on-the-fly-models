@@ -1,0 +1,77 @@
+project_name: arc1d_hypermodel_disentanglement
+entity: fjfehr
+output_dir: outputs
+seed: 42
+experiment_name: disentangle_overfit_1p2p3p_rnn
+output_path: ${output_dir}/${project_name}/${experiment_name}
+
+data: arc_1d_meta_multiclass
+data_dir: data/arc_1d_move_augmented
+model: hyper_model
+primary_metric: val_loss
+num_workers: 0
+
+task_categories:
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_3p
+val_task_categories:
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_3p
+# One original task per category (task_id = orig_id * 10000)
+task_ids:
+  - 80000
+  - 270000
+train_split: train
+val_split: train
+test_split: train
+overfit_single_batch: true
+
+accelerator: cpu
+precision: 32
+float32_matmul_precision: medium
+devices: 1
+
+optimizer: RAdam
+batch_size: 2
+learning_rate: 0.01
+weight_decay: 0.0
+gradient_clip_val: 0.0
+max_steps: 300
+warmup_steps: 0
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: 500
+    eta_min: 0.0001
+log_task_examples: false
+
+prediction_task: multiclass
+num_classes: 10
+padding_idx: 10
+stop_on_perfect_val_exact_match: false
+
+task_encoding:
+  embedding_dim: 16
+  value_vocab_size: 11
+
+hyper_model:
+  name: rnn
+  params:
+    hidden_dim: 32
+    num_layers: 2
+    bidirectional: true
+    output_dim: 32
+
+hyper_head:
+  pooling: hierarchical
+  bottleneck_dim: 32
+
+target_model:
+  name: rnn
+  params:
+    hidden_dim: 16
+    num_layers: 1
+    bidirectional: true
+    use_residual: false

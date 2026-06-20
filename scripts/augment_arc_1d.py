@@ -6,11 +6,18 @@ are passed through unchanged so results remain comparable to the baseline.
 
 Augmentation pipeline per task (applied in this order):
   1. colour permutations — remap non-zero colours consistently across all sequences
+     (global mode, default) OR independently per support pair + query (--per-pair)
   2. shifts             — extend sequences with zero-padding at one end
   3. mirror             — reverse all sequences left-right (optional, default on)
 
 For 1d_mirror tasks, colour 9 (the semantic pivot) is never permuted and no
 other colour is remapped to 9.
+
+Per-pair mode (--per-pair): each support pair and the query get independent
+injective colour mappings. Colours may repeat across pairs. This expands the
+augmentation space from ~21 global variants to ~9^k combinations (where k is
+the number of colours in a pair), enabling patterns impossible under the global
+scheme. Suitable for generating large augmented datasets (e.g. 1000 variants/task).
 """
 
 import argparse
@@ -61,6 +68,27 @@ def parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Include horizontally mirrored variants of each augmented example.",
+    )
+    parser.add_argument(
+        "--per-pair",
+        action="store_true",
+        default=False,
+        help=(
+            "Use per-pair colour augmentation: each support pair and query get "
+            "independent injective colour mappings instead of one global mapping. "
+            "--n-color-permutations controls how many per-pair variants to generate."
+        ),
+    )
+    parser.add_argument(
+        "--task-categories",
+        nargs="+",
+        default=None,
+        metavar="CATEGORY",
+        help=(
+            "If given, only augment tasks whose task_category is in this list. "
+            "Dev/test splits are filtered to the same categories. "
+            "Example: --task-categories 1d_move_1p 1d_move_2p 1d_move_3p"
+        ),
     )
     parser.add_argument(
         "--seed",
@@ -137,6 +165,56 @@ def generate_color_permutations(
     return variants
 
 
+def generate_per_pair_color_augmentations(
+    task: dict,
+    n: int,
+    rng: random.Random,
+    fixed_colour: int | None = None,
+) -> list[dict]:
+    """Return n task variants where each support pair and query are independently recoloured.
+
+    Within each pair the mapping is injective (no colour collapse).
+    Across pairs the same colour may recur freely, unlocking combinations
+    impossible under a global injective mapping.
+
+    If fixed_colour is given, that colour is never remapped and is never a
+    remap target (e.g. colour 9 for 1d_mirror tasks).
+    """
+    available = [c for c in range(1, 10) if c != fixed_colour]
+    variants: list[dict] = []
+
+    for _ in range(n):
+        new_si, new_so = [], []
+        for si, so in zip(task["support_inputs"], task["support_outputs"]):
+            pair_colours = sorted(
+                {c for seq in (si, so) for c in seq if c != 0 and c != fixed_colour}
+            )
+            cmap = dict(zip(pair_colours, rng.sample(available, len(pair_colours))))
+            new_si.append([cmap.get(c, c) for c in si])
+            new_so.append([cmap.get(c, c) for c in so])
+
+        q_colours = sorted(
+            {
+                c
+                for seq in (task["query_input"], task["query_output"])
+                for c in seq
+                if c != 0 and c != fixed_colour
+            }
+        )
+        qmap = dict(zip(q_colours, rng.sample(available, len(q_colours))))
+        variants.append(
+            {
+                **task,
+                "support_inputs": new_si,
+                "support_outputs": new_so,
+                "query_input": [qmap.get(c, c) for c in task["query_input"]],
+                "query_output": [qmap.get(c, c) for c in task["query_output"]],
+            }
+        )
+
+    return variants
+
+
 def apply_shift(task: dict, shift: int) -> dict:
     """Shift all sequences by shift positions, extending sequence_length.
 
@@ -191,19 +269,28 @@ def augment_task(
     rng: random.Random,
     *,
     mirror: bool = True,
+    per_pair: bool = False,
 ) -> list[dict]:
     """Apply the full augmentation pipeline to one task.
 
     Pipeline: colour → shift → mirror.
     For 1d_mirror tasks, colour 9 is kept fixed (see FIXED_RULE_COLOURS).
     Returned tasks have new task_ids: original_task_id * 10000 + aug_index.
+
+    With per_pair=True, colour augmentation uses generate_per_pair_color_augmentations
+    instead of the global generate_color_permutations.
     """
     # Step 1: colour (original is variant 0)
     category = task.get("task_category", "")
     fixed_colour = FIXED_RULE_COLOURS.get(category)
-    color_variants = [task] + generate_color_permutations(
-        task, n_color_perms, rng, fixed_colour=fixed_colour
-    )
+    if per_pair:
+        color_variants = [task] + generate_per_pair_color_augmentations(
+            task, n_color_perms, rng, fixed_colour=fixed_colour
+        )
+    else:
+        color_variants = [task] + generate_color_permutations(
+            task, n_color_perms, rng, fixed_colour=fixed_colour
+        )
 
     # Step 2: shifts (0 = no shift is always included)
     all_shifts = [0] + [s for s in shifts if s != 0]
@@ -228,11 +315,14 @@ def augment_split(
     rng: random.Random,
     *,
     mirror: bool = True,
+    per_pair: bool = False,
 ) -> list[dict]:
     """Augment every task in the split and return the combined list."""
     augmented: list[dict] = []
     for task in split:
-        augmented.extend(augment_task(task, n_color_perms, shifts, rng, mirror=mirror))
+        augmented.extend(
+            augment_task(task, n_color_perms, shifts, rng, mirror=mirror, per_pair=per_pair)
+        )
     return augmented
 
 
@@ -250,19 +340,29 @@ def main() -> None:
     print(f"Loading base dataset from {args.input_dir} ...")
     base = load_from_disk(str(args.input_dir))
 
+    if args.task_categories:
+        cats = set(args.task_categories)
+        print(f"Filtering to task categories: {sorted(cats)}")
+        base = DatasetDict(
+            {name: split.filter(lambda t: t["task_category"] in cats) for name, split in base.items()}
+        )
+
     rng = random.Random(args.seed)
     shifts = args.shifts or []
 
     n_color = args.n_color_permutations
     n_shifts = 1 + len([s for s in shifts if s != 0])
     n_mirror = 2 if args.mirror else 1
+    colour_mode = "per-pair" if args.per_pair else "global"
     variants_per_task = (1 + n_color) * n_shifts * n_mirror
     print(
-        f"Augmenting train split: {n_color} colour permutations, "
+        f"Augmenting train split: {n_color} {colour_mode} colour variants, "
         f"shifts={shifts}, mirror={args.mirror} → {variants_per_task} variants per task"
     )
 
-    aug_train = augment_split(base["train"], n_color, shifts, rng, mirror=args.mirror)
+    aug_train = augment_split(
+        base["train"], n_color, shifts, rng, mirror=args.mirror, per_pair=args.per_pair
+    )
 
     splits: dict[str, Dataset] = {"train": Dataset.from_list(aug_train)}
     for split_name in ("dev", "test"):

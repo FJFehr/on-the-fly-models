@@ -1,0 +1,7 @@
+_base_: configs/experiments/arc1d_hypermodel_disentanglement/base_disentanglement.yaml
+task: move_1p
+experiment_name: disentangle_move_1p_rnn
+task_categories:
+  - 1d_move_1p
+val_task_categories:
+  - 1d_move_1p
