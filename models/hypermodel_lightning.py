@@ -186,12 +186,6 @@ class HyperModelLightning(pl.LightningModule):
             hyper_pooling=hyper_pooling,
             num_tasks=num_tasks,
         )
-        num_input_tasks = kwargs.get("num_input_tasks", None)
-        self.input_task_embed = (
-            torch.nn.Embedding(num_input_tasks, embedding_dim)
-            if num_input_tasks is not None
-            else None
-        )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
         self.weight_decay = weight_decay
@@ -204,7 +198,6 @@ class HyperModelLightning(pl.LightningModule):
         self.selected_representative_task_ids: dict[str, list[int]] = {"train": [], "val": []}
         self._val_metric_totals: dict[str, float] = {}
         self._test_metric_totals: dict[str, float] = {}
-        self.puzzle_loss_weight: float = float(kwargs.get("puzzle_loss_weight", 0.0))
         self._val_query_exact_match_totals_by_task: dict[str, float] = {}
         self._val_query_exact_match_counts_by_task: dict[str, int] = {}
 
@@ -445,15 +438,6 @@ class HyperModelLightning(pl.LightningModule):
             flat_values, position_ids, example_ids, role_ids
         )
 
-        # Task features put in the hypernetwork's input space Similar to positional embeddings.
-        if self.input_task_embed is not None:
-            canonical_ids = torch.tensor(
-                [TASK_CATEGORY_INDEX[c] for c in batch["task_category"]],
-                device=self.device,
-            )
-            task_embed = self.input_task_embed(canonical_ids)  # (batch, embedding_dim)
-            task_features = task_features + task_embed.unsqueeze(1)  # broadcast over seq_len
-
         # Target model sees value + position only (no task-specific metadata)
         t_value_ids, t_pos_ids = self.build_target_token_ids(support_inputs, query_input)
         example_inputs = self.shared_task_token_embedder(t_value_ids, t_pos_ids)
@@ -492,39 +476,7 @@ class HyperModelLightning(pl.LightningModule):
                 targets.long().reshape(-1),
                 ignore_index=ignore_index,
             )
-        if self.puzzle_loss_weight > 0.0:
-            return base_loss + self.puzzle_loss_weight * self.compute_puzzle_loss(logits, targets)
         return base_loss
-
-    def compute_puzzle_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        """CE loss restricted to puzzles where the query is not yet exactly solved.
-
-        Applies cross-entropy only over examples the model currently gets wrong at the
-        sequence level, giving a sharper signal once per-token accuracy is high.
-        """
-        predictions = self.decode_logits(logits)
-        targets_long = targets.long()
-        if self.padding_idx is not None:
-            valid_mask = targets_long != self.padding_idx
-            exact_matches = ((predictions == targets_long) | ~valid_mask).all(dim=2)
-        else:
-            exact_matches = (predictions == targets_long).all(dim=2)
-        # exact_matches: (B, 4) — True where each example is solved
-        # A puzzle is "solved" if the query (last example) is exact
-        query_solved = exact_matches[:, NUM_SUPPORT_EXAMPLES]  # (B,)
-        unsolved_mask = ~query_solved  # (B,)
-        if not unsolved_mask.any():
-            return logits.new_tensor(0.0)
-        query_logits = logits[unsolved_mask, NUM_SUPPORT_EXAMPLES]  # (B', seq_len[, C])
-        query_targets = targets_long[unsolved_mask, NUM_SUPPORT_EXAMPLES]  # (B', seq_len)
-        if self.is_binary_task:
-            return F.binary_cross_entropy_with_logits(query_logits, query_targets.float())
-        ignore_index = self.padding_idx if self.padding_idx is not None else -100
-        return F.cross_entropy(
-            query_logits.permute(0, 2, 1) if query_logits.dim() == 3 else query_logits,
-            query_targets,
-            ignore_index=ignore_index,
-        )
 
     def _metric_sums(self, logits: torch.Tensor, targets: torch.Tensor) -> dict[str, torch.Tensor]:
         """Return raw metric numerators and denominators for one task batch."""
@@ -586,14 +538,6 @@ class HyperModelLightning(pl.LightningModule):
                 "task_count",
             )
         return metrics
-
-    def compute_metrics(
-        self,
-        logits: torch.Tensor,
-        targets: torch.Tensor,
-        prefix: str = "",
-    ) -> dict[str, torch.Tensor]:
-        return self._metrics_from_sums(self._metric_sums(logits, targets), prefix=prefix)
 
     def _reset_epoch_metric_totals(self, prefix: str) -> None:
         if prefix == "val":
@@ -732,15 +676,6 @@ class HyperModelLightning(pl.LightningModule):
         while n > 0 and int(values[n - 1]) == self.padding_idx:
             n -= 1
         return n if n > 0 else len(values)
-
-    def _trim_sequence(self, sequence: torch.Tensor | list[int]) -> list[int]:
-        """Return one sequence without trailing padding."""
-        if isinstance(sequence, torch.Tensor):
-            values = sequence.detach().cpu().tolist()
-        else:
-            values = list(sequence)
-        n = self._actual_seq_len(values)
-        return [int(value) for value in values[:n]]
 
     def _sequence_accuracy(
         self,

@@ -45,7 +45,6 @@ class Arc1dMetaPaddedMulticlassDataModule(pl.LightningDataModule):
         train_split: str = "train",
         val_split: str = "dev",
         test_split: str = "test",
-        overfit_single_batch: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -58,7 +57,6 @@ class Arc1dMetaPaddedMulticlassDataModule(pl.LightningDataModule):
         self.train_split = train_split
         self.val_split = val_split
         self.test_split = test_split
-        self.overfit_single_batch = overfit_single_batch
 
     def resolve_split_name(self, dataset_dict: DatasetDict, split_name: str) -> str:
         if split_name in dataset_dict:

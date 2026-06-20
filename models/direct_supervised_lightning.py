@@ -66,7 +66,6 @@ class DirectSupervisedLightning(pl.LightningModule):
         self.lr_scheduler_cfg = lr_scheduler
         self.warmup_steps = warmup_steps
         self.non_background_loss_weight = float(non_background_loss_weight)
-        self.puzzle_loss_weight: float = float(kwargs.get("puzzle_loss_weight", 0.0))
         self.log_task_examples = kwargs.get("log_task_examples", False)
         self.log_task_examples_every_n_epochs = kwargs.get("log_task_examples_every_n_epochs", 100)
         self.supports_hard_val_examples = False
@@ -196,32 +195,7 @@ class DirectSupervisedLightning(pl.LightningModule):
             weighted_losses = losses * weights
             base_loss = weighted_losses.sum() / valid_mask.sum().clamp_min(1)
 
-        if self.puzzle_loss_weight > 0.0:
-            return base_loss + self.puzzle_loss_weight * self.compute_puzzle_loss(logits, targets)
         return base_loss
-
-    def compute_puzzle_loss(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        """CE loss restricted to examples where the sequence is not yet exactly solved."""
-        predictions = self.decode_logits(logits)
-        targets_long = targets.long()
-        if self.padding_idx is not None:
-            valid_mask = targets_long != self.padding_idx
-            exact_matches = ((predictions == targets_long) | ~valid_mask).all(dim=1)
-        else:
-            exact_matches = (predictions == targets_long).all(dim=1)
-        unsolved_mask = ~exact_matches  # (B,)
-        if not unsolved_mask.any():
-            return logits.new_tensor(0.0)
-        if self.is_binary_task:
-            return F.binary_cross_entropy_with_logits(
-                logits[unsolved_mask], targets[unsolved_mask].float()
-            )
-        ignore = self.padding_idx if self.padding_idx is not None else -100
-        return F.cross_entropy(
-            logits[unsolved_mask].permute(0, 2, 1),
-            targets_long[unsolved_mask],
-            ignore_index=ignore,
-        )
 
     def _mask_padding(
         self, targets_long: torch.Tensor, predictions: torch.Tensor

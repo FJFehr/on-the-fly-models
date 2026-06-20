@@ -87,7 +87,6 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
         train_split: str = "train",
         val_split: str = "dev",
         test_split: str = "test",
-        overfit_single_batch: bool = False,
         padding_value: int = PAD_IDX,
         **kwargs,
     ):
@@ -101,7 +100,6 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
         self.train_split = train_split
         self.val_split = val_split
         self.test_split = test_split
-        self.overfit_single_batch = overfit_single_batch
         self.collator = Arc1dMetaPaddingCollator(padding_value=padding_value)
 
     def resolve_split_name(self, dataset_dict: DatasetDict, split_name: str) -> str:

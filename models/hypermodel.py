@@ -234,17 +234,6 @@ class HyperModel(nn.Module):
             offset += numel
         return params
 
-    def build_batched_param_dict(self, parameter_vectors: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Reshape flat parameter vectors into a batched parameter mapping."""
-        params = {}
-        offset = 0
-        for name, shape, numel in self._target_parameter_specs:
-            params[name] = parameter_vectors[:, offset : offset + numel].view(
-                parameter_vectors.shape[0], *shape
-            )
-            offset += numel
-        return params
-
     def extract_task_representation(self, hyper_output: torch.Tensor) -> torch.Tensor:
         """Pool tokenwise hypernetwork features into one task representation."""
         if hyper_output.ndim != 3:

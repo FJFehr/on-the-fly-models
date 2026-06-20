@@ -236,7 +236,9 @@ def test_compute_metrics_ignore_padding_positions_for_accuracy_and_exact_match()
         dtype=torch.long,
     )
 
-    metrics = model.compute_metrics(logits_from_predictions(predictions), targets, prefix="val")
+    metrics = model._metrics_from_sums(
+        model._metric_sums(logits_from_predictions(predictions), targets), prefix="val"
+    )
 
     assert torch.isclose(metrics["val_support_accuracy"], torch.tensor(7.0 / 8.0))
     assert torch.isclose(metrics["val_support_exact_match"], torch.tensor(2.0 / 3.0))
