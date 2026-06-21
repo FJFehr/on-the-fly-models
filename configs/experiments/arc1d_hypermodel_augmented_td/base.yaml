@@ -62,7 +62,7 @@ float32_matmul_precision: medium
 precision: bf16-mixed
 devices: auto
 optimizer: RAdam
-batch_size: 2048
+batch_size: 3072 # 2048+1024 which is divisible by 6 GPUs
 learning_rate: 0.001
 gradient_clip_val: 1.0
 weight_decay: 0.01

@@ -1,4 +1,3 @@
-import math
 import subprocess
 
 
@@ -22,18 +21,10 @@ def get_free_gpu_ids(max_memory_used_mb: int = 500) -> list[int]:
     return get_gpu_ids(max_memory_used_mb)
 
 
-def largest_power_of_2(n: int) -> int:
-    """Largest power of 2 that is <= n, or 0 if n <= 0."""
-    if n <= 0:
-        return 0
-    return 2 ** int(math.log2(n))
-
-
 def resolve_free_gpus(max_memory_used_mb: int | None = 500) -> tuple[list[int], int]:
-    """Return (selected_gpu_ids, count) — the largest power-of-2 subset of available GPUs.
+    """Return (gpu_ids, count) for all available GPUs.
 
     Pass max_memory_used_mb=None to include occupied GPUs.
     """
     gpus = get_gpu_ids(max_memory_used_mb)
-    count = largest_power_of_2(len(gpus))
-    return gpus[:count], count
+    return gpus, len(gpus)
