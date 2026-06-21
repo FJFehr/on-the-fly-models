@@ -71,12 +71,12 @@ lr_scheduler:
   params:
     T_max: ${max_steps}
     eta_min: 0.0001
-max_steps: 10000
+max_steps: 5000
 warmup_steps: 500
 log_task_examples: true
-log_task_examples_every_n_epochs: 100
-num_periodic_train_task_examples: 100
-num_periodic_val_task_examples: 100
+log_task_examples_every_n_epochs: 500
+num_periodic_train_task_examples: 500
+num_periodic_val_task_examples: 500
 
 prediction_task: multiclass
 num_classes: 10
