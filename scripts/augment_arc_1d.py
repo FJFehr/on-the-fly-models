@@ -11,13 +11,22 @@ Augmentation pipeline per task (applied in this order):
   3. mirror             — reverse all sequences left-right (optional, default on)
 
 For 1d_mirror tasks, colour 9 (the semantic pivot) is never permuted and no
-other colour is remapped to 9.
+other colour is remapped to 9. See FIXED_RULE_COLOURS.
 
 Per-pair mode (--per-pair): each support pair and the query get independent
 injective colour mappings. Colours may repeat across pairs. This expands the
 augmentation space from ~21 global variants to ~9^k combinations (where k is
 the number of colours in a pair), enabling patterns impossible under the global
 scheme. Suitable for generating large augmented datasets (e.g. 1000 variants/task).
+
+Some tasks require global augmentation even when --per-pair is set, because their
+rule depends on colour identity being consistent across all support pairs and the
+query. See GLOBAL_ONLY_TASKS. These tasks fall back to global augmentation
+automatically.
+
+After augmentation, any train example whose (support_inputs, support_outputs,
+query_input, query_output) exactly matches a dev or test example is removed to
+prevent data leakage.
 """
 
 import argparse
@@ -34,6 +43,19 @@ OUTPUT_DIR = Path("data/arc_1d_augmented")
 FIXED_RULE_COLOURS: dict[str, int] = {
     "1d_mirror": 9,
 }
+
+# Tasks that must use global colour augmentation even when --per-pair is set.
+# These tasks have a colour that is consistent across ALL support pairs and the
+# query within each task instance (e.g. a direction marker or the recolour input
+# colour). Per-pair augmentation would make that colour inconsistent across pairs,
+# breaking the learned rule.
+GLOBAL_ONLY_TASKS: frozenset[str] = frozenset({
+    "1d_move_dp",      # direction marker colour consistent across all pairs
+    "1d_move_2p_dp",   # direction marker colour consistent across all pairs
+    "1d_scale_dp",     # scaling marker colour consistent across all pairs
+    "1d_recolor_oe",   # input + two output colours identical across all pairs and query
+    "1d_recolor_cmp",  # input + two output colours identical across all pairs and query
+})
 
 
 def parse_args() -> argparse.Namespace:
@@ -134,11 +156,15 @@ def generate_color_permutations(
     rng: random.Random,
     fixed_colour: int | None = None,
 ) -> list[dict]:
-    """Return up to n unique colour-permuted variants of the task (excluding original).
+    """Return exactly n colour-permuted variants of the task (excluding original).
 
     If fixed_colour is given, that colour is never remapped and no other colour
     is mapped to it (e.g. colour 9 is the semantic pivot for 1d_mirror tasks).
-    Duplicates are skipped. Returns fewer than n if the colour space is exhausted.
+
+    For tasks with a small colour space (e.g. only 2 colours), the number of
+    unique injective mappings may be less than n. In that case, mappings are
+    resampled (with replacement) so that exactly n variants are always returned.
+    Identity mappings (no change) are always skipped and resampled.
     """
     task_colors = get_task_colors(task)
     permutable = [c for c in task_colors if c != fixed_colour]
@@ -147,20 +173,13 @@ def generate_color_permutations(
 
     available = [c for c in range(1, 10) if c != fixed_colour]
     variants: list[dict] = []
-    seen_maps: set[tuple[tuple[int, int], ...]] = set()
-    max_attempts = n * 20
 
-    for _ in range(max_attempts):
-        if len(variants) >= n:
-            break
+    while len(variants) < n:
         rng.shuffle(available)
         color_map = {orig: available[i] for i, orig in enumerate(permutable)}
         if all(orig == mapped for orig, mapped in color_map.items()):
             continue
-        map_key = tuple(sorted(color_map.items()))
-        if map_key not in seen_maps:
-            seen_maps.add(map_key)
-            variants.append(apply_color_map(task, color_map))
+        variants.append(apply_color_map(task, color_map))
 
     return variants
 
@@ -283,7 +302,8 @@ def augment_task(
     # Step 1: colour (original is variant 0)
     category = task.get("task_category", "")
     fixed_colour = FIXED_RULE_COLOURS.get(category)
-    if per_pair:
+    use_per_pair = per_pair and category not in GLOBAL_ONLY_TASKS
+    if use_per_pair:
         color_variants = [task] + generate_per_pair_color_augmentations(
             task, n_color_perms, rng, fixed_colour=fixed_colour
         )
@@ -326,6 +346,35 @@ def augment_split(
     return augmented
 
 
+def _example_fingerprint(task: dict) -> tuple:
+    """Hashable fingerprint of the full example content (ignores task_id)."""
+    return (
+        tuple(tuple(s) for s in task["support_inputs"]),
+        tuple(tuple(s) for s in task["support_outputs"]),
+        tuple(task["query_input"]),
+        tuple(task["query_output"]),
+    )
+
+
+def filter_held_out_contamination(
+    aug_train: list[dict], base: DatasetDict
+) -> list[dict]:
+    """Remove augmented train examples that exactly match any dev or test example."""
+    held_out: set[tuple] = set()
+    for split_name in ("dev", "test"):
+        if split_name in base:
+            for task in base[split_name]:
+                held_out.add(_example_fingerprint(task))
+    if not held_out:
+        return aug_train
+    before = len(aug_train)
+    filtered = [t for t in aug_train if _example_fingerprint(t) not in held_out]
+    removed = before - len(filtered)
+    if removed:
+        print(f"Removed {removed} augmented train examples that matched dev/test examples.")
+    return filtered
+
+
 def print_split_summary(dataset_dict: DatasetDict) -> None:
     for split_name, dataset in dataset_dict.items():
         category_counts = Counter(dataset["task_category"])
@@ -363,6 +412,7 @@ def main() -> None:
     aug_train = augment_split(
         base["train"], n_color, shifts, rng, mirror=args.mirror, per_pair=args.per_pair
     )
+    aug_train = filter_held_out_contamination(aug_train, base)
 
     splits: dict[str, Dataset] = {"train": Dataset.from_list(aug_train)}
     for split_name in ("dev", "test"):
