@@ -1,0 +1,22 @@
+_base_: configs/experiments/arc1d_capacity_looped/base_looped.yaml
+experiment_name: overfit_baseline_medium_transformer
+task_categories:
+  - 1d_denoising_1c
+  - 1d_scale_dp
+  - 1d_fill
+model: direct_supervised
+gradient_clip_val: 1.0
+overfit_single_batch: true
+max_steps: 2000
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: 2000
+    eta_min: 0.0001
+backbone_model:
+  name: transformer
+  params:
+    hidden_dim: 20
+    num_layers: 2
+    num_heads: 4
+    dropout: 0.0
