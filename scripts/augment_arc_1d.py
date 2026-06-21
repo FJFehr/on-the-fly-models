@@ -55,6 +55,7 @@ GLOBAL_ONLY_TASKS: frozenset[str] = frozenset({
     "1d_scale_dp",     # scaling marker colour consistent across all pairs
     "1d_recolor_oe",   # input + two output colours identical across all pairs and query
     "1d_recolor_cmp",  # input + two output colours identical across all pairs and query
+    "1d_recolor_cnt",  # run-length → output colour mapping globally consistent across all pairs
 })
 
 

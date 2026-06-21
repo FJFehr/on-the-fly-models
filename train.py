@@ -115,6 +115,12 @@ def parse_args() -> argparse.Namespace:
         nargs="*",
         help="Optional OmegaConf dotlist overrides such as seed=43 devices=1.",
     )
+    parser.add_argument(
+        "--free-gpus",
+        action="store_true",
+        default=False,
+        help="Only use GPUs with low memory usage (< 500 MB). By default all GPUs are used.",
+    )
     return parser.parse_args()
 
 
@@ -139,11 +145,13 @@ def main() -> None:
     configure_torch_runtime(runtime_cfg)
 
     if runtime_cfg.get("devices") == "auto":
-        gpu_ids, count = resolve_free_gpus(max_memory_used_mb=None)
+        max_mem = 500 if cli_args.free_gpus else None
+        gpu_ids, count = resolve_free_gpus(max_memory_used_mb=max_mem)
         if count > 0:
             os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in gpu_ids)
             runtime_cfg["devices"] = count
-            print(f"[gpu_utils] Free GPUs: {gpu_ids} → using {count} (CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']})")
+            mode = "free" if cli_args.free_gpus else "all"
+            print(f"[gpu_utils] {mode} GPUs: {gpu_ids} → using {count} (CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']})")
         else:
             runtime_cfg["devices"] = 1
             print("[gpu_utils] No free GPUs found, falling back to 1 device")

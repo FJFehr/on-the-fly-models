@@ -245,3 +245,79 @@ def test_augment_task_mirror_category_preserves_colour_9():
     variants = augment_task(task, 10, [1], rng=random.Random(0))
     for v in variants:
         assert 9 in set(_all_values(v)), "colour 9 disappeared from a 1d_mirror variant"
+
+
+# ---------------------------------------------------------------------------
+# 1d_recolor_cnt: global augmentation preserves run-length → colour mapping
+# ---------------------------------------------------------------------------
+
+
+def _extract_recolor_cnt_mapping(task: dict) -> dict[int, int] | None:
+    """Extract the (run_size → output_colour) mapping from a recolor_cnt-style task.
+
+    Returns None if the mapping is inconsistent across any pair or the query.
+    Each contiguous run of non-zero input values must map to a single output colour,
+    and that colour must be the same for runs of the same size across all sequences.
+    """
+    mapping: dict[int, int] = {}
+    all_pairs = list(zip(task["support_inputs"], task["support_outputs"])) + [
+        (task["query_input"], task["query_output"])
+    ]
+    for inp, out in all_pairs:
+        i = 0
+        while i < len(inp):
+            if inp[i] == 0:
+                i += 1
+                continue
+            run_start = i
+            run_colour = inp[i]
+            while i < len(inp) and inp[i] == run_colour:
+                i += 1
+            run_len = i - run_start
+            out_colours = set(out[run_start:i])
+            if len(out_colours) != 1:
+                return None
+            out_colour = out_colours.pop()
+            if run_len in mapping and mapping[run_len] != out_colour:
+                return None
+            mapping[run_len] = out_colour
+    return mapping
+
+
+def test_recolor_cnt_global_augmentation_preserves_mapping():
+    """Global augmentation of a recolor_cnt task keeps the run-size → colour mapping
+    globally consistent across all support pairs and the query in every variant."""
+    # Rule: size 1 → colour 5, size 2 → colour 7, size 3 → colour 6
+    task = make_task(
+        support_inputs=[[4, 0, 4, 4, 0, 4, 4, 4], [4, 4, 4, 0, 4, 0, 4, 4], [4, 4, 0, 4, 4, 4, 0, 4]],
+        support_outputs=[[5, 0, 7, 7, 0, 6, 6, 6], [6, 6, 6, 0, 5, 0, 7, 7], [7, 7, 0, 6, 6, 6, 0, 5]],
+        query_input=[4, 0, 4, 4, 4, 0, 4, 4],
+        query_output=[5, 0, 6, 6, 6, 0, 7, 7],
+        task_category="1d_recolor_cnt",
+    )
+    variants = augment_task(task, 20, [1, -1], rng=random.Random(0), mirror=False, per_pair=False)
+    for i, v in enumerate(variants):
+        mapping = _extract_recolor_cnt_mapping(v)
+        assert mapping is not None, f"variant {i} has inconsistent run-size → colour mapping"
+        assert len(mapping) == 3, f"variant {i} lost run-size entries: {mapping}"
+
+
+def test_recolor_cnt_augmentation_variant_count():
+    """With n=199 colour perms, 4 shifts and no mirror, augment_task yields exactly 1000 variants
+    — matching the arc_1d_all_tasks_augmented build parameters (200 colour × 5 shifts)."""
+    task = make_task(
+        support_inputs=[[4, 0, 4, 4, 0, 4, 4, 4], [4, 4, 4, 0, 4, 0, 4, 4], [4, 4, 0, 4, 4, 4, 0, 4]],
+        support_outputs=[[5, 0, 7, 7, 0, 6, 6, 6], [6, 6, 6, 0, 5, 0, 7, 7], [7, 7, 0, 6, 6, 6, 0, 5]],
+        query_input=[4, 0, 4, 4, 4, 0, 4, 4],
+        query_output=[5, 0, 6, 6, 6, 0, 7, 7],
+        task_category="1d_recolor_cnt",
+    )
+    variants = augment_task(
+        task,
+        n_color_perms=199,
+        shifts=[1, 2, -1, -2],
+        rng=random.Random(0),
+        mirror=False,
+        per_pair=False,
+    )
+    assert len(variants) == 1000  # 200 colour × 5 shifts × 1 (no mirror)
