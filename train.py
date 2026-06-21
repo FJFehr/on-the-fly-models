@@ -139,7 +139,7 @@ def main() -> None:
     configure_torch_runtime(runtime_cfg)
 
     if runtime_cfg.get("devices") == "auto":
-        gpu_ids, count = resolve_free_gpus()
+        gpu_ids, count = resolve_free_gpus(max_memory_used_mb=None)
         if count > 0:
             os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in gpu_ids)
             runtime_cfg["devices"] = count
