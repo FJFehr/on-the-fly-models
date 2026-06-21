@@ -186,6 +186,11 @@ class HyperModelLightning(pl.LightningModule):
             hyper_pooling=hyper_pooling,
             num_tasks=num_tasks,
         )
+        num_tasks_input = hyper_head_cfg.get("num_tasks_input")
+        self.task_input_indicator_emb = (
+            torch.nn.Embedding(num_tasks_input, embedding_dim)
+            if num_tasks_input is not None else None
+        )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
         self.weight_decay = weight_decay
@@ -451,11 +456,13 @@ class HyperModelLightning(pl.LightningModule):
         """batch -> (logits, targets) with shape (batch, 4, seq_len)."""
         task_features, example_inputs, example_targets = self.prepare_inputs(batch)
         canonical_ids = None
-        if self.hypermodel.task_indicator_proj is not None:
+        if self.hypermodel.task_indicator_proj is not None or self.task_input_indicator_emb is not None:
             canonical_ids = torch.tensor(
                 [TASK_CATEGORY_INDEX[c] for c in batch["task_category"]],
                 device=self.device,
             )
+        if self.task_input_indicator_emb is not None:
+            task_features = task_features + self.task_input_indicator_emb(canonical_ids).unsqueeze(1)
         logits = self.hypermodel(task_features, example_inputs, task_ids=canonical_ids)
         return logits, example_targets
 

@@ -71,6 +71,18 @@ Default settings produce up to 242 variants per task (22 colour variants × 11 s
 0, ±1, ±2, ±3, ±4, ±5), giving ~9,680 tasks per category in train. For `1d_mirror` tasks,
 colour 9 (the semantic pivot) is kept fixed and excluded from permutation targets.
 
+Build the move-task augmented dataset used by the disentanglement experiments:
+
+```bash
+uv run python scripts/augment_arc_1d.py --per-pair --n-color-permutations 199 --shifts 1 2 -1 -2 --no-mirror --task-categories 1d_move_1p 1d_move_2p 1d_move_3p --output-dir data/arc_1d_move_augmented
+```
+
+This writes `data/arc_1d_move_augmented` with only the three move task categories.
+Per-pair colour augmentation gives each support pair and the query independent injective
+colour mappings, producing 200 colour variants × 5 shift positions = 1000 variants per task
+(120,000 train examples total). Dev and test are filtered to the same categories and passed
+through unchanged.
+
 ## Data Augmentation
 
 `scripts/augment_arc_1d.py` augments the train split of `data/arc_1d` with two
