@@ -74,9 +74,9 @@ lr_scheduler:
 max_steps: 5000
 warmup_steps: 500
 log_task_examples: true
-log_task_examples_every_n_epochs: 500
-num_periodic_train_task_examples: 500
-num_periodic_val_task_examples: 500
+log_task_examples_every_n_epochs: 100
+num_periodic_train_task_examples: 100
+num_periodic_val_task_examples: 100
 
 prediction_task: multiclass
 num_classes: 10
@@ -93,11 +93,11 @@ hyper_model:
     hidden_dim: 128
     num_heads: 8
     num_layers: 4
-    output_dim: 64
+    output_dim: 128
 
 hyper_head:
   pooling: hierarchical
-  projection_dims: [128, 512, 1024]
+  projection_dims: [256, 512, 1024]
   num_tasks: 18
 
 target_model:
