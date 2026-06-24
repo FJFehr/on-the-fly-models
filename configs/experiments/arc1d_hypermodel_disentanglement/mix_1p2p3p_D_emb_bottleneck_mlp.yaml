@@ -1,0 +1,17 @@
+_base_: configs/experiments/arc1d_hypermodel_disentanglement/base_disentanglement.yaml
+task: mix_1p2p3p_D_emb_bottleneck_mlp
+experiment_name: disentangle_mix_1p2p3p_D_emb_bottleneck_mlp
+task_categories:
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_3p
+val_task_categories:
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_3p
+hyper_head:
+  pooling: hierarchical
+  projection_dims: [16]
+  num_tasks: 18
+  task_conditioning: bottleneck_mlp
+  task_embedding_dim: 32

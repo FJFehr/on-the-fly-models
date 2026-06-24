@@ -1,0 +1,17 @@
+_base_: configs/experiments/arc1d_hypermodel_disentanglement/base_disentanglement.yaml
+task: mix_1p2p3p_C_emb_input
+experiment_name: disentangle_mix_1p2p3p_C_emb_input
+task_categories:
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_3p
+val_task_categories:
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_3p
+hyper_head:
+  pooling: hierarchical
+  projection_dims: [16]
+  num_tasks: 18
+  task_conditioning: input
+  task_embedding_dim: 16

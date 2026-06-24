@@ -176,6 +176,8 @@ class HyperModelLightning(pl.LightningModule):
             raise ValueError(msg)
         projection_dims = hyper_head_cfg.get("projection_dims")
         num_tasks = hyper_head_cfg.get("num_tasks")
+        task_embedding_dim = hyper_head_cfg.get("task_embedding_dim")
+        task_conditioning = hyper_head_cfg.get("task_conditioning")
         hyper_pooling = self.build_hyper_pooling(hyper_head_cfg, hyper_output_dim)
         self.hypermodel = HyperModel(
             hypernetwork=hypernetwork,
@@ -185,6 +187,9 @@ class HyperModelLightning(pl.LightningModule):
             projection_dims=projection_dims,
             hyper_pooling=hyper_pooling,
             num_tasks=num_tasks,
+            task_embedding_dim=task_embedding_dim,
+            task_conditioning=task_conditioning,
+            hyper_input_dim=embedding_dim,
         )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
@@ -451,7 +456,7 @@ class HyperModelLightning(pl.LightningModule):
         """batch -> (logits, targets) with shape (batch, 4, seq_len)."""
         task_features, example_inputs, example_targets = self.prepare_inputs(batch)
         canonical_ids = None
-        if self.hypermodel.task_indicator_proj is not None:
+        if self.hypermodel.has_task_conditioning:
             canonical_ids = torch.tensor(
                 [TASK_CATEGORY_INDEX[c] for c in batch["task_category"]],
                 device=self.device,

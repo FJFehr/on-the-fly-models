@@ -186,6 +186,9 @@ class HyperModel(nn.Module):
         projection_dims: list[int] | None = None,
         hyper_pooling: nn.Module | None = None,
         num_tasks: int | None = None,
+        task_embedding_dim: int | None = None,
+        task_conditioning: str | None = None,
+        hyper_input_dim: int | None = None,
     ):
         super().__init__()
         self.hypernetwork = hypernetwork
@@ -204,10 +207,42 @@ class HyperModel(nn.Module):
         self.hyper_output_dim = hyper_output_dim
         self.hyper_pooling = hyper_pooling or AttentionPooler(self.hyper_output_dim)
         self.num_tasks = num_tasks
-        self.task_indicator_proj = (
-            nn.Linear(num_tasks, hyper_output_dim, bias=False)
-            if num_tasks is not None else None
-        )
+
+        # Task conditioning — four strategies selectable via task_conditioning:
+        #   None / absent  → one-hot × Linear at bottleneck (original, backward-compat)
+        #   "bottleneck"   → nn.Embedding at bottleneck (linear; sanity-check equivalent)
+        #   "input"        → nn.Embedding broadcast-added to each hyper input token
+        #   "bottleneck_mlp" → nn.Embedding → MLP → add at bottleneck (non-linear)
+        self.task_indicator_proj: nn.Module | None = None
+        self.task_embedding: nn.Module | None = None
+        self.task_embedding_proj: nn.Module | None = None
+        self.task_input_embedding: nn.Module | None = None
+        self.task_input_proj: nn.Module | None = None
+
+        if num_tasks is not None:
+            if task_conditioning == "bottleneck":
+                self.task_embedding = nn.Embedding(num_tasks, hyper_output_dim)
+            elif task_conditioning == "input":
+                if hyper_input_dim is None:
+                    msg = "hyper_input_dim must be provided for task_conditioning='input'."
+                    raise ValueError(msg)
+                emb_dim = task_embedding_dim or hyper_input_dim
+                self.task_input_embedding = nn.Embedding(num_tasks, emb_dim)
+                self.task_input_proj = (
+                    nn.Linear(emb_dim, hyper_input_dim, bias=False)
+                    if emb_dim != hyper_input_dim else nn.Identity()
+                )
+            elif task_conditioning == "bottleneck_mlp":
+                emb_dim = task_embedding_dim or hyper_output_dim
+                self.task_embedding = nn.Embedding(num_tasks, emb_dim)
+                self.task_embedding_proj = nn.Sequential(
+                    nn.Linear(emb_dim, hyper_output_dim, bias=True),
+                    nn.GELU(),
+                    nn.Linear(hyper_output_dim, hyper_output_dim, bias=True),
+                )
+            else:
+                # Original: one-hot × Linear (mathematically equivalent to nn.Embedding)
+                self.task_indicator_proj = nn.Linear(num_tasks, hyper_output_dim, bias=False)
 
         # Build the projection MLP from hyper_output_dim to total_target_params.
         # projection_dims specifies intermediate hidden sizes; bottleneck_dim is the
@@ -223,6 +258,14 @@ class HyperModel(nn.Module):
     @property
     def total_target_params(self) -> int:
         return sum(numel for _, _, numel in self._target_parameter_specs)
+
+    @property
+    def has_task_conditioning(self) -> bool:
+        return (
+            self.task_indicator_proj is not None
+            or self.task_embedding is not None
+            or self.task_input_embedding is not None
+        )
 
     def build_param_dict(self, param_vector: torch.Tensor) -> dict[str, torch.Tensor]:
         """Reshape a flat (total_params,) vector into {name: tensor} matching
@@ -252,9 +295,14 @@ class HyperModel(nn.Module):
     ) -> torch.Tensor:
         """Pool tokenwise hypernetwork features and project them to target weights."""
         task_representation = self.extract_task_representation(hyper_output)
-        if self.task_indicator_proj is not None and task_ids is not None:
-            one_hot = torch.nn.functional.one_hot(task_ids, num_classes=self.num_tasks).float()
-            task_representation = task_representation + self.task_indicator_proj(one_hot)
+        if task_ids is not None:
+            if self.task_embedding_proj is not None:  # bottleneck_mlp
+                task_representation = task_representation + self.task_embedding_proj(self.task_embedding(task_ids))
+            elif self.task_embedding is not None:      # bottleneck (linear embedding)
+                task_representation = task_representation + self.task_embedding(task_ids)
+            elif self.task_indicator_proj is not None: # original one-hot × Linear
+                one_hot = torch.nn.functional.one_hot(task_ids, num_classes=self.num_tasks).float()
+                task_representation = task_representation + self.task_indicator_proj(one_hot)
         return self.hyper_projection(task_representation)
 
     def forward(
@@ -272,6 +320,9 @@ class HyperModel(nn.Module):
         Returns logits  : (batch, n_examples, seq_len)
 
         """
+        if self.task_input_embedding is not None and task_ids is not None:  # input conditioning
+            task_emb = self.task_input_proj(self.task_input_embedding(task_ids))  # (batch, hyper_input_dim)
+            task_features = task_features + task_emb.unsqueeze(1)
         hyper_output = self.hypernetwork(task_features)
         parameter_vectors = self.extract_parameter_vectors(hyper_output, task_ids)
         outputs = []
