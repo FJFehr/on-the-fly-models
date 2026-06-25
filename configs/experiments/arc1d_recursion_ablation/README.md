@@ -8,76 +8,65 @@ For ARC-style reasoning tasks, where does the performance gain from recursion co
 Performance gain ← { architectural recursion | training recursion | both }
 ```
 
-while holding **parameter count** and **total optimizer steps** fixed.
+while holding **total optimizer steps** fixed.
 
 ## 4-Way Design
 
-All conditions use the same backbone size: `hidden_dim=256`, `num_layers=2`, `num_heads=4`.
+| Cond | File prefix | Backbone | `num_layers` | `n_loops` | `N_supervision` | LR | Optimizer steps |
+|------|-------------|----------|:---:|:---:|:---:|---|:---:|
+| A | `A_transformer` | `transformer` | 2 | 1 | 1 | 0.001 | 4 000 |
+| B | `B_recursive_transformer` | `recursive_transformer` | 1 | 2 | 1 | 0.001 | 4 000 |
+| C | `C_looped_transformer` | `transformer` | 2 | 1 | 4 | **0.00025** | 4 000 |
+| D | `D_looped_recursive_transformer` | `recursive_transformer` | 1 | 2 | 4 | **0.00025** | 4 000 |
 
-| Cond | File prefix | Model | Backbone | Architecture | Training | Optimizer steps |
-|------|-------------|-------|----------|--------------|----------|-----------------|
-| A | `A_transformer` | `direct_supervised` | `transformer` | 1 forward pass | 1 update/batch | 8 000 |
-| B | `B_recursive_transformer` | `direct_supervised` | `recursive_transformer` | 4 loops, shared weights | 1 update/batch | 8 000 |
-| C | `C_looped_transformer` | `looped_supervised` | `transformer` | 1 forward pass | 4 updates/batch | 2 000 × 4 = 8 000 |
-| D | `D_looped_recursive_transformer` | `looped_supervised` | `recursive_transformer` | 4 loops, shared weights | 4 updates/batch | 2 000 × 4 = 8 000 |
+All conditions: `hidden_dim=256`, `num_heads=4`, `batch_size=256`, `warmup_steps=200`.
 
 ### Architectural recursion (B, D)
-The `recursive_transformer` backbone applies a 2-layer shared block **4 times** in a single forward pass (Universal Transformer style). Total computational depth = 8 layers. Parameter count = same 2-layer transformer — the weights are reused across loops, not duplicated.
+`recursive_transformer` applies 1 shared encoder layer **2 times** in the forward pass.
+Effective depth = 2 (same as A/C), parameter count ≈ half of A/C (one layer instead of two).
+Tests whether weight sharing and iterative hidden-state refinement helps.
 
 ### Training recursion (C, D)
-`looped_supervised` runs `N_supervision=4` forward+backward passes on each batch before moving to the next one. Parameters are updated 4 times on the same examples. `max_steps=2000` so the total optimizer step budget matches A and B.
+`looped_supervised` runs `N_supervision=4` forward+backward passes on the same batch before
+moving to the next one — 4 optimizer steps per Lightning step.
+`max_steps=1000` so total optimizer steps match A and B (1 000 × 4 = 4 000).
+
+### Learning rate scaling for C and D
+C and D use `learning_rate=0.00025` (`0.001 / N_supervision`).
+
+**Why:** 4 gradient steps on the same batch is equivalent to multiplying the per-example
+update magnitude by 4. Scaling the LR down keeps effective updates comparable to A and B.
+
+**Why this matters for the C vs D comparison:** both must use the same LR so that any
+performance difference between them is attributable solely to the recursive architecture in
+D, not to a confounded LR advantage.
 
 ## Compute Matching
 
-- A and B: `max_steps=4000`, 1 optimizer step per Lightning step → **4 000 total updates**
+- A and B: `max_steps=4000`, 1 optimizer step/Lightning step → **4 000 total updates**
 - C and D: `max_steps=1000`, `N_supervision=4` → **1 000 × 4 = 4 000 total updates**
 
-Note: FLOPs are not fully matched. B and D pay 4× more compute per forward pass (4 loops vs 1). This is an intentional design choice — matching FLOPs would require halving the model size for B/D, which confounds parameters with depth.
-
-## Expected Outcomes
-
-| Model | Expected result |
-|-------|----------------|
-| A (plain) | Baseline |
-| C (training recursion) | Small improvement on hard tasks |
-| B (architectural recursion) | Larger improvement |
-| D (combined) | Best |
-
-The most interesting result would be **B > C**: architectural recursion outperforms training recursion, suggesting that iterative hidden-state computation is more important than repeatedly updating parameters. This is consistent with the hypotheses behind Universal Transformers, TRM, and HRM.
-
-## Inference-Time Loop Sweep (Condition B and D)
-
-After training B or D, you can evaluate the model with different numbers of loops at inference:
-
-```python
-model.backbone.n_loops = k  # set k = 1, 2, 3, 4
-```
-
-A model that learned an iterative algorithm should show progressive improvement:
-```
-n_loops=1: 40%
-n_loops=2: 55%
-n_loops=3: 65%
-n_loops=4: 70%
-```
-Flat accuracy across loop counts suggests the recursion didn't produce meaningful refinement.
+Note: B and D pay 2× more compute per forward pass (2 loops vs 1). FLOPs are not matched
+— matching them would require halving the model size for B/D, which confounds parameters
+with depth.
 
 ## Task Difficulty Tiers
 
 | Task | Difficulty | Notes |
 |------|-----------|-------|
-| `1d_denoising_1c` | Easy | Standard transformer solves this |
-| `1d_scale_dp` | Medium | Transformer struggles sometimes |
+| `1d_denoising_1c` | Easy | Baseline transformer solves this |
+| `1d_scale_dp` | Medium | Transformer struggles |
 | `1d_fill` | Hard | Transformer largely fails |
 | `1d_recolor_cmp` | ? | Recolor by comparison — hypothesis: looping helps |
 | `1d_recolor_cnt` | ? | Recolor by count — hypothesis: looping helps |
 | `1d_recolor_oe` | ? | Recolor odd/even — hypothesis: looping helps |
 
-Expected: recursion benefits should grow with task difficulty.
-
 ## Data
 
-`data/arc_1d_looped_augmented/` — 121k train examples across 3 task categories (per-pair colour augmentation, ~1 000 variants per base task). Val/test use the original held-out tasks (5 per category).
+`data/arc_1d_looped_augmented/` — ~241k train examples across 6 task categories
+(per-pair colour augmentation, ~40k per task). Dev and test each have **100 examples per
+task** (5 original held-out tasks × 20 colour permutations), reducing metric variance from
+±45% to ±10% compared to the raw 5-example splits.
 
 To regenerate:
 ```bash
@@ -92,19 +81,17 @@ python scripts/augment_arc_1d.py \
   --output-dir data/arc_1d_looped_augmented
 ```
 
-This produces ~241k train examples and **100 examples per task** in dev and test
-(5 original tasks × 20 colour permutations), reducing metric variance from ±45% to ±10%.
-
 ## Running Experiments
 
 ```bash
-# All 4 conditions on 1d_fill (hardest task)
-python train.py --config configs/experiments/arc1d_recursion_ablation/1d_fill/A_transformer.yaml
-python train.py --config configs/experiments/arc1d_recursion_ablation/1d_fill/B_recursive_transformer.yaml
-python train.py --config configs/experiments/arc1d_recursion_ablation/1d_fill/C_looped_transformer.yaml
-python train.py --config configs/experiments/arc1d_recursion_ablation/1d_fill/D_looped_recursive_transformer.yaml
+# All 4 conditions on a given task
+TASK=1d_fill
+python train.py --config configs/experiments/arc1d_recursion_ablation/${TASK}/A_transformer.yaml
+python train.py --config configs/experiments/arc1d_recursion_ablation/${TASK}/B_recursive_transformer.yaml
+python train.py --config configs/experiments/arc1d_recursion_ablation/${TASK}/C_looped_transformer.yaml
+python train.py --config configs/experiments/arc1d_recursion_ablation/${TASK}/D_looped_recursive_transformer.yaml
 
-# Overfit sanity check (all tasks, 1 batch, no dropout)
+# Overfit sanity check
 python train.py --config configs/experiments/arc1d_recursion_ablation/overfit/A_transformer.yaml
 python train.py --config configs/experiments/arc1d_recursion_ablation/overfit/B_recursive_transformer.yaml
 python train.py --config configs/experiments/arc1d_recursion_ablation/overfit/C_looped_transformer.yaml
