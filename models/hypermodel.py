@@ -1,5 +1,7 @@
 """Core hypermodel: wires any hypernetwork to any stateless target model."""
 
+import math
+
 import torch
 import torch.nn as nn
 from torch.func import functional_call
@@ -14,6 +16,16 @@ def _indent_repr(value: object, prefix: str = "    ") -> str:
 
 def _describe_hyper_projection(model: "HyperModel") -> str:
     """Build a compact one-line description of the hyper projection head."""
+    if model.low_rank_output:
+        parts = []
+        for layer in model.hyper_proj_shared:
+            if isinstance(layer, nn.Linear):
+                parts.append(f"Linear({layer.in_features} -> {layer.out_features})")
+            elif isinstance(layer, nn.GELU):
+                parts.append("GELU")
+        m = model.hyper_proj_a.out_features
+        parts.append(f"[A: Linear(-> {m}), B: Linear(-> {m})] outer-product -> {model.total_target_params}")
+        return " + ".join(parts)
     parts = []
     for layer in model.hyper_projection:
         if isinstance(layer, nn.Linear):
@@ -186,6 +198,7 @@ class HyperModel(nn.Module):
         projection_dims: list[int] | None = None,
         hyper_pooling: nn.Module | None = None,
         num_tasks: int | None = None,
+        low_rank_output: bool = False,
     ):
         super().__init__()
         self.hypernetwork = hypernetwork
@@ -213,12 +226,28 @@ class HyperModel(nn.Module):
         # projection_dims specifies intermediate hidden sizes; bottleneck_dim is the
         # legacy single-intermediate fallback.
         intermediate = projection_dims if projection_dims is not None else [bottleneck_dim if bottleneck_dim is not None else hyper_output_dim]
-        dims = [hyper_output_dim] + list(intermediate) + [self.total_target_params]
-        layers: list[nn.Module] = []
-        for in_d, out_d in zip(dims[:-2], dims[1:-1]):
-            layers += [nn.Linear(in_d, out_d, bias=False), nn.GELU()]
-        layers.append(nn.Linear(dims[-2], dims[-1], bias=False))
-        self.hyper_projection = nn.Sequential(*layers)
+        dims = [hyper_output_dim] + list(intermediate)
+
+        self.low_rank_output = low_rank_output
+        if low_rank_output:
+            # Shared MLP up to (but not including) the final output layer.
+            shared_layers: list[nn.Module] = []
+            for in_d, out_d in zip(dims[:-1], dims[1:]):
+                shared_layers += [nn.Linear(in_d, out_d, bias=False), nn.GELU()]
+            self.hyper_proj_shared = nn.Sequential(*shared_layers)
+            # Two low-rank heads whose outer product covers total_target_params.
+            output_rank_dim = math.ceil(math.sqrt(self.total_target_params))
+            self.hyper_proj_a = nn.Linear(dims[-1], output_rank_dim, bias=False)
+            self.hyper_proj_b = nn.Linear(dims[-1], output_rank_dim, bias=False)
+            # Unused in this path but kept as None so __repr__ helpers stay simple.
+            self.hyper_projection = nn.Sequential()
+        else:
+            full_dims = dims + [self.total_target_params]
+            layers: list[nn.Module] = []
+            for in_d, out_d in zip(full_dims[:-2], full_dims[1:-1]):
+                layers += [nn.Linear(in_d, out_d, bias=False), nn.GELU()]
+            layers.append(nn.Linear(full_dims[-2], full_dims[-1], bias=False))
+            self.hyper_projection = nn.Sequential(*layers)
 
     @property
     def total_target_params(self) -> int:
@@ -255,6 +284,12 @@ class HyperModel(nn.Module):
         if self.task_indicator_proj is not None and task_ids is not None:
             one_hot = torch.nn.functional.one_hot(task_ids, num_classes=self.num_tasks).float()
             task_representation = task_representation + self.task_indicator_proj(one_hot)
+        if self.low_rank_output:
+            shared = self.hyper_proj_shared(task_representation)
+            a = self.hyper_proj_a(shared)  # (batch, m)
+            b = self.hyper_proj_b(shared)  # (batch, m)
+            flat = torch.einsum("bi,bj->bij", a, b).flatten(1)  # (batch, m*m)
+            return flat[:, : self.total_target_params]
         return self.hyper_projection(task_representation)
 
     def forward(

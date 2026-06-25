@@ -176,6 +176,7 @@ class HyperModelLightning(pl.LightningModule):
             raise ValueError(msg)
         projection_dims = hyper_head_cfg.get("projection_dims")
         num_tasks = hyper_head_cfg.get("num_tasks")
+        low_rank_output = bool(hyper_head_cfg.get("low_rank_output", False))
         hyper_pooling = self.build_hyper_pooling(hyper_head_cfg, hyper_output_dim)
         self.hypermodel = HyperModel(
             hypernetwork=hypernetwork,
@@ -185,6 +186,7 @@ class HyperModelLightning(pl.LightningModule):
             projection_dims=projection_dims,
             hyper_pooling=hyper_pooling,
             num_tasks=num_tasks,
+            low_rank_output=low_rank_output,
         )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
