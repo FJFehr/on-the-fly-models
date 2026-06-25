@@ -1,8 +1,8 @@
 """Augment the 1D-ARC dataset with colour permutations, shifts, and mirroring.
 
-Reads from data/arc_1d (variable-length), augments the train split only,
-and writes to data/arc_1d_augmented in the same schema. Dev and test splits
-are passed through unchanged so results remain comparable to the baseline.
+Reads from data/arc_1d (variable-length), augments the train split, and
+optionally augments dev/test with colour permutations to reduce metric variance.
+Dev and test are never shifted or mirrored — only colour-permuted.
 
 Augmentation pipeline per task (applied in this order):
   1. colour permutations — remap non-zero colours consistently across all sequences
@@ -111,6 +111,16 @@ def parse_args() -> argparse.Namespace:
             "If given, only augment tasks whose task_category is in this list. "
             "Dev/test splits are filtered to the same categories. "
             "Example: --task-categories 1d_move_1p 1d_move_2p 1d_move_3p"
+        ),
+    )
+    parser.add_argument(
+        "--dev-test-n-permutations",
+        type=int,
+        default=0,
+        help=(
+            "Number of additional colour permutations to apply to dev and test splits "
+            "(0 = pass through unchanged). Shifts and mirroring are never applied to "
+            "dev/test. Example: 19 gives 5 original × 20 variants = 100 examples per task."
         ),
     )
     parser.add_argument(
@@ -417,7 +427,23 @@ def main() -> None:
 
     splits: dict[str, Dataset] = {"train": Dataset.from_list(aug_train)}
     for split_name in ("dev", "test"):
-        if split_name in base:
+        if split_name not in base:
+            continue
+        if args.dev_test_n_permutations > 0:
+            print(
+                f"Augmenting {split_name} split: {args.dev_test_n_permutations} "
+                f"{colour_mode} colour variants (no shifts, no mirror)"
+            )
+            aug_split = augment_split(
+                base[split_name],
+                args.dev_test_n_permutations,
+                shifts=[],
+                rng=rng,
+                mirror=False,
+                per_pair=args.per_pair,
+            )
+            splits[split_name] = Dataset.from_list(aug_split)
+        else:
             splits[split_name] = base[split_name]
 
     dataset_dict = DatasetDict(splits)
