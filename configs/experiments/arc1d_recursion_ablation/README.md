@@ -69,6 +69,9 @@ Flat accuracy across loop counts suggests the recursion didn't produce meaningfu
 | `1d_denoising_1c` | Easy | Standard transformer solves this |
 | `1d_scale_dp` | Medium | Transformer struggles sometimes |
 | `1d_fill` | Hard | Transformer largely fails |
+| `1d_recolor_cmp` | ? | Recolor by comparison — hypothesis: looping helps |
+| `1d_recolor_cnt` | ? | Recolor by count — hypothesis: looping helps |
+| `1d_recolor_oe` | ? | Recolor odd/even — hypothesis: looping helps |
 
 Expected: recursion benefits should grow with task difficulty.
 
@@ -84,6 +87,7 @@ python scripts/augment_arc_1d.py \
   --shifts 1 2 -1 -2 \
   --no-mirror \
   --task-categories 1d_denoising_1c 1d_scale_dp 1d_fill \
+    1d_recolor_cmp 1d_recolor_cnt 1d_recolor_oe \
   --output-dir data/arc_1d_looped_augmented
 ```
 
