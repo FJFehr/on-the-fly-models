@@ -29,8 +29,8 @@ The `recursive_transformer` backbone applies a 2-layer shared block **4 times** 
 
 ## Compute Matching
 
-- A and B: `max_steps=8000`, 1 optimizer step per Lightning step → **8 000 total updates**
-- C and D: `max_steps=2000`, `N_supervision=4` → **2 000 × 4 = 8 000 total updates**
+- A and B: `max_steps=4000`, 1 optimizer step per Lightning step → **4 000 total updates**
+- C and D: `max_steps=1000`, `N_supervision=4` → **1 000 × 4 = 4 000 total updates**
 
 Note: FLOPs are not fully matched. B and D pay 4× more compute per forward pass (4 loops vs 1). This is an intentional design choice — matching FLOPs would require halving the model size for B/D, which confounds parameters with depth.
 

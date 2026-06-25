@@ -4,7 +4,7 @@ task_categories:
   - 1d_scale_dp
 model: direct_supervised
 gradient_clip_val: 1.0
-max_steps: 8000
+max_steps: 4000
 backbone_model:
   name: transformer
   params:
