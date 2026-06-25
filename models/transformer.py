@@ -205,7 +205,9 @@ class Transformer(nn.Module):
             norm_first=True,
             bias=bias,
         )
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.encoder = nn.TransformerEncoder(
+            encoder_layer, num_layers=num_layers, norm=nn.LayerNorm(hidden_dim)
+        )
         if use_output_head:
             self.output_head = nn.Linear(hidden_dim, output_dim, bias=False)
 

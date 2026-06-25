@@ -1,0 +1,27 @@
+_base_: configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
+experiment_name: ablation_overfit_B_recursive_transformer
+task_categories:
+  - 1d_denoising_1c
+  - 1d_scale_dp
+  - 1d_fill
+val_split: train
+model: direct_supervised
+gradient_clip_val: 1.0
+overfit_single_batch: true
+stop_on_perfect_val_exact_match: true
+batch_size: 1
+max_steps: 2000
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: 2000
+    eta_min: 0.0001
+backbone_model:
+  name: recursive_transformer
+  params:
+    hidden_dim: 20
+    num_layers: 1
+    num_heads: 4
+    n_loops: 4
+    dropout: 0.1
+    activation: silu

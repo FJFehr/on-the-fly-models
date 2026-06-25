@@ -1,11 +1,12 @@
-"""Lightning training wrapper for looped/deep-supervision direct experiments.
+"""Lightning training wrapper for training-recursion experiments (Condition C / D).
 
-Same architecture as DirectSupervisedLightning but trained with N_supervision
-backward passes per batch. Each supervision step feeds the previous prediction
-(y_prev) back into the model as an additional summed embedding, letting the
-model iteratively refine its answer.
+N_supervision backward passes are run on the same batch per training step,
+with the same model and same input each time. No architectural changes to the
+forward pass — the only difference from DirectSupervisedLightning is that
+parameters are updated N_supervision times per batch instead of once.
 
-A/B baseline: DirectSupervisedLightning (N_supervision=1, no y_prev feedback).
+This isolates training recursion from architectural recursion (weight sharing).
+See models/recursive_transformer.py for the architectural counterpart.
 """
 
 import re
@@ -14,9 +15,11 @@ import lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils import clip_grad_norm_
 
 from metrics import accuracy, exact_match_accuracy
 from models.cnn import CNN
+from models.recursive_transformer import RecursiveTransformer
 from models.rnn import RNN
 from models.task_token_embedder import TaskTokenEmbedder
 from models.transformer import Transformer
@@ -31,14 +34,15 @@ def _task_category_metric_suffix(task_category: str) -> str:
 
 
 class LoopedSupervisedLightning(pl.LightningModule):
-    """Deep-supervision training with iterative prediction refinement.
+    """Training-recursion variant: N_supervision optimizer steps per batch.
 
-    On each training step, the model runs N_supervision forward+backward passes.
-    After each pass, argmax(logits) is embedded and summed into the next pass's
-    input embedding, giving the model a chance to correct its own previous output.
+    The model architecture is unchanged relative to DirectSupervisedLightning.
+    The same forward pass is run N_supervision times on each batch, with a
+    gradient update after each pass. This tests whether repeatedly adapting
+    parameters to the same example improves performance.
 
-    At validation/inference, the same N_supervision refinement steps run
-    without gradients and the final-step logits are used for metrics.
+    Pair with backbone_model.name=recursive_transformer for Condition D
+    (combined architectural + training recursion).
     """
 
     def __init__(
@@ -92,12 +96,6 @@ class LoopedSupervisedLightning(pl.LightningModule):
             padding_idx=self.padding_idx,
         )
 
-        # Separate learnable embedding for previous-prediction tokens (colours 0-9).
-        # y_prev values are always in [0, num_classes-1] (argmax of logits).
-        y_prev_vocab = num_classes if num_classes is not None else 2
-        self.y_prev_embedder = nn.Embedding(y_prev_vocab, embedding_dim)
-        nn.init.normal_(self.y_prev_embedder.weight, mean=0.0, std=0.02)
-
         self.backbone, self.hidden_dim = self._build_backbone(
             backbone_model, embedding_dim=embedding_dim, seq_len=input_dim
         )
@@ -119,6 +117,7 @@ class LoopedSupervisedLightning(pl.LightningModule):
             "cnn": CNN,
             "transformer": Transformer,
             "mlp": MLP,
+            "recursive_transformer": RecursiveTransformer,
         }
         name = backbone_model["name"]
         if name not in registry:
@@ -133,6 +132,7 @@ class LoopedSupervisedLightning(pl.LightningModule):
             params["seq_len"] = seq_len
         if name == "transformer":
             params["use_output_head"] = False
+        # recursive_transformer has no output_head; output_dim is accepted but unused.
 
         return registry[name](**params), hidden_dim
 
@@ -140,28 +140,18 @@ class LoopedSupervisedLightning(pl.LightningModule):
     def is_binary_task(self) -> bool:
         return self.prediction_task == PREDICTION_TASK_BINARY
 
-    def _embed_with_y_prev(
-        self, value_ids: torch.Tensor, y_prev: torch.Tensor
-    ) -> torch.Tensor:
-        """Embed input tokens summed with the previous-prediction embedding."""
-        B, L = value_ids.shape
-        position_ids = torch.arange(L, device=value_ids.device).unsqueeze(0).expand(B, -1)
-        x_emb = self.embedder(value_ids, position_ids)
-        y_emb = self.y_prev_embedder(y_prev)
-        embedded = x_emb + y_emb
+    def forward(self, batch: dict) -> tuple[torch.Tensor, torch.Tensor]:
+        """Standard single forward pass — used for validation and inference."""
+        value_ids = batch["input"].long()
+        B, seq_len = value_ids.shape
+        position_ids = torch.arange(seq_len, device=value_ids.device).unsqueeze(0).expand(B, -1)
+        embedded = self.embedder(value_ids, position_ids)
+
         if self.padding_idx is not None:
             pad_mask = (value_ids == self.padding_idx).unsqueeze(-1)
             embedded = embedded.masked_fill(pad_mask, 0.0)
-        return embedded
 
-    def _forward_step(
-        self, batch: dict, y_prev: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Single forward pass given the current y_prev context."""
-        value_ids = batch["input"].long()
-        embedded = self._embed_with_y_prev(value_ids, y_prev)
-
-        if isinstance(self.backbone, Transformer) and self.padding_idx is not None:
+        if isinstance(self.backbone, (Transformer, RecursiveTransformer)) and self.padding_idx is not None:
             padding_mask = value_ids == self.padding_idx
             hidden = self.backbone(embedded, src_key_padding_mask=padding_mask)
         elif isinstance(self.backbone, RNN) and self.padding_idx is not None:
@@ -174,16 +164,6 @@ class LoopedSupervisedLightning(pl.LightningModule):
         if self.is_binary_task:
             logits = logits.squeeze(-1)
         return logits, batch["output"]
-
-    def forward(self, batch: dict) -> tuple[torch.Tensor, torch.Tensor]:
-        """Inference forward: run N_supervision refinement steps, return final logits."""
-        B, L = batch["input"].long().shape
-        y_prev = torch.zeros(B, L, dtype=torch.long, device=self.device)
-        logits, targets = None, None
-        for _ in range(self.N_supervision):
-            logits, targets = self._forward_step(batch, y_prev)
-            y_prev = self.decode_logits(logits).detach()
-        return logits, targets
 
     def decode_logits(self, logits: torch.Tensor) -> torch.Tensor:
         if self.is_binary_task:
@@ -234,56 +214,33 @@ class LoopedSupervisedLightning(pl.LightningModule):
             f"{key}query_exact_match": exact_match_accuracy(targets_long, predictions),
         }
 
-    def _log_metrics(
-        self,
-        prefix: str,
-        loss: torch.Tensor,
-        metrics: dict[str, torch.Tensor],
-        batch_size: int,
-        on_step: bool,
-    ) -> None:
-        sync_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
-        log_kwargs = {
-            "on_step": on_step,
-            "on_epoch": True,
-            "batch_size": batch_size,
-            "sync_dist": sync_dist,
-        }
-        self.log(f"{prefix}_loss", loss, prog_bar=True, **log_kwargs)
-        for name, value in metrics.items():
-            self.log(
-                name,
-                value,
-                prog_bar=name.endswith("query_exact_match"),
-                **log_kwargs,
-            )
-
     def training_step(self, batch, batch_idx):
         opt = self.optimizers()
         sch = self.lr_schedulers()
 
-        B, L = batch["input"].long().shape
-        y_prev = torch.zeros(B, L, dtype=torch.long, device=self.device)
-
         total_loss = 0.0
         logits, targets = None, None
         for _ in range(self.N_supervision):
-            logits, targets = self._forward_step(batch, y_prev)
+            logits, targets = self(batch)
             loss = self.compute_loss(logits, targets)
             opt.zero_grad()
             self.manual_backward(loss)
             if self.gradient_clip_val is not None:
-                torch.nn.utils.clip_grad_norm_(self.parameters(), self.gradient_clip_val)
+                clip_grad_norm_(self.parameters(), self.gradient_clip_val)
             opt.step()
-            y_prev = self.decode_logits(logits).detach()
             total_loss += loss.detach()
 
         if sch is not None:
             sch.step()
 
         avg_loss = total_loss / self.N_supervision
+        B = batch["input"].shape[0]
+        sync_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
+        log_kwargs = {"on_step": True, "on_epoch": True, "batch_size": B, "sync_dist": sync_dist}
+        self.log("train_loss", avg_loss, prog_bar=True, **log_kwargs)
         metrics = self.compute_metrics(logits, targets, prefix="train")
-        self._log_metrics("train", avg_loss, metrics, batch_size=B, on_step=True)
+        for name, value in metrics.items():
+            self.log(name, value, prog_bar=name.endswith("query_exact_match"), **log_kwargs)
         return avg_loss
 
     def validation_step(self, batch, batch_idx):
@@ -299,10 +256,7 @@ class LoopedSupervisedLightning(pl.LightningModule):
         self.log(
             "val_all_examples_exact_match",
             metrics["val_query_exact_match"],
-            on_step=False,
-            on_epoch=True,
-            batch_size=B,
-            sync_dist=sync_dist,
+            on_step=False, on_epoch=True, batch_size=B, sync_dist=sync_dist,
         )
         self.accumulate_query_exact_match_by_task_category(batch, logits, targets)
         if self.log_task_examples and len(self._val_examples) < 2:
@@ -376,7 +330,6 @@ class LoopedSupervisedLightning(pl.LightningModule):
         counts = dict(self._val_query_exact_match_counts_by_task)
         if not torch.distributed.is_available() or not torch.distributed.is_initialized():
             return totals, counts
-
         gathered_payloads: list[dict | None] = [None] * torch.distributed.get_world_size()
         torch.distributed.all_gather_object(
             gathered_payloads, {"totals": totals, "counts": counts}
@@ -409,13 +362,9 @@ class LoopedSupervisedLightning(pl.LightningModule):
             self.log(
                 metric_name,
                 category_totals[task_category] / count,
-                on_step=False,
-                on_epoch=True,
-                prog_bar=False,
-                batch_size=count,
-                sync_dist=sync_dist,
+                on_step=False, on_epoch=True, prog_bar=False,
+                batch_size=count, sync_dist=sync_dist,
             )
-
         epoch = self.trainer.current_epoch + 1
         if (
             self.log_task_examples

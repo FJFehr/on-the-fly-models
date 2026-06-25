@@ -9,6 +9,7 @@ import torch.nn.functional as F
 
 from metrics import accuracy, exact_match_accuracy
 from models.cnn import CNN
+from models.recursive_transformer import RecursiveTransformer
 from models.rnn import RNN
 from models.task_token_embedder import TaskTokenEmbedder
 from models.transformer import Transformer
@@ -103,6 +104,7 @@ class DirectSupervisedLightning(pl.LightningModule):
             "cnn": CNN,
             "transformer": Transformer,
             "mlp": MLP,
+            "recursive_transformer": RecursiveTransformer,
         }
         name = backbone_model["name"]
         if name not in registry:
@@ -120,6 +122,7 @@ class DirectSupervisedLightning(pl.LightningModule):
             # adds its own head on top. Disable it so the backbone returns hidden states
             # directly, matching the contract of all other backbones.
             params["use_output_head"] = False
+        # recursive_transformer has no output_head; output_dim is accepted but unused.
 
         return registry[name](**params), hidden_dim
 
