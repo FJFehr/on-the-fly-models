@@ -239,12 +239,16 @@ class HyperModel(nn.Module):
             output_rank_dim = math.ceil(math.sqrt(self.total_target_params))
             self.hyper_proj_a = nn.Linear(dims[-1], output_rank_dim, bias=False)
             self.hyper_proj_b = nn.Linear(dims[-1], output_rank_dim, bias=False)
-            # The outer product a⊗b squares the output std, making generated weights
-            # too small for gradient flow. Scale both heads by sqrt(m) at init so
-            # std(outer) ≈ std(a) — analogous to 1/sqrt(d_k) in attention.
+            # Variance-preserving init for rank-1 factorisation ΔW = uv^T:
+            # Var(u_i v_j) = σ_u² · σ_v² = σ⁴.  To match a target weight
+            # variance of 1/m (Xavier-like with d=output_rank_dim), we need
+            # σ⁴ = 1/m  →  σ = m^{-1/4}.
+            # We initialise the weight matrices directly with this std so that
+            # each linear output entry is drawn from N(0, m^{-1/2}).
             with torch.no_grad():
-                self.hyper_proj_a.weight.data.mul_(math.sqrt(output_rank_dim))
-                self.hyper_proj_b.weight.data.mul_(math.sqrt(output_rank_dim))
+                target_std = output_rank_dim ** (-0.25)
+                nn.init.normal_(self.hyper_proj_a.weight, std=target_std)
+                nn.init.normal_(self.hyper_proj_b.weight, std=target_std)
             # Unused in this path but kept as empty seq so __repr__ helpers stay simple.
             self.hyper_projection = nn.Sequential()
         else:
