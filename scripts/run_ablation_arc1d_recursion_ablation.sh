@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Run arc1d_recursion_ablation across seeds 1, 2, 3 (216 jobs: 3 seeds × 72 configs).
+# All seeds log to a single wandb project; experiment_name carries the seed
+# suffix for output dirs while logging_name is seed-free for wandb run names.
 #
 # Usage:
 #   bash scripts/run_ablation_arc1d_recursion_ablation.sh           # 8 GPUs
@@ -9,6 +11,7 @@
 set -uo pipefail
 
 N_GPUS=${1:-8}
+PROJECT="arc1d_recursion_ablation"
 LOG_DIR="logs/arc1d_recursion_ablation"
 mkdir -p "$LOG_DIR"
 
@@ -17,15 +20,14 @@ CFG_DIR="configs/experiments/arc1d_recursion_ablation"
 
 JOBS=()
 for SEED in "${SEEDS[@]}"; do
-    PROJECT="arc1d_recursion_ablation_s${SEED}"
     while IFS= read -r cfg; do
-        JOBS+=("${cfg}|${SEED}|${PROJECT}")
+        JOBS+=("${cfg}|${SEED}")
     done < <(find "$CFG_DIR" -mindepth 2 -maxdepth 2 -name "*.yaml"                   ! -path "*/overfit/*" | sort)
 done
 
 N_JOBS=${#JOBS[@]}
 echo "Launching $N_JOBS jobs across $N_GPUS GPUs (~$((N_JOBS / N_GPUS)) jobs/GPU)"
-echo "Logs: $LOG_DIR/"
+echo "Project: $PROJECT  |  Logs: $LOG_DIR/"
 echo ""
 
 for gpu in $(seq 0 $((N_GPUS - 1))); do
@@ -33,16 +35,19 @@ for gpu in $(seq 0 $((N_GPUS - 1))); do
     (
         export CUDA_VISIBLE_DEVICES=$gpu
         for i in $(seq "$gpu" "$N_GPUS" $((N_JOBS - 1))); do
-            IFS='|' read -r cfg seed project <<< "${JOBS[$i]}"
+            IFS='|' read -r cfg seed <<< "${JOBS[$i]}"
             task=$(basename "$(dirname "$cfg")")
-            name=$(basename "$cfg" .yaml)
-            log="${LOG_DIR}/${project}_${task}_${name}.log"
+            cond=$(basename "$cfg" .yaml)
+            # Extract the experiment_name defined in the yaml (the logging_name)
+            logging_name=$(grep '^experiment_name:' "$cfg" | awk '{print $2}')
+            exp_name="${logging_name}_seed${seed}"
+            log="${LOG_DIR}/${exp_name}_${task}.log"
 
-            echo "[GPU $gpu] START  ${project} / ${task}/${name}"
-            if .venv/bin/python train.py --config "$cfg" seed="$seed" project_name="$project"                 > "$log" 2>&1; then
-                echo "[GPU $gpu] DONE   ${project} / ${task}/${name}"
+            echo "[GPU $gpu] START  ${PROJECT} / ${exp_name}"
+            if .venv/bin/python train.py --config "$cfg"                 seed="$seed"                 project_name="$PROJECT"                 experiment_name="${exp_name}"                 logging_name="${logging_name}"                 > "$log" 2>&1; then
+                echo "[GPU $gpu] DONE   ${PROJECT} / ${exp_name}"
             else
-                echo "[GPU $gpu] FAILED ${project} / ${task}/${name}  (see $log)"
+                echo "[GPU $gpu] FAILED ${PROJECT} / ${exp_name}  (see $log)"
             fi
         done
     ) &

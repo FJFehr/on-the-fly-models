@@ -179,7 +179,10 @@ def main() -> None:
 
     # Logging and callback setup are runtime concerns, so they are assembled
     # here before building the Lightning trainer.
-    wandb_logger = create_wandb_logger(cfg, runtime_cfg, model_summary)
+    wandb_logger = create_wandb_logger(
+        cfg, runtime_cfg, model_summary,
+        run_name=cfg.get("logging_name", cfg.experiment_name),
+    )
     callbacks, checkpoint_callback = build_callbacks(cfg, model, wandb_logger=wandb_logger)
     trainer = build_trainer(cfg, runtime_cfg, callbacks, wandb_logger)
 

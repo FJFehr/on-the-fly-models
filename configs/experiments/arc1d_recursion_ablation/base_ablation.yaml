@@ -10,6 +10,7 @@ entity: fjfehr
 output_dir: outputs
 seed: 42
 experiment_name: ${experiment_name}
+logging_name: ${experiment_name}
 output_path: ${output_dir}/${project_name}/${experiment_name}
 
 data: arc_1d_direct
