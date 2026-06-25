@@ -1,0 +1,15 @@
+_base_: configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
+experiment_name: ablation_A_1d_denoising_mc_transformer
+task_categories:
+- 1d_denoising_mc
+model: direct_supervised
+gradient_clip_val: 1.0
+max_steps: 4000
+backbone_model:
+  name: transformer
+  params:
+    hidden_dim: 512
+    num_layers: 4
+    num_heads: 8
+    dropout: 0.1
+project_name: arc1d_recursion_ablation_large
