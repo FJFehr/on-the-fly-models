@@ -69,6 +69,7 @@ echo ""
 # Dispatch: one subshell per GPU, each processes its round-robin slice
 # ---------------------------------------------------------------------------
 for gpu in $(seq 0 $((N_GPUS - 1))); do
+    sleep $((gpu * 5))  # stagger startup to avoid simultaneous cold-starts
     (
         export CUDA_VISIBLE_DEVICES=$gpu
         for i in $(seq "$gpu" "$N_GPUS" $((N_JOBS - 1))); do
@@ -78,7 +79,7 @@ for gpu in $(seq 0 $((N_GPUS - 1))); do
             log="${LOG_DIR}/${project}_${task}_${name}.log"
 
             echo "[GPU $gpu] START  ${project} / ${task}/${name}"
-            if uv run python train.py --config "$cfg" seed="$seed" project_name="$project" \
+            if .venv/bin/python train.py --config "$cfg" seed="$seed" project_name="$project" \
                 > "$log" 2>&1; then
                 echo "[GPU $gpu] DONE   ${project} / ${task}/${name}"
             else
