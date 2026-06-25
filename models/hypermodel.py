@@ -239,7 +239,13 @@ class HyperModel(nn.Module):
             output_rank_dim = math.ceil(math.sqrt(self.total_target_params))
             self.hyper_proj_a = nn.Linear(dims[-1], output_rank_dim, bias=False)
             self.hyper_proj_b = nn.Linear(dims[-1], output_rank_dim, bias=False)
-            # Unused in this path but kept as None so __repr__ helpers stay simple.
+            # The outer product a⊗b squares the output std, making generated weights
+            # too small for gradient flow. Scale both heads by sqrt(m) at init so
+            # std(outer) ≈ std(a) — analogous to 1/sqrt(d_k) in attention.
+            with torch.no_grad():
+                self.hyper_proj_a.weight.data.mul_(math.sqrt(output_rank_dim))
+                self.hyper_proj_b.weight.data.mul_(math.sqrt(output_rank_dim))
+            # Unused in this path but kept as empty seq so __repr__ helpers stay simple.
             self.hyper_projection = nn.Sequential()
         else:
             full_dims = dims + [self.total_target_params]
