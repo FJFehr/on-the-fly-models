@@ -68,18 +68,18 @@ with depth.
 task** (5 original held-out tasks × 20 colour permutations), reducing metric variance from
 ±45% to ±10% compared to the raw 5-example splits.
 
-To regenerate:
+To regenerate (all 18 tasks):
 ```bash
-python scripts/augment_arc_1d.py \
+uv run python scripts/augment_arc_1d.py \
   --per-pair \
   --n-color-permutations 199 \
   --shifts 1 2 -1 -2 \
   --no-mirror \
   --dev-test-n-permutations 19 \
-  --task-categories 1d_denoising_1c 1d_scale_dp 1d_fill \
-    1d_recolor_cmp 1d_recolor_cnt 1d_recolor_oe \
   --output-dir data/arc_1d_looped_augmented
 ```
+
+Omitting `--task-categories` augments all tasks in the base dataset.
 
 ## Running Experiments
 

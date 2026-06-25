@@ -25,16 +25,71 @@ CONFIGS=(
   "1d_denoising_1c/B_recursive_transformer.yaml"
   "1d_denoising_1c/C_looped_transformer.yaml"
   "1d_denoising_1c/D_looped_recursive_transformer.yaml"
-  # 1d_scale_dp
-  "1d_scale_dp/A_transformer.yaml"
-  "1d_scale_dp/B_recursive_transformer.yaml"
-  "1d_scale_dp/C_looped_transformer.yaml"
-  "1d_scale_dp/D_looped_recursive_transformer.yaml"
+  # 1d_denoising_mc
+  "1d_denoising_mc/A_transformer.yaml"
+  "1d_denoising_mc/B_recursive_transformer.yaml"
+  "1d_denoising_mc/C_looped_transformer.yaml"
+  "1d_denoising_mc/D_looped_recursive_transformer.yaml"
   # 1d_fill
   "1d_fill/A_transformer.yaml"
   "1d_fill/B_recursive_transformer.yaml"
   "1d_fill/C_looped_transformer.yaml"
   "1d_fill/D_looped_recursive_transformer.yaml"
+  # 1d_flip
+  "1d_flip/A_transformer.yaml"
+  "1d_flip/B_recursive_transformer.yaml"
+  "1d_flip/C_looped_transformer.yaml"
+  "1d_flip/D_looped_recursive_transformer.yaml"
+  # 1d_hollow
+  "1d_hollow/A_transformer.yaml"
+  "1d_hollow/B_recursive_transformer.yaml"
+  "1d_hollow/C_looped_transformer.yaml"
+  "1d_hollow/D_looped_recursive_transformer.yaml"
+  # 1d_mirror
+  "1d_mirror/A_transformer.yaml"
+  "1d_mirror/B_recursive_transformer.yaml"
+  "1d_mirror/C_looped_transformer.yaml"
+  "1d_mirror/D_looped_recursive_transformer.yaml"
+  # 1d_move_1p
+  "1d_move_1p/A_transformer.yaml"
+  "1d_move_1p/B_recursive_transformer.yaml"
+  "1d_move_1p/C_looped_transformer.yaml"
+  "1d_move_1p/D_looped_recursive_transformer.yaml"
+  # 1d_move_2p
+  "1d_move_2p/A_transformer.yaml"
+  "1d_move_2p/B_recursive_transformer.yaml"
+  "1d_move_2p/C_looped_transformer.yaml"
+  "1d_move_2p/D_looped_recursive_transformer.yaml"
+  # 1d_move_2p_dp
+  "1d_move_2p_dp/A_transformer.yaml"
+  "1d_move_2p_dp/B_recursive_transformer.yaml"
+  "1d_move_2p_dp/C_looped_transformer.yaml"
+  "1d_move_2p_dp/D_looped_recursive_transformer.yaml"
+  # 1d_move_3p
+  "1d_move_3p/A_transformer.yaml"
+  "1d_move_3p/B_recursive_transformer.yaml"
+  "1d_move_3p/C_looped_transformer.yaml"
+  "1d_move_3p/D_looped_recursive_transformer.yaml"
+  # 1d_move_dp
+  "1d_move_dp/A_transformer.yaml"
+  "1d_move_dp/B_recursive_transformer.yaml"
+  "1d_move_dp/C_looped_transformer.yaml"
+  "1d_move_dp/D_looped_recursive_transformer.yaml"
+  # 1d_padded_fill
+  "1d_padded_fill/A_transformer.yaml"
+  "1d_padded_fill/B_recursive_transformer.yaml"
+  "1d_padded_fill/C_looped_transformer.yaml"
+  "1d_padded_fill/D_looped_recursive_transformer.yaml"
+  # 1d_pcopy_1c
+  "1d_pcopy_1c/A_transformer.yaml"
+  "1d_pcopy_1c/B_recursive_transformer.yaml"
+  "1d_pcopy_1c/C_looped_transformer.yaml"
+  "1d_pcopy_1c/D_looped_recursive_transformer.yaml"
+  # 1d_pcopy_mc
+  "1d_pcopy_mc/A_transformer.yaml"
+  "1d_pcopy_mc/B_recursive_transformer.yaml"
+  "1d_pcopy_mc/C_looped_transformer.yaml"
+  "1d_pcopy_mc/D_looped_recursive_transformer.yaml"
   # 1d_recolor_cmp
   "1d_recolor_cmp/A_transformer.yaml"
   "1d_recolor_cmp/B_recursive_transformer.yaml"
@@ -50,6 +105,11 @@ CONFIGS=(
   "1d_recolor_oe/B_recursive_transformer.yaml"
   "1d_recolor_oe/C_looped_transformer.yaml"
   "1d_recolor_oe/D_looped_recursive_transformer.yaml"
+  # 1d_scale_dp
+  "1d_scale_dp/A_transformer.yaml"
+  "1d_scale_dp/B_recursive_transformer.yaml"
+  "1d_scale_dp/C_looped_transformer.yaml"
+  "1d_scale_dp/D_looped_recursive_transformer.yaml"
 )
 
 N_JOBS=${#CONFIGS[@]}
@@ -66,7 +126,7 @@ for gpu in $(seq 0 $((N_GPUS - 1))); do
       name=$(basename "$cfg" .yaml)
       log="$LOG_DIR/${task}_${name}.log"
       echo "[GPU $gpu] START  $task/$name"
-      if python train.py --config "$BASE/$cfg" > "$log" 2>&1; then
+      if uv run python train.py --config "$BASE/$cfg" > "$log" 2>&1; then
         echo "[GPU $gpu] DONE   $task/$name"
       else
         echo "[GPU $gpu] FAILED $task/$name  (see $log)"
