@@ -23,8 +23,9 @@ def _describe_hyper_projection(model: "HyperModel") -> str:
                 parts.append(f"Linear({layer.in_features} -> {layer.out_features})")
             elif isinstance(layer, nn.GELU):
                 parts.append("GELU")
-        m = model.hyper_proj_a.out_features
-        parts.append(f"[A: Linear(-> {m}), B: Linear(-> {m})] outer-product -> {model.total_target_params}")
+        m = model._low_rank_m
+        r = model.low_rank_rank
+        parts.append(f"[A: Linear(-> {m}×{r}), B: Linear(-> {m}×{r})] rank-{r} outer-product -> {model.total_target_params}")
         return " + ".join(parts)
     parts = []
     for layer in model.hyper_projection:
@@ -199,6 +200,7 @@ class HyperModel(nn.Module):
         hyper_pooling: nn.Module | None = None,
         num_tasks: int | None = None,
         low_rank_output: bool = False,
+        low_rank_rank: int = 1,
     ):
         super().__init__()
         self.hypernetwork = hypernetwork
@@ -229,22 +231,22 @@ class HyperModel(nn.Module):
         dims = [hyper_output_dim] + list(intermediate)
 
         self.low_rank_output = low_rank_output
+        self.low_rank_rank = low_rank_rank
         if low_rank_output:
             # Shared MLP up to (but not including) the final output layer.
             shared_layers: list[nn.Module] = []
             for in_d, out_d in zip(dims[:-1], dims[1:]):
                 shared_layers += [nn.Linear(in_d, out_d, bias=False), nn.GELU()]
             self.hyper_proj_shared = nn.Sequential(*shared_layers)
-            # Two low-rank heads whose outer product covers total_target_params.
-            output_rank_dim = math.ceil(math.sqrt(self.total_target_params))
-            self.hyper_proj_a = nn.Linear(dims[-1], output_rank_dim, bias=False)
-            self.hyper_proj_b = nn.Linear(dims[-1], output_rank_dim, bias=False)
-            # Variance-preserving init for rank-1 factorisation ΔW = uv^T:
-            # Var(u_i v_j) = σ_u² · σ_v² = σ⁴.  To match a Xavier-like
-            # target variance of 1/m (d=output_rank_dim; no activation after
-            # the heads so no Kaiming factor of 2), σ⁴ = 1/m → σ = m^{-1/4}.
+            # Two factor heads.  Each outputs m*r values; reshaped to (batch, m, r)
+            # the rank-r outer product is A @ B^T ∈ R^{m×m}, flattened to m² values.
+            self._low_rank_m = math.ceil(math.sqrt(self.total_target_params))
+            self.hyper_proj_a = nn.Linear(dims[-1], self._low_rank_m * low_rank_rank, bias=False)
+            self.hyper_proj_b = nn.Linear(dims[-1], self._low_rank_m * low_rank_rank, bias=False)
+            # Variance-preserving init for rank-r factorisation ΔW = Σ_k u_k v_k^T:
+            # Var(ΔW_ij) = r·σ⁴.  Target Xavier variance 1/m → σ = (r·m)^{-1/4}.
             with torch.no_grad():
-                target_std = output_rank_dim ** (-0.25)
+                target_std = (low_rank_rank * self._low_rank_m) ** (-0.25)
                 nn.init.normal_(self.hyper_proj_a.weight, std=target_std)
                 nn.init.normal_(self.hyper_proj_b.weight, std=target_std)
             # Unused in this path but kept as empty seq so __repr__ helpers stay simple.
@@ -294,9 +296,11 @@ class HyperModel(nn.Module):
             task_representation = task_representation + self.task_indicator_proj(one_hot)
         if self.low_rank_output:
             shared = self.hyper_proj_shared(task_representation)
-            a = self.hyper_proj_a(shared)  # (batch, m)
-            b = self.hyper_proj_b(shared)  # (batch, m)
-            flat = torch.einsum("bi,bj->bij", a, b).flatten(1)  # (batch, m*m)
+            batch, m, r = shared.shape[0], self._low_rank_m, self.low_rank_rank
+            a = self.hyper_proj_a(shared).reshape(batch, m, r)  # (batch, m, r)
+            b = self.hyper_proj_b(shared).reshape(batch, m, r)  # (batch, m, r)
+            # Rank-r outer product: ΔW = A @ B^T ∈ R^{m×m}
+            flat = torch.einsum("bir,bjr->bij", a, b).flatten(1)  # (batch, m*m)
             return flat[:, : self.total_target_params]
         return self.hyper_projection(task_representation)
 
