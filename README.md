@@ -273,7 +273,8 @@ on-the-fly-models/
 │       ├── arc1d_capacity_large/
 │       ├── arc1d_capacity_augmented_small/
 │       ├── arc1d_capacity_augmented_medium/
-│       └── arc1d_capacity_augmented_large/
+│       ├── arc1d_capacity_augmented_large/
+│       └── arc1d_recursion_ablation_*/     # Recursion/looped training ablations
 ├── data/
 │   ├── arc_1d/                      # Task-level DatasetDict (variable-length, 18 categories)
 │   ├── arc_1d_simple/               # Binary padded baseline dataset
@@ -300,6 +301,8 @@ on-the-fly-models/
 │   ├── augment_arc_1d.py           # Colour and shift augmentation for ARC1D train split
 │   ├── visualise_augmentation.py   # Visualise augmentation effects per task category
 │   ├── run_arc1d_capacity.py       # Batch launcher for capacity sweeps
+│   ├── gen_*ablation_configs.py    # Generate recursion ablation config variants
+│   ├── run_ablation_*.sh           # Multi-GPU recursion ablation launchers
 │   └── analyze_weight_space_pca.py # Offline PCA of hyper-generated vs direct RNN weights
 ├── tests/
 ├── training/                       # Shared config, logging, and trainer utilities
