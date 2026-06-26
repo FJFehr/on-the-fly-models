@@ -13,5 +13,5 @@ backbone_model:
     hidden_dim: 256
     num_layers: 1
     num_heads: 4
-    n_loops: 8
+    n_loops: 4
     dropout: 0.1

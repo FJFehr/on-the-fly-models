@@ -54,7 +54,7 @@ CONDITIONS = {
         "max_steps": 1000,
         "backbone_model": {
             "name": "recursive_transformer",
-            "params": {"hidden_dim": 256, "num_layers": 1, "num_heads": 4, "n_loops": 8, "dropout": 0.1},
+            "params": {"hidden_dim": 256, "num_layers": 1, "num_heads": 4, "n_loops": 4, "dropout": 0.1},
         },
     },
 }
