@@ -1,0 +1,16 @@
+_base_: configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
+experiment_name: ablation_C_1d_move_1p_looped_transformer
+project_name: arc1d_recursion_ablation_128_canon
+task_categories:
+- 1d_move_1p
+model: looped_supervised
+N_supervision: 2
+learning_rate: 0.0005
+max_steps: 4000
+backbone_model:
+  name: transformer
+  params:
+    hidden_dim: 128
+    num_layers: 2
+    num_heads: 4
+    dropout: 0.1
