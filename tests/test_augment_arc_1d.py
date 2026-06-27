@@ -18,8 +18,15 @@ MODULE_SPEC.loader.exec_module(augment_arc_1d)
 apply_color_map = augment_arc_1d.apply_color_map
 apply_shift = augment_arc_1d.apply_shift
 augment_task = augment_arc_1d.augment_task
+canonicalize_recolor_cmp = augment_arc_1d.canonicalize_recolor_cmp
+canonicalize_recolor_cnt = augment_arc_1d.canonicalize_recolor_cnt
+canonicalize_recolor_oe = augment_arc_1d.canonicalize_recolor_oe
 generate_color_permutations = augment_arc_1d.generate_color_permutations
 get_task_colors = augment_arc_1d.get_task_colors
+RECOLOR_OE_ODD_COLOR = augment_arc_1d.RECOLOR_OE_ODD_COLOR
+RECOLOR_OE_EVEN_COLOR = augment_arc_1d.RECOLOR_OE_EVEN_COLOR
+RECOLOR_CMP_BIGGER_COLOR = augment_arc_1d.RECOLOR_CMP_BIGGER_COLOR
+RECOLOR_CMP_SMALLER_COLOR = augment_arc_1d.RECOLOR_CMP_SMALLER_COLOR
 
 
 def make_task(
@@ -117,12 +124,13 @@ def test_generate_color_permutations_excludes_original_mapping():
     assert all(v["support_inputs"] != task["support_inputs"] for v in variants)
 
 
-def test_generate_color_permutations_fewer_when_space_exhausted():
-    """Returns fewer than n when only one non-zero colour is present (9 max mappings)."""
-    # Task with only colour 1; 8 non-identity injective maps to {1..9}
+def test_generate_color_permutations_samples_with_replacement_when_space_exhausted():
+    """When the permutable colour space is small, sampling is with replacement so exactly n are returned."""
+    # Task with only colour 1; only 8 non-identity injective maps to {1..9}, but n=20 is satisfied
+    # by resampling (duplicates allowed).
     task = make_task([[1, 0, 1]], [[0, 1, 0]], [1, 0], [0, 1])
     variants = generate_color_permutations(task, 20, random.Random(0))
-    assert len(variants) <= 8
+    assert len(variants) == 20
 
 
 # ---------------------------------------------------------------------------
@@ -321,3 +329,97 @@ def test_recolor_cnt_augmentation_variant_count():
         per_pair=False,
     )
     assert len(variants) == 1000  # 200 colour × 5 shifts × 1 (no mirror)
+
+
+# ---------------------------------------------------------------------------
+# Canonical recolor colour assignment
+# ---------------------------------------------------------------------------
+
+
+def test_canonicalize_recolor_oe_output_colours():
+    """After canonicalization, odd-length runs map to ODD_COLOR and even to EVEN_COLOR."""
+    # Pair 0: run of 3 (odd) → colour 5; run of 2 (even) → colour 7
+    # Pair 1: run of 1 (odd) → colour 5; run of 4 (even) → colour 7
+    task = make_task(
+        support_inputs=[[4, 4, 4, 0, 4, 4], [4, 0, 4, 4, 4, 4]],
+        support_outputs=[[5, 5, 5, 0, 7, 7], [5, 0, 7, 7, 7, 7]],
+        query_input=[4, 4, 0, 4],
+        query_output=[7, 7, 0, 5],
+        task_category="1d_recolor_oe",
+    )
+    result = canonicalize_recolor_oe(task)
+    assert result["support_outputs"] == [[RECOLOR_OE_ODD_COLOR] * 3 + [0] + [RECOLOR_OE_EVEN_COLOR] * 2,
+                                         [RECOLOR_OE_ODD_COLOR, 0] + [RECOLOR_OE_EVEN_COLOR] * 4]
+    assert result["query_output"] == [RECOLOR_OE_EVEN_COLOR, RECOLOR_OE_EVEN_COLOR, 0, RECOLOR_OE_ODD_COLOR]
+    # Inputs must be unchanged
+    assert result["support_inputs"] == task["support_inputs"]
+    assert result["query_input"] == task["query_input"]
+
+
+def test_canonicalize_recolor_oe_augment_preserves_canonical_colours():
+    """With canonical_recolor=True, all augmented variants of an oe task use only colours 1 and 2 in outputs."""
+    task = make_task(
+        support_inputs=[[4, 4, 4, 0, 4, 4], [4, 0, 4, 4, 4, 4]],
+        support_outputs=[[5, 5, 5, 0, 7, 7], [5, 0, 7, 7, 7, 7]],
+        query_input=[4, 4, 0, 4],
+        query_output=[7, 7, 0, 5],
+        task_category="1d_recolor_oe",
+    )
+    variants = augment_task(task, 10, [1, -1], rng=random.Random(0), mirror=False, canonical_recolor=True)
+    canonical = {RECOLOR_OE_ODD_COLOR, RECOLOR_OE_EVEN_COLOR}
+    for v in variants:
+        out_colours = {c for seq in v["support_outputs"] + [v["query_output"]] for c in seq if c != 0}
+        assert out_colours <= canonical, f"unexpected output colours: {out_colours - canonical}"
+
+
+def test_canonicalize_recolor_cmp_output_colours():
+    """After canonicalization, the colour for longer runs → BIGGER and shorter → SMALLER."""
+    # Pair 0: run of 5 (big) → colour 3; run of 1 (small) → colour 8
+    # Pair 1: run of 4 (big) → colour 3; run of 2 (small) → colour 8
+    task = make_task(
+        support_inputs=[[4, 4, 4, 4, 4, 0, 4], [4, 4, 4, 4, 0, 4, 4]],
+        support_outputs=[[3, 3, 3, 3, 3, 0, 8], [3, 3, 3, 3, 0, 8, 8]],
+        query_input=[4, 0, 4, 4, 4],
+        query_output=[8, 0, 3, 3, 3],
+        task_category="1d_recolor_cmp",
+    )
+    result = canonicalize_recolor_cmp(task)
+    # colour 3 is already bigger → BIGGER_COLOR (3), colour 8 → SMALLER_COLOR (6)
+    assert result["support_outputs"][0] == [RECOLOR_CMP_BIGGER_COLOR] * 5 + [0, RECOLOR_CMP_SMALLER_COLOR]
+    assert result["query_output"] == [RECOLOR_CMP_SMALLER_COLOR, 0] + [RECOLOR_CMP_BIGGER_COLOR] * 3
+    assert result["support_inputs"] == task["support_inputs"]
+
+
+def test_canonicalize_recolor_cnt_output_colours():
+    """After canonicalization, runs of length N map to canonical colour ((N-1)%9)+1."""
+    # size 1 → colour 5, size 2 → colour 7, size 3 → colour 6 in raw task
+    # after: size 1 → 1, size 2 → 2, size 3 → 3
+    task = make_task(
+        support_inputs=[[4, 0, 4, 4, 0, 4, 4, 4], [4, 4, 4, 0, 4, 0, 4, 4], [4, 4, 0, 4, 4, 4, 0, 4]],
+        support_outputs=[[5, 0, 7, 7, 0, 6, 6, 6], [6, 6, 6, 0, 5, 0, 7, 7], [7, 7, 0, 6, 6, 6, 0, 5]],
+        query_input=[4, 0, 4, 4, 4, 0, 4, 4],
+        query_output=[5, 0, 6, 6, 6, 0, 7, 7],
+        task_category="1d_recolor_cnt",
+    )
+    result = canonicalize_recolor_cnt(task)
+    assert result["support_outputs"][0] == [1, 0, 2, 2, 0, 3, 3, 3]
+    assert result["support_outputs"][1] == [3, 3, 3, 0, 1, 0, 2, 2]
+    assert result["query_output"] == [1, 0, 3, 3, 3, 0, 2, 2]
+    assert result["support_inputs"] == task["support_inputs"]
+
+
+def test_canonicalize_recolor_cnt_augment_canonical_recolor():
+    """With canonical_recolor=True, cnt augmented variants have consistent canonical output colours."""
+    task = make_task(
+        support_inputs=[[4, 0, 4, 4, 0, 4, 4, 4], [4, 4, 4, 0, 4, 0, 4, 4], [4, 4, 0, 4, 4, 4, 0, 4]],
+        support_outputs=[[5, 0, 7, 7, 0, 6, 6, 6], [6, 6, 6, 0, 5, 0, 7, 7], [7, 7, 0, 6, 6, 6, 0, 5]],
+        query_input=[4, 0, 4, 4, 4, 0, 4, 4],
+        query_output=[5, 0, 6, 6, 6, 0, 7, 7],
+        task_category="1d_recolor_cnt",
+    )
+    variants = augment_task(task, 20, [1, -1], rng=random.Random(0), mirror=False, canonical_recolor=True)
+    for i, v in enumerate(variants):
+        mapping = _extract_recolor_cnt_mapping(v)
+        assert mapping is not None, f"variant {i}: inconsistent run-size → colour mapping"
+        # Canonical: size 1→1, 2→2, 3→3 (only sizes 1,2,3 are present in this task)
+        assert mapping == {1: 1, 2: 2, 3: 3}, f"variant {i}: unexpected mapping {mapping}"

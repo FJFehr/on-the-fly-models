@@ -58,6 +58,19 @@ GLOBAL_ONLY_TASKS: frozenset[str] = frozenset({
     "1d_recolor_cnt",  # run-length → output colour mapping globally consistent across all pairs
 })
 
+# Canonical output colours used when --canonical-recolor-colors is enabled.
+# All recolor task instances are remapped to these fixed semantic colours so the
+# model can learn a global rule rather than inferring colour roles from context.
+RECOLOR_OE_ODD_COLOR = 1    # blue
+RECOLOR_OE_EVEN_COLOR = 2   # red
+RECOLOR_CMP_BIGGER_COLOR = 3  # green
+RECOLOR_CMP_SMALLER_COLOR = 6  # magenta
+
+
+def _cnt_canonical_color(count: int) -> int:
+    """Canonical colour for a run of length count: 1→1, 2→2, …, 9→9, 10→1, …"""
+    return ((count - 1) % 9) + 1
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -124,6 +137,19 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--canonical-recolor-colors",
+        action="store_true",
+        default=False,
+        help=(
+            "Fix recolor task output colours to canonical semantic values: "
+            "1d_recolor_oe (odd→blue/1, even→red/2), "
+            "1d_recolor_cmp (bigger→green/3, smaller→magenta/6), "
+            "1d_recolor_cnt (count N→((N-1)%%9)+1). "
+            "Only the input colour is permuted during augmentation. "
+            "Intended for ablation experiments; off by default."
+        ),
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -161,30 +187,114 @@ def apply_color_map(task: dict, color_map: dict[int, int]) -> dict:
     }
 
 
+def apply_output_color_map(task: dict, color_map: dict[int, int]) -> dict:
+    """Apply a colour remapping only to output sequences, leaving inputs unchanged.
+
+    Background (0) is preserved via dict.get fallback.
+    """
+
+    def remap(seq: list[int]) -> list[int]:
+        return [color_map.get(v, v) for v in seq]
+
+    return {
+        **task,
+        "support_outputs": [remap(s) for s in task["support_outputs"]],
+        "query_output": remap(task["query_output"]),
+    }
+
+
+def get_runs(seq: list[int]) -> list[tuple[int, int, int]]:
+    """Return (start, length, color) for each contiguous non-zero run in seq."""
+    runs: list[tuple[int, int, int]] = []
+    i = 0
+    while i < len(seq):
+        if seq[i] == 0:
+            i += 1
+            continue
+        start = i
+        color = seq[i]
+        while i < len(seq) and seq[i] == color:
+            i += 1
+        runs.append((start, i - start, color))
+    return runs
+
+
+def canonicalize_recolor_oe(task: dict) -> dict:
+    """Remap output colours: odd-length runs → RECOLOR_OE_ODD_COLOR, even → RECOLOR_OE_EVEN_COLOR."""
+    odd_color: int | None = None
+    even_color: int | None = None
+    for inp, out in zip(task["support_inputs"], task["support_outputs"]):
+        for (_, length, _), (_, _, out_c) in zip(get_runs(inp), get_runs(out)):
+            if length % 2 == 1:
+                odd_color = out_c
+            else:
+                even_color = out_c
+            if odd_color is not None and even_color is not None:
+                break
+        if odd_color is not None and even_color is not None:
+            break
+    if odd_color is None or even_color is None:
+        return task
+    return apply_output_color_map(task, {odd_color: RECOLOR_OE_ODD_COLOR, even_color: RECOLOR_OE_EVEN_COLOR})
+
+
+def canonicalize_recolor_cmp(task: dict) -> dict:
+    """Remap output colours: the colour for longer runs → green (3), shorter → magenta (6)."""
+    color_lengths: dict[int, list[int]] = {}
+    for inp, out in zip(task["support_inputs"], task["support_outputs"]):
+        for (_, length, _), (_, _, out_c) in zip(get_runs(inp), get_runs(out)):
+            color_lengths.setdefault(out_c, []).append(length)
+    if len(color_lengths) != 2:
+        return task
+    c0, c1 = list(color_lengths)
+    mean0 = sum(color_lengths[c0]) / len(color_lengths[c0])
+    mean1 = sum(color_lengths[c1]) / len(color_lengths[c1])
+    bigger, smaller = (c0, c1) if mean0 >= mean1 else (c1, c0)
+    return apply_output_color_map(task, {bigger: RECOLOR_CMP_BIGGER_COLOR, smaller: RECOLOR_CMP_SMALLER_COLOR})
+
+
+def canonicalize_recolor_cnt(task: dict) -> dict:
+    """Remap output colours: a run of length N → _cnt_canonical_color(N)."""
+    color_map: dict[int, int] = {}
+    for inp, out in zip(task["support_inputs"], task["support_outputs"]):
+        for (_, length, _), (_, _, out_c) in zip(get_runs(inp), get_runs(out)):
+            color_map[out_c] = _cnt_canonical_color(length)
+    return apply_output_color_map(task, color_map)
+
+
 def generate_color_permutations(
     task: dict,
     n: int,
     rng: random.Random,
     fixed_colour: int | None = None,
+    fixed_colours: frozenset[int] = frozenset(),
 ) -> list[dict]:
     """Return exactly n colour-permuted variants of the task (excluding original).
 
-    If fixed_colour is given, that colour is never remapped and no other colour
-    is mapped to it (e.g. colour 9 is the semantic pivot for 1d_mirror tasks).
+    fixed_colour: single colour never remapped (legacy; e.g. colour 9 for 1d_mirror).
+    fixed_colours: additional colours to exclude from permutation (e.g. canonical
+        semantic output colours set by --canonical-recolor-colors).
 
-    For tasks with a small colour space (e.g. only 2 colours), the number of
-    unique injective mappings may be less than n. In that case, mappings are
-    resampled (with replacement) so that exactly n variants are always returned.
-    Identity mappings (no change) are always skipped and resampled.
+    Both are merged internally. For tasks with a small permutable colour space the
+    number of unique injective mappings may be less than n; mappings are resampled
+    (with replacement) so that exactly n variants are returned. Identity mappings
+    are always skipped. Returns [] if no non-identity mapping is possible.
     """
+    combined_fixed = fixed_colours | ({fixed_colour} if fixed_colour is not None else frozenset())
+
     task_colors = get_task_colors(task)
-    permutable = [c for c in task_colors if c != fixed_colour]
+    permutable = [c for c in task_colors if c not in combined_fixed]
     if not permutable:
         return []
 
-    available = [c for c in range(1, 10) if c != fixed_colour]
-    variants: list[dict] = []
+    available = [c for c in range(1, 10) if c not in combined_fixed]
+    if not available:
+        return []
+    # Guard: single permutable colour that maps only to itself → infinite loop without this.
+    if len(permutable) == 1 and available == [permutable[0]]:
+        return []
 
+    variants: list[dict] = []
     while len(variants) < n:
         rng.shuffle(available)
         color_map = {orig: available[i] for i, orig in enumerate(permutable)}
@@ -300,6 +410,7 @@ def augment_task(
     *,
     mirror: bool = True,
     per_pair: bool = False,
+    canonical_recolor: bool = False,
 ) -> list[dict]:
     """Apply the full augmentation pipeline to one task.
 
@@ -309,18 +420,40 @@ def augment_task(
 
     With per_pair=True, colour augmentation uses generate_per_pair_color_augmentations
     instead of the global generate_color_permutations.
+
+    With canonical_recolor=True, recolor task output colours are remapped to fixed
+    semantic values before augmentation so the model can learn a global rule.
     """
     # Step 1: colour (original is variant 0)
     category = task.get("task_category", "")
     fixed_colour = FIXED_RULE_COLOURS.get(category)
     use_per_pair = per_pair and category not in GLOBAL_ONLY_TASKS
+
+    # Canonicalize recolor output colours to fixed semantic values.
+    canonical_fixed: frozenset[int] = frozenset()
+    if canonical_recolor:
+        if category == "1d_recolor_oe":
+            task = canonicalize_recolor_oe(task)
+            canonical_fixed = frozenset({RECOLOR_OE_ODD_COLOR, RECOLOR_OE_EVEN_COLOR})
+        elif category == "1d_recolor_cmp":
+            task = canonicalize_recolor_cmp(task)
+            canonical_fixed = frozenset({RECOLOR_CMP_BIGGER_COLOR, RECOLOR_CMP_SMALLER_COLOR})
+        elif category == "1d_recolor_cnt":
+            task = canonicalize_recolor_cnt(task)
+            canonical_fixed = frozenset(
+                c
+                for seq in task["support_outputs"] + [task["query_output"]]
+                for c in seq
+                if c != 0
+            )
+
     if use_per_pair:
         color_variants = [task] + generate_per_pair_color_augmentations(
             task, n_color_perms, rng, fixed_colour=fixed_colour
         )
     else:
         color_variants = [task] + generate_color_permutations(
-            task, n_color_perms, rng, fixed_colour=fixed_colour
+            task, n_color_perms, rng, fixed_colour=fixed_colour, fixed_colours=canonical_fixed
         )
 
     # Step 2: shifts (0 = no shift is always included)
@@ -347,12 +480,16 @@ def augment_split(
     *,
     mirror: bool = True,
     per_pair: bool = False,
+    canonical_recolor: bool = False,
 ) -> list[dict]:
     """Augment every task in the split and return the combined list."""
     augmented: list[dict] = []
     for task in split:
         augmented.extend(
-            augment_task(task, n_color_perms, shifts, rng, mirror=mirror, per_pair=per_pair)
+            augment_task(
+                task, n_color_perms, shifts, rng,
+                mirror=mirror, per_pair=per_pair, canonical_recolor=canonical_recolor,
+            )
         )
     return augmented
 
@@ -421,7 +558,9 @@ def main() -> None:
     )
 
     aug_train = augment_split(
-        base["train"], n_color, shifts, rng, mirror=args.mirror, per_pair=args.per_pair
+        base["train"], n_color, shifts, rng,
+        mirror=args.mirror, per_pair=args.per_pair,
+        canonical_recolor=args.canonical_recolor_colors,
     )
     aug_train = filter_held_out_contamination(aug_train, base)
 
@@ -441,6 +580,7 @@ def main() -> None:
                 rng=rng,
                 mirror=False,
                 per_pair=args.per_pair,
+                canonical_recolor=args.canonical_recolor_colors,
             )
             splits[split_name] = Dataset.from_list(aug_split)
         else:

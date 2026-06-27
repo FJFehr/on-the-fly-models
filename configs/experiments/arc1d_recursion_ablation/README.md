@@ -76,8 +76,14 @@ uv run python scripts/augment_arc_1d.py \
   --shifts 1 2 -1 -2 \
   --no-mirror \
   --dev-test-n-permutations 19 \
+  --canonical-recolor-colors \
   --output-dir data/arc_1d_looped_augmented
 ```
+
+`--canonical-recolor-colors` fixes recolor task output colours to semantic constants
+(oe: odd→blue/1, even→red/2; cmp: bigger→green/3, smaller→magenta/6; cnt: size N→((N-1)%9)+1)
+so the model can learn a global rule rather than inferring colour roles from context each time.
+Only the input colour is permuted during augmentation; this flag has no effect on non-recolor tasks.
 
 Omitting `--task-categories` augments all tasks in the base dataset.
 
