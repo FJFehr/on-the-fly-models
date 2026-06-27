@@ -17,3 +17,4 @@ backbone_model:
     canon_kernel: 4
     canon_activation: true
     canon_residual: true
+    canon_causal: false

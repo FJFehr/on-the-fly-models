@@ -12,7 +12,8 @@ paired with 4 Canon variants (E–H) that use the same dims and compute budget.
   G: looped,  canon_transformer        128h 2L  N_sup=2  4000 steps  lr=0.0005
   H: looped,  canon_recursive_transformer 128h 1L n_loops=2  N_sup=2 4000 steps  lr=0.0005
 
-Canon params: canon_set="ABCD", canon_kernel=4, canon_activation=True, canon_residual=True.
+Canon params: canon_set="ABCD", canon_kernel=4, canon_activation=True, canon_residual=True,
+             canon_causal=False (non-causal, bidirectional context).
 """
 
 from pathlib import Path
@@ -30,6 +31,7 @@ _CANON_PARAMS = {
     "canon_kernel": 4,
     "canon_activation": True,
     "canon_residual": True,
+    "canon_causal": False,
 }
 
 CONDITIONS = {

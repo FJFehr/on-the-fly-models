@@ -1,5 +1,5 @@
 """
-Canon Layer: depthwise causal short convolution for transformer token-mixing.
+Canon Layer: depthwise (optionally causal) short convolution for transformer token-mixing.
 
 Based on https://github.com/facebookresearch/PhysicsLM4
 Paper: "Physics of Language Models: Part 4.1, Architecture Design and the Magic
@@ -43,17 +43,19 @@ _FAST_KERNEL_SIZES = frozenset({2, 3, 4})
 
 
 class CanonLayer(nn.Conv1d):
-    """Depthwise causal 1D convolution — the Canon Layer from PhysicsLM4.
+    """Depthwise short 1D convolution — the Canon Layer from PhysicsLM4.
 
     Input/output: [batch, seq_len, hidden_size]  (channels-last)
 
     Args:
         hidden_size: channel count (each channel gets its own kernel — depthwise).
-        kernel_size: number of past tokens visible per output position (default 4).
+        kernel_size: receptive field width (default 4).
         bias: learnable bias term (default False, consistent with original).
         activation: pointwise activation after the conv; 'silu'/'swish' or None.
         residual: if True, output = x + conv(x); if False, output = conv(x).
-        use_fast_conv1d: use causal-conv1d CUDA kernel when available.
+        causal: if True (default), only past tokens are visible (left-padded trim).
+                if False, a centered trim gives roughly symmetric context.
+        use_fast_conv1d: use causal-conv1d CUDA kernel when available (causal=True only).
     """
 
     def __init__(
@@ -63,6 +65,7 @@ class CanonLayer(nn.Conv1d):
         bias: bool = False,
         activation: Optional[str] = "silu",
         residual: bool = True,
+        causal: bool = True,
         use_fast_conv1d: bool = True,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -78,6 +81,7 @@ class CanonLayer(nn.Conv1d):
             dtype=dtype,
         )
         self.hidden_size = hidden_size
+        self.causal = causal
 
         if activation is not None and activation not in ("silu", "swish"):
             raise ValueError(
@@ -86,6 +90,9 @@ class CanonLayer(nn.Conv1d):
         self.activation = activation
         self.residual = residual
 
+        # Fast causal-conv1d kernel is only valid in causal mode.
+        if not causal:
+            use_fast_conv1d = False
         if use_fast_conv1d:
             if not _HAS_CAUSAL_CONV1D:
                 warnings.warn(
@@ -160,8 +167,14 @@ class CanonLayer(nn.Conv1d):
                 activation=self.activation,
             )
         else:
-            # _conv_forward pads both sides; trim right side to enforce causality.
-            x_chf = self._conv_forward(x_chf, self.weight, self.bias)[..., :T]
+            raw = self._conv_forward(x_chf, self.weight, self.bias)
+            if self.causal:
+                # Left-pad only: trim right side to enforce causality.
+                x_chf = raw[..., :T]
+            else:
+                # Centered trim: roughly symmetric past/future context.
+                left = (self.kernel_size[0] - 1) // 2
+                x_chf = raw[..., left : left + T]
             if self.activation is not None:
                 x_chf = F.silu(x_chf)
 
@@ -178,6 +191,11 @@ class CanonLayer(nn.Conv1d):
         self, x: torch.Tensor, cache: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Update rolling cache with one new token and return the output."""
+        if not self.causal:
+            raise NotImplementedError(
+                "Step-mode autoregressive decoding is not supported for non-causal CanonLayer "
+                "(causal=False). Use full-sequence forward instead."
+            )
         assert x.shape[1] == 1, "_step only supports T=1"
         x = x.squeeze(1)  # [B, D]
 
@@ -216,6 +234,7 @@ class CanonLayer(nn.Conv1d):
         return (
             f"CanonLayer(hidden_size={self.hidden_size}, "
             f"kernel_size={self.kernel_size[0]}, "
+            f"causal={self.causal}, "
             f"activation={self.activation!r}, "
             f"residual={self.residual}, "
             f"bias={self.bias is not None})"

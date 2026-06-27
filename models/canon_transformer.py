@@ -1,6 +1,6 @@
 """Transformer with Canon layers at positions A, B, C, and/or D.
 
-Canon layers are depthwise causal 1D convolutions placed at specific positions
+Canon layers are depthwise short 1D convolutions placed at specific positions
 inside each transformer block. See models/canon_layer.py and:
 https://github.com/facebookresearch/PhysicsLM4
 
@@ -26,13 +26,20 @@ from models.canon_layer import CanonLayer
 from models.transformer import LayerNorm
 
 
-def _make_canon(hidden_size: int, canon_kernel: int, canon_activation: bool, canon_residual: bool) -> CanonLayer:
+def _make_canon(
+    hidden_size: int,
+    canon_kernel: int,
+    canon_activation: bool,
+    canon_residual: bool,
+    canon_causal: bool = False,
+) -> CanonLayer:
     return CanonLayer(
         hidden_size=hidden_size,
         kernel_size=canon_kernel,
         bias=False,
         activation="silu" if canon_activation else None,
         residual=canon_residual,
+        causal=canon_causal,
         use_fast_conv1d=True,  # falls back gracefully if causal-conv1d not installed
     )
 
@@ -49,6 +56,7 @@ class CanonMLP(nn.Module):
         canon_kernel: int,
         canon_activation: bool,
         canon_residual: bool,
+        canon_causal: bool = False,
     ):
         super().__init__()
         self.c_fc = nn.Linear(hidden_dim, 4 * hidden_dim, bias=bias)
@@ -58,7 +66,7 @@ class CanonMLP(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         self.canon_d = (
-            _make_canon(4 * hidden_dim, canon_kernel, canon_activation, canon_residual)
+            _make_canon(4 * hidden_dim, canon_kernel, canon_activation, canon_residual, canon_causal)
             if "D" in canon_set
             else None
         )
@@ -86,6 +94,7 @@ class CanonSelfAttention(nn.Module):
         canon_kernel: int,
         canon_activation: bool,
         canon_residual: bool,
+        canon_causal: bool = False,
     ):
         super().__init__()
         if hidden_dim % num_heads != 0:
@@ -109,7 +118,7 @@ class CanonSelfAttention(nn.Module):
             )
 
         self.canon_b = (
-            _make_canon(3 * hidden_dim, canon_kernel, canon_activation, canon_residual)
+            _make_canon(3 * hidden_dim, canon_kernel, canon_activation, canon_residual, canon_causal)
             if "B" in canon_set
             else None
         )
@@ -162,6 +171,7 @@ class CanonBlock(nn.Module):
         canon_kernel: int,
         canon_activation: bool,
         canon_residual: bool,
+        canon_causal: bool = False,
     ):
         super().__init__()
         self.ln_1 = LayerNorm(hidden_dim, bias=bias)
@@ -176,6 +186,7 @@ class CanonBlock(nn.Module):
             canon_kernel=canon_kernel,
             canon_activation=canon_activation,
             canon_residual=canon_residual,
+            canon_causal=canon_causal,
         )
         self.ln_2 = LayerNorm(hidden_dim, bias=bias)
         self.mlp = CanonMLP(
@@ -186,15 +197,16 @@ class CanonBlock(nn.Module):
             canon_kernel=canon_kernel,
             canon_activation=canon_activation,
             canon_residual=canon_residual,
+            canon_causal=canon_causal,
         )
 
         self.canon_a = (
-            _make_canon(hidden_dim, canon_kernel, canon_activation, canon_residual)
+            _make_canon(hidden_dim, canon_kernel, canon_activation, canon_residual, canon_causal)
             if "A" in canon_set
             else None
         )
         self.canon_c = (
-            _make_canon(hidden_dim, canon_kernel, canon_activation, canon_residual)
+            _make_canon(hidden_dim, canon_kernel, canon_activation, canon_residual, canon_causal)
             if "C" in canon_set
             else None
         )
@@ -235,6 +247,7 @@ class CanonTransformer(nn.Module):
         canon_kernel: kernel size for all Canon layers (default 4).
         canon_activation: if True, apply SiLU inside each Canon conv.
         canon_residual: if True, Canon output is x + conv(x); else conv(x) only.
+        canon_causal: if False (default), Canon convs see both past and future tokens.
     """
 
     def __init__(
@@ -253,6 +266,7 @@ class CanonTransformer(nn.Module):
         canon_kernel: int = 4,
         canon_activation: bool = True,
         canon_residual: bool = True,
+        canon_causal: bool = False,
     ):
         super().__init__()
         if hidden_dim % num_heads != 0:
@@ -271,6 +285,7 @@ class CanonTransformer(nn.Module):
         self.dropout = dropout
         self.canon_set = canon_set
         self.canon_kernel = canon_kernel
+        self.canon_causal = canon_causal
         self.use_output_head = use_output_head
 
         self.input_projection = nn.Linear(input_dim, hidden_dim, bias=bias)
@@ -280,6 +295,7 @@ class CanonTransformer(nn.Module):
             canon_kernel=canon_kernel,
             canon_activation=canon_activation,
             canon_residual=canon_residual,
+            canon_causal=canon_causal,
         )
         self.blocks = nn.ModuleList([
             CanonBlock(
@@ -316,7 +332,7 @@ class CanonTransformer(nn.Module):
             f"CanonTransformer(input={self.input_dim}, hidden={self.hidden_dim}, "
             f"layers={self.num_layers}, heads={self.num_heads}, output={self.output_dim}, "
             f"canon_set={self.canon_set!r}, canon_kernel={self.canon_kernel}, "
-            f"dropout={self.dropout})"
+            f"canon_causal={self.canon_causal}, dropout={self.dropout})"
         )
 
 
@@ -328,7 +344,7 @@ class CanonRecursiveTransformer(nn.Module):
     positions recur on every loop iteration.
 
     Interface is a superset of RecursiveTransformer: same positional args plus
-    canon_set / canon_kernel / canon_activation / canon_residual.
+    canon_set / canon_kernel / canon_activation / canon_residual / canon_causal.
 
     Args:
         input_dim: dimension of raw input features.
@@ -343,6 +359,7 @@ class CanonRecursiveTransformer(nn.Module):
         canon_kernel: depthwise conv kernel size for all Canon layers.
         canon_activation: if True, apply SiLU inside each Canon conv.
         canon_residual: if True, Canon output = x + conv(x).
+        canon_causal: if False (default), Canon convs see both past and future tokens.
     """
 
     def __init__(
@@ -359,6 +376,7 @@ class CanonRecursiveTransformer(nn.Module):
         canon_kernel: int = 4,
         canon_activation: bool = True,
         canon_residual: bool = True,
+        canon_causal: bool = False,
     ):
         super().__init__()
         if hidden_dim % num_heads != 0:
@@ -377,6 +395,7 @@ class CanonRecursiveTransformer(nn.Module):
         self.dropout = dropout
         self.canon_set = canon_set
         self.canon_kernel = canon_kernel
+        self.canon_causal = canon_causal
 
         self.input_projection = nn.Linear(input_dim, hidden_dim, bias=bias)
 
@@ -385,6 +404,7 @@ class CanonRecursiveTransformer(nn.Module):
             canon_kernel=canon_kernel,
             canon_activation=canon_activation,
             canon_residual=canon_residual,
+            canon_causal=canon_causal,
         )
         # Shared block — weights are reused across all n_loops iterations.
         self.block = nn.ModuleList([
@@ -417,5 +437,5 @@ class CanonRecursiveTransformer(nn.Module):
             f"CanonRecursiveTransformer(input={self.input_dim}, hidden={self.hidden_dim}, "
             f"layers={self.num_layers}, heads={self.num_heads}, n_loops={self.n_loops}, "
             f"canon_set={self.canon_set!r}, canon_kernel={self.canon_kernel}, "
-            f"dropout={self.dropout})"
+            f"canon_causal={self.canon_causal}, dropout={self.dropout})"
         )

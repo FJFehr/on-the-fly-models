@@ -401,3 +401,67 @@ def test_mask_preserved_in_residual_path():
     assert torch.allclose(out_masked, out_zeroed, atol=1e-6), (
         "Residual path uses unmasked input — the mask+residual bug is not fixed."
     )
+
+
+# ---------------------------------------------------------------------------
+# Non-causal (causal=False) tests
+# ---------------------------------------------------------------------------
+
+
+def test_non_causal_output_shape():
+    """Output shape is unchanged when causal=False."""
+    layer = CanonLayer(hidden_size=8, kernel_size=5, causal=False, use_fast_conv1d=_FAST)
+    x = torch.randn(2, 10, 8)
+    out, _ = layer(x)
+    assert out.shape == (2, 10, 8)
+
+
+def test_non_causal_future_tokens_affect_output():
+    """Non-causal: output at position t must change when a future token changes."""
+    torch.manual_seed(42)
+    layer = CanonLayer(
+        hidden_size=4, kernel_size=3, causal=False, activation=None,
+        residual=False, use_fast_conv1d=_FAST
+    )
+    layer.eval()
+    with torch.no_grad():
+        x = torch.randn(1, 8, 4)
+        out_orig, _ = layer(x)
+
+        x_mod = x.clone()
+        x_mod[:, 5, :] += 1.0  # change a future token (t=5)
+        out_mod, _ = layer(x_mod)
+
+    # Position 4 (one step before t=5) should differ when kernel_size=3 and causal=False.
+    assert not torch.allclose(out_orig[:, 4, :], out_mod[:, 4, :]), (
+        "Non-causal canon should let future tokens influence earlier positions."
+    )
+
+
+def test_causal_future_tokens_do_not_bleed_into_non_causal():
+    """Sanity: the same token change must NOT affect earlier positions in causal mode."""
+    torch.manual_seed(42)
+    layer = CanonLayer(
+        hidden_size=4, kernel_size=3, causal=True, activation=None,
+        residual=False, use_fast_conv1d=_FAST
+    )
+    layer.eval()
+    with torch.no_grad():
+        x = torch.randn(1, 8, 4)
+        out_orig, _ = layer(x)
+        x_mod = x.clone()
+        x_mod[:, 5, :] += 1.0
+        out_mod, _ = layer(x_mod)
+
+    assert torch.allclose(out_orig[:, 4, :], out_mod[:, 4, :]), (
+        "Causal canon must not let future tokens affect past positions."
+    )
+
+
+def test_non_causal_step_raises():
+    """`_step` (autoregressive cache) must raise when causal=False."""
+    layer = CanonLayer(hidden_size=4, kernel_size=3, causal=False, use_fast_conv1d=_FAST)
+    cache = torch.zeros(1, 4, 3)
+    x = torch.randn(1, 1, 4)
+    with pytest.raises(NotImplementedError):
+        layer(x, cache=cache)

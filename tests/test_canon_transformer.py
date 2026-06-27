@@ -257,3 +257,27 @@ def test_canon_recursive_repr_contains_key_info():
     r = repr(model)
     assert "ABCD" in r
     assert "4" in r
+
+
+# ---------------------------------------------------------------------------
+# Non-causal canon tests
+# ---------------------------------------------------------------------------
+
+
+def test_non_causal_canon_transformer_output_shape():
+    model = _make(canon_set="ABCD", canon_causal=False)
+    out = model(torch.randn(2, 9, 5))
+    assert out.shape == (2, 9, _N)
+
+
+def test_non_causal_canon_recursive_output_shape():
+    model = _make_recursive(canon_set="ABCD", canon_causal=False)
+    out = model(torch.randn(2, 9, 5))
+    assert out.shape == (2, 9, _D)
+
+
+def test_non_causal_has_same_param_count_as_causal():
+    """Switching causal=False doesn't add or remove parameters."""
+    causal_params = _count_params(_make(canon_set="ABCD", canon_causal=True))
+    non_causal_params = _count_params(_make(canon_set="ABCD", canon_causal=False))
+    assert causal_params == non_causal_params
