@@ -29,12 +29,14 @@ class TaskTokenEmbedder(nn.Module):
         num_examples: int = 4,
         num_roles: int = 2,
         padding_idx: int | None = None,
+        use_sinusoidal_pe: bool = True,
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
         self.value_vocab_size = value_vocab_size
         self.num_examples = num_examples
         self.num_roles = num_roles
+        self.use_sinusoidal_pe = use_sinusoidal_pe
 
         self.value_embedding = nn.Embedding(
             value_vocab_size, embedding_dim, padding_idx=padding_idx
@@ -88,9 +90,12 @@ class TaskTokenEmbedder(nn.Module):
 
         self._validate_id_range(value_ids, self.value_vocab_size, "value")
 
-        max_pos = int(position_ids.max().item()) + 1
-        pe_table = _build_sinusoidal_pe(max_pos, self.embedding_dim).to(value_ids.device)
-        result = self.value_embedding(value_ids) + F.embedding(position_ids, pe_table)
+        if self.use_sinusoidal_pe:
+            max_pos = int(position_ids.max().item()) + 1
+            pe_table = _build_sinusoidal_pe(max_pos, self.embedding_dim).to(value_ids.device)
+            result = self.value_embedding(value_ids) + F.embedding(position_ids, pe_table)
+        else:
+            result = self.value_embedding(value_ids)
         if example_ids is not None:
             self._validate_id_range(example_ids, self.num_examples, "example")
             result = result + self.example_embedding(example_ids)
