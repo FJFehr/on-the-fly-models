@@ -1,0 +1,16 @@
+_base_: configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
+experiment_name: ablation_C_1d_move_2p_dp_sandwich_4loops
+project_name: arc1d_sandwich_ablation
+task_categories:
+- 1d_move_2p_dp
+model: direct_supervised
+learning_rate: 0.0005
+gradient_clip_val: 1.0
+max_steps: 8000
+backbone_model:
+  name: sandwich_transformer
+  params:
+    hidden_dim: 32
+    num_heads: 4
+    n_loops: 4
+    dropout: 0.1

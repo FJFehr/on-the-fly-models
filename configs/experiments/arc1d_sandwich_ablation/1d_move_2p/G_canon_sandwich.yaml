@@ -1,0 +1,21 @@
+_base_: configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
+experiment_name: ablation_G_1d_move_2p_canon_sandwich
+project_name: arc1d_sandwich_ablation
+task_categories:
+- 1d_move_2p
+model: direct_supervised
+learning_rate: 0.0005
+gradient_clip_val: 1.0
+max_steps: 8000
+backbone_model:
+  name: canon_sandwich_transformer
+  params:
+    hidden_dim: 32
+    num_heads: 4
+    n_loops: 1
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false

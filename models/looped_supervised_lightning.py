@@ -19,6 +19,7 @@ from torch.nn.utils import clip_grad_norm_
 
 from metrics import accuracy, exact_match_accuracy
 from models.canon_transformer import CanonRecursiveTransformer, CanonTransformer
+from models.sandwich_transformer import CanonSandwichTransformer, SandwichTransformer
 from models.cnn import CNN
 from models.recursive_transformer import RecursiveTransformer
 from models.rnn import RNN
@@ -121,6 +122,8 @@ class LoopedSupervisedLightning(pl.LightningModule):
             "recursive_transformer": RecursiveTransformer,
             "canon_transformer": CanonTransformer,
             "canon_recursive_transformer": CanonRecursiveTransformer,
+            "sandwich_transformer": SandwichTransformer,
+            "canon_sandwich_transformer": CanonSandwichTransformer,
         }
         name = backbone_model["name"]
         if name not in registry:
@@ -154,7 +157,7 @@ class LoopedSupervisedLightning(pl.LightningModule):
             pad_mask = (value_ids == self.padding_idx).unsqueeze(-1)
             embedded = embedded.masked_fill(pad_mask, 0.0)
 
-        if isinstance(self.backbone, (Transformer, RecursiveTransformer, CanonTransformer, CanonRecursiveTransformer)) and self.padding_idx is not None:
+        if isinstance(self.backbone, (Transformer, RecursiveTransformer, CanonTransformer, CanonRecursiveTransformer, SandwichTransformer, CanonSandwichTransformer)) and self.padding_idx is not None:
             padding_mask = value_ids == self.padding_idx
             hidden = self.backbone(embedded, src_key_padding_mask=padding_mask)
         elif isinstance(self.backbone, RNN) and self.padding_idx is not None:
