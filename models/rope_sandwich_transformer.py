@@ -196,6 +196,7 @@ class RoPECanonSandwichTransformer(nn.Module):
         inner_dim: Optional[int] = None,
         inner_num_heads: Optional[int] = None,
         use_block_skip: bool = False,
+        use_loop_skip: bool = False,
     ):
         super().__init__()
         inner_dim = inner_dim if inner_dim is not None else hidden_dim
@@ -220,6 +221,7 @@ class RoPECanonSandwichTransformer(nn.Module):
         self.canon_kernel = canon_kernel
         self.canon_causal = canon_causal
         self.has_wide_middle = inner_dim != hidden_dim
+        self.use_loop_skip = use_loop_skip
 
         self.input_projection = nn.Linear(input_dim, hidden_dim, bias=bias)
 
@@ -267,8 +269,11 @@ class RoPECanonSandwichTransformer(nn.Module):
         h = self.pre_layer(h)
         if self.has_wide_middle:
             h = self.up_proj(h)
+        h_loop_0 = h
         for _ in range(self.n_loops):
             h = self.middle_layer(h)
+            if self.use_loop_skip:
+                h = h + h_loop_0
         if self.has_wide_middle:
             h = self.down_proj(h)
         h = self.post_layer(h)
