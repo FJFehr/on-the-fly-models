@@ -1,0 +1,27 @@
+_base_: configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
+experiment_name: ablation_D_1d_recolor_cnt_wide16_6L
+project_name: arc1d_rope_wide_middle_ablation
+task_categories:
+- 1d_recolor_cnt
+model: looped_supervised
+N_supervision: 2
+learning_rate: 0.0005
+max_steps: 4000
+task_encoding:
+  embedding_dim: 16
+  value_vocab_size: 11
+  use_sinusoidal_pe: false
+backbone_model:
+  name: rope_canon_sandwich_transformer
+  params:
+    hidden_dim: 16
+    num_heads: 2
+    inner_dim: 32
+    inner_num_heads: 4
+    n_loops: 4
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false

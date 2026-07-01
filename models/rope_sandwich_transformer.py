@@ -162,14 +162,16 @@ class RoPECanonBlock(nn.Module):
 class RoPECanonSandwichTransformer(nn.Module):
     """Sandwich transformer with RoPE Canon blocks.
 
-    Architecture:
-        input_projection → pre (1×) → middle (n_loops×, shared weights) → post (1×) → final_norm
+    Architecture (uniform width):
+        input_projection → pre (1×) → middle (n_loops×, shared) → post (1×) → final_norm
+
+    Architecture (wide middle, inner_dim != hidden_dim):
+        input_projection → pre (1×) → up_proj → middle (n_loops×, shared) → down_proj → post (1×) → final_norm
 
     Position is encoded via RoPE inside each block's attention (applied to Q and K).
     The input embedder should be configured with use_sinusoidal_pe=False.
 
-    Parameter count equals a Canon 3-layer transformer regardless of n_loops.
-    Interface matches CanonSandwichTransformer.
+    Parameter count is independent of n_loops in both variants.
     """
 
     def __init__(
@@ -186,10 +188,16 @@ class RoPECanonSandwichTransformer(nn.Module):
         canon_activation: bool = True,
         canon_residual: bool = True,
         canon_causal: bool = False,
+        inner_dim: Optional[int] = None,
+        inner_num_heads: Optional[int] = None,
     ):
         super().__init__()
+        inner_dim = inner_dim if inner_dim is not None else hidden_dim
+        inner_num_heads = inner_num_heads if inner_num_heads is not None else num_heads
         if hidden_dim % num_heads != 0:
             raise ValueError("hidden_dim must be divisible by num_heads.")
+        if inner_dim % inner_num_heads != 0:
+            raise ValueError("inner_dim must be divisible by inner_num_heads.")
         invalid = set(canon_set) - set("ABCD")
         if invalid:
             raise ValueError(
@@ -199,14 +207,17 @@ class RoPECanonSandwichTransformer(nn.Module):
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.num_heads = num_heads
+        self.inner_dim = inner_dim
+        self.inner_num_heads = inner_num_heads
         self.n_loops = n_loops
         self.canon_set = canon_set
         self.canon_kernel = canon_kernel
         self.canon_causal = canon_causal
+        self.has_wide_middle = inner_dim != hidden_dim
 
         self.input_projection = nn.Linear(input_dim, hidden_dim, bias=bias)
 
-        block_kwargs = dict(
+        outer_block_kwargs = dict(
             hidden_dim=hidden_dim,
             num_heads=num_heads,
             dropout=dropout,
@@ -218,10 +229,26 @@ class RoPECanonSandwichTransformer(nn.Module):
             canon_residual=canon_residual,
             canon_causal=canon_causal,
         )
-        self.pre_layer   = RoPECanonBlock(**block_kwargs)
-        self.middle_layer = RoPECanonBlock(**block_kwargs)
-        self.post_layer  = RoPECanonBlock(**block_kwargs)
-        self.final_norm  = nn.LayerNorm(hidden_dim)
+        inner_block_kwargs = dict(
+            hidden_dim=inner_dim,
+            num_heads=inner_num_heads,
+            dropout=dropout,
+            bias=bias,
+            block_size=2048,
+            canon_set=canon_set,
+            canon_kernel=canon_kernel,
+            canon_activation=canon_activation,
+            canon_residual=canon_residual,
+            canon_causal=canon_causal,
+        )
+        self.pre_layer    = RoPECanonBlock(**outer_block_kwargs)
+        self.middle_layer = RoPECanonBlock(**inner_block_kwargs)
+        self.post_layer   = RoPECanonBlock(**outer_block_kwargs)
+        self.final_norm   = nn.LayerNorm(hidden_dim)
+
+        if self.has_wide_middle:
+            self.up_proj   = nn.Linear(hidden_dim, inner_dim, bias=bias)
+            self.down_proj = nn.Linear(inner_dim, hidden_dim, bias=bias)
 
     def forward(
         self,
@@ -230,14 +257,19 @@ class RoPECanonSandwichTransformer(nn.Module):
     ) -> torch.Tensor:
         h = self.input_projection(inputs)
         h = self.pre_layer(h)
+        if self.has_wide_middle:
+            h = self.up_proj(h)
         for _ in range(self.n_loops):
             h = self.middle_layer(h)
+        if self.has_wide_middle:
+            h = self.down_proj(h)
         h = self.post_layer(h)
         return self.final_norm(h)
 
     def __repr__(self) -> str:
+        mid = f"inner={self.inner_dim}" if self.has_wide_middle else f"hidden={self.hidden_dim}"
         return (
             f"RoPECanonSandwichTransformer(input={self.input_dim}, hidden={self.hidden_dim}, "
-            f"heads={self.num_heads}, n_loops={self.n_loops}, "
+            f"{mid}, heads={self.num_heads}, n_loops={self.n_loops}, "
             f"canon_set={self.canon_set!r}, canon_kernel={self.canon_kernel})"
         )
