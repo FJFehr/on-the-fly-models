@@ -108,8 +108,10 @@ class RoPECanonBlock(nn.Module):
         canon_activation: bool,
         canon_residual: bool,
         canon_causal: bool = False,
+        use_block_skip: bool = False,
     ):
         super().__init__()
+        self.use_block_skip = use_block_skip
         self.ln_1 = LayerNorm(hidden_dim, bias=bias)
         self.attn = RoPECanonSelfAttention(
             hidden_dim=hidden_dim,
@@ -147,6 +149,7 @@ class RoPECanonBlock(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x_input = x
         xx = self.ln_1(x)
         if self.canon_a is not None:
             xx, _ = self.canon_a(xx)
@@ -156,6 +159,8 @@ class RoPECanonBlock(nn.Module):
         if self.canon_c is not None:
             hh, _ = self.canon_c(hh)
         x = x + self.mlp(hh)
+        if self.use_block_skip:
+            x = x + x_input
         return x
 
 
@@ -190,6 +195,7 @@ class RoPECanonSandwichTransformer(nn.Module):
         canon_causal: bool = False,
         inner_dim: Optional[int] = None,
         inner_num_heads: Optional[int] = None,
+        use_block_skip: bool = False,
     ):
         super().__init__()
         inner_dim = inner_dim if inner_dim is not None else hidden_dim
@@ -228,6 +234,7 @@ class RoPECanonSandwichTransformer(nn.Module):
             canon_activation=canon_activation,
             canon_residual=canon_residual,
             canon_causal=canon_causal,
+            use_block_skip=use_block_skip,
         )
         inner_block_kwargs = dict(
             hidden_dim=inner_dim,
@@ -240,6 +247,7 @@ class RoPECanonSandwichTransformer(nn.Module):
             canon_activation=canon_activation,
             canon_residual=canon_residual,
             canon_causal=canon_causal,
+            use_block_skip=use_block_skip,
         )
         self.pre_layer    = RoPECanonBlock(**outer_block_kwargs)
         self.middle_layer = RoPECanonBlock(**inner_block_kwargs)
