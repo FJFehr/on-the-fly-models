@@ -197,6 +197,8 @@ class RoPECanonSandwichTransformer(nn.Module):
         inner_num_heads: Optional[int] = None,
         use_block_skip: bool = False,
         use_loop_skip: bool = False,
+        use_inner_bypass: bool = False,
+        use_outer_bypass: bool = False,
     ):
         super().__init__()
         inner_dim = inner_dim if inner_dim is not None else hidden_dim
@@ -222,6 +224,8 @@ class RoPECanonSandwichTransformer(nn.Module):
         self.canon_causal = canon_causal
         self.has_wide_middle = inner_dim != hidden_dim
         self.use_loop_skip = use_loop_skip
+        self.use_inner_bypass = use_inner_bypass
+        self.use_outer_bypass = use_outer_bypass
 
         self.input_projection = nn.Linear(input_dim, hidden_dim, bias=bias)
 
@@ -266,17 +270,22 @@ class RoPECanonSandwichTransformer(nn.Module):
         src_key_padding_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         h = self.input_projection(inputs)
+        h_outer = h                          # outer bypass anchor (hidden_dim)
         h = self.pre_layer(h)
         if self.has_wide_middle:
             h = self.up_proj(h)
-        h_loop_0 = h
+        h_inner = h                          # inner bypass anchor (inner_dim)
         for _ in range(self.n_loops):
             h = self.middle_layer(h)
-            if self.use_loop_skip:
-                h = h + h_loop_0
+            if self.use_loop_skip:           # per-iteration h0 injection (old behaviour)
+                h = h + h_inner
+        if self.use_inner_bypass:
+            h = h + h_inner                  # single skip over all N loops
         if self.has_wide_middle:
             h = self.down_proj(h)
         h = self.post_layer(h)
+        if self.use_outer_bypass:
+            h = h + h_outer                  # single skip over all 3 blocks
         return self.final_norm(h)
 
     def __repr__(self) -> str:
