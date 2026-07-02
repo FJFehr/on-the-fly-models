@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Run ALL rope ablation experiments to completion at 5 seeds, skipping any run that
-# already has outputs/<project>/<exp_name>/results.txt.
+# Full reproduction script: runs ALL rope ablation experiments at 5 seeds each.
+# Skips any individual run that already has outputs/<project>/<exp_name>/results.txt,
+# so it is safe to re-run after partial completion or interruption.
 #
-# Experiments included (roughly chronological / narrative order):
+# Experiments (roughly chronological / story order):
 #   arc1d_recursion_ablation_large_8k  — plain transformer baseline (S1, S2)
 #   arc1d_rope_sandwich_ablation       — RoPE vs sin PE, Canon ABCD, dim ∈ {16,32}
 #   arc1d_rope_wide_middle_ablation    — wide looped middle, outer ∈ {8,16} × n_loops ∈ {4,8,16}
@@ -12,8 +13,7 @@
 #   arc1d_rope_unet_skip_ablation      — U-Net style single bypass connections
 #   arc1d_rope_story_ablation          — story conditions S3/S4/S5 (RoPE flat/loop/wide-nc)
 #
-# Existing experiments already have seeds 1-3; this script adds seeds 4 and 5.
-# arc1d_rope_story_ablation is new and needs all 5 seeds.
+# Total from scratch: ~1734 jobs across all experiments × 5 seeds.
 #
 # Usage:
 #   bash scripts/run_all_ablations_5seeds.sh        # 8 GPUs
@@ -27,21 +27,20 @@ LOG_DIR="logs/run_all_ablations_5seeds"
 mkdir -p "$LOG_DIR"
 
 # ---------------------------------------------------------------------------
-# Experiment registry: (PROJECT CFG_DIR "SEED1 SEED2 ...")
-# Existing experiments: only add seeds 4 and 5.
-# New story ablation: run all 5 seeds.
+# Experiment registry: (PROJECT CFG_DIR) — all run seeds 1–5
 # ---------------------------------------------------------------------------
 declare -a EXPERIMENTS
 EXPERIMENTS=(
-    "arc1d_recursion_ablation_large_8k  configs/experiments/arc1d_recursion_ablation_large_8k  4 5"
-    "arc1d_rope_sandwich_ablation       configs/experiments/arc1d_rope_sandwich_ablation        4 5"
-    "arc1d_rope_wide_middle_ablation    configs/experiments/arc1d_rope_wide_middle_ablation     4 5"
-    "arc1d_rope_skip_ablation           configs/experiments/arc1d_rope_skip_ablation            4 5"
-    "arc1d_rope_loop_skip_ablation      configs/experiments/arc1d_rope_loop_skip_ablation       4 5"
-    "arc1d_rope_dim_ablation            configs/experiments/arc1d_rope_dim_ablation             4 5"
-    "arc1d_rope_unet_skip_ablation      configs/experiments/arc1d_rope_unet_skip_ablation       4 5"
-    "arc1d_rope_story_ablation          configs/experiments/arc1d_rope_story_ablation           1 2 3 4 5"
+    "arc1d_recursion_ablation_large_8k  configs/experiments/arc1d_recursion_ablation_large_8k"
+    "arc1d_rope_sandwich_ablation       configs/experiments/arc1d_rope_sandwich_ablation"
+    "arc1d_rope_wide_middle_ablation    configs/experiments/arc1d_rope_wide_middle_ablation"
+    "arc1d_rope_skip_ablation           configs/experiments/arc1d_rope_skip_ablation"
+    "arc1d_rope_loop_skip_ablation      configs/experiments/arc1d_rope_loop_skip_ablation"
+    "arc1d_rope_dim_ablation            configs/experiments/arc1d_rope_dim_ablation"
+    "arc1d_rope_unet_skip_ablation      configs/experiments/arc1d_rope_unet_skip_ablation"
+    "arc1d_rope_story_ablation          configs/experiments/arc1d_rope_story_ablation"
 )
+SEEDS=(1 2 3 4 5)
 
 # ---------------------------------------------------------------------------
 # Build global job list, skipping already-completed runs
@@ -50,10 +49,9 @@ JOBS=()
 SKIPPED=0
 
 for entry in "${EXPERIMENTS[@]}"; do
-    read -r project cfg_dir seeds_str <<< "$entry"
-    read -ra seeds <<< "$seeds_str"
+    read -r project cfg_dir <<< "$entry"
 
-    for seed in "${seeds[@]}"; do
+    for seed in "${SEEDS[@]}"; do
         while IFS= read -r cfg; do
             logging_name=$(grep '^experiment_name:' "$cfg" | awk '{print $2}')
             exp_name="${logging_name}_seed${seed}"
