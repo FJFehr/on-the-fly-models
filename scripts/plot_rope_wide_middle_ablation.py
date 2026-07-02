@@ -1,15 +1,11 @@
-"""Heatmaps for multi-seed ablation results: mean ± std across seeds.
+"""Heatmaps for arc1d_rope_wide_middle_ablation: mean ± std across seeds.
+
+6 conditions: outer_dim ∈ {8,16} × n_loops ∈ {4,8,16}. All RoPE, inner_dim=32.
+Row order: outer=8 block (A,B,C) then outer=16 block (D,E,F).
 
 Usage:
-    # one variant
-    python scripts/plot_ablation_seeds.py outputs/arc1d_recursion_ablation_large_8k
-
-    # all four variants (produces one plot directory each)
-    python scripts/plot_ablation_seeds.py \
-        outputs/arc1d_recursion_ablation \
-        outputs/arc1d_recursion_ablation_8k \
-        outputs/arc1d_recursion_ablation_large \
-        outputs/arc1d_recursion_ablation_large_8k
+    python scripts/plot_rope_wide_middle_ablation.py
+    python scripts/plot_rope_wide_middle_ablation.py outputs/arc1d_rope_wide_middle_ablation
 """
 
 import re
@@ -21,14 +17,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 COND_LABELS = {
-    "A": "Transformer",
-    "B": "Recursive",
-    "C": "Looped Training",
-    "D": "Recursive + Looped",
-    "E": "Canon Transformer",
-    "F": "Canon Recursive",
-    "G": "Canon + Looped",
-    "H": "Canon Recursive + Looped",
+    "A": "outer=8   6L  (loops=4)",
+    "B": "outer=8  10L  (loops=8)",
+    "C": "outer=8  18L  (loops=16)",
+    "D": "outer=16  6L  (loops=4)",
+    "E": "outer=16 10L  (loops=8)",
+    "F": "outer=16 18L  (loops=16)",
 }
 
 TASK_DISPLAY = {
@@ -52,32 +46,14 @@ TASK_DISPLAY = {
     "1d_scale_dp":      "Scale dp",
 }
 
-# ablation_{COND}_{TASK}_{MODEL}_seed{N}  OR  ablation_{COND}_{TASK}_{MODEL} (no seed)
-EXP_RE = re.compile(
-    r"ablation_([A-H])_(.*?)"
-    r"_(looped_canon_recursive_transformer|looped_canon_transformer"
-    r"|canon_recursive_transformer|canon_transformer"
-    r"|looped_recursive_transformer|looped_transformer"
-    r"|recursive_transformer|transformer)"
-    r"(?:_seed(\d+))?$"
-)
+_SUFFIXES = "wide8_6L|wide8_10L|wide8_18L|wide16_6L|wide16_10L|wide16_18L"
+EXP_RE = re.compile(rf"ablation_([A-F])_(.*?)_({_SUFFIXES})(?:_seed(\d+))?$")
 VAL_RE  = re.compile(r"val_query_exact_match: ([0-9.]+)")
 TEST_RE = re.compile(r"test_query_exact_match: ([0-9.]+)")
 
-OLD_TO_CANONICAL = {
-    "denoising1c": "1d_denoising_1c",
-    "fill":        "1d_fill",
-    "scale_dp":    "1d_scale_dp",
-}
-SKIP_OLD: set[str] = set()
-
 
 def load_results(results_dir: Path):
-    """Return {task: {cond: {metric: [seed_values]}}}."""
-    data: dict[str, dict[str, dict[str, list[float]]]] = defaultdict(
-        lambda: defaultdict(lambda: defaultdict(list))
-    )
-
+    data: dict = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     for exp_dir in sorted(results_dir.iterdir()):
         rf = exp_dir / "results.txt"
         if not rf.exists():
@@ -86,20 +62,13 @@ def load_results(results_dir: Path):
         if not m:
             continue
         cond, task = m.group(1), m.group(2)
-
-        if task in SKIP_OLD:
-            continue
-        task = OLD_TO_CANONICAL.get(task, task)
-
         text = rf.read_text()
         vm = VAL_RE.search(text)
         tm = TEST_RE.search(text)
         if not vm or not tm:
             continue
-
         data[task][cond]["val"].append(float(vm.group(1)))
         data[task][cond]["test"].append(float(tm.group(1)))
-
     return data
 
 
@@ -111,7 +80,6 @@ def make_heatmap(data, metric, output_path, title, task_order):
     n_tasks = len(tasks)
     n_conds = len(conds)
 
-    # mean and std matrices: (n_conds, n_tasks)
     means = np.full((n_conds, n_tasks), np.nan)
     stds  = np.full((n_conds, n_tasks), np.nan)
     for r, cond in enumerate(conds):
@@ -121,14 +89,13 @@ def make_heatmap(data, metric, output_path, title, task_order):
                 means[r, c] = np.mean(vals)
                 stds[r, c]  = np.std(vals)
 
-    # Summary column: mean across tasks per condition
     row_means = np.nanmean(means, axis=1, keepdims=True)
     row_stds  = np.nanstd(means,  axis=1, keepdims=True)
 
     data_full = np.hstack([means, row_means])
     n_cols = n_tasks + 1
 
-    fig, ax = plt.subplots(figsize=(max(10, n_cols * 0.85), 3.4))
+    fig, ax = plt.subplots(figsize=(max(12, n_cols * 0.85), 4.5))
     im = ax.imshow(data_full, aspect="auto", cmap="viridis", vmin=0, vmax=1)
 
     for r in range(n_conds):
@@ -138,34 +105,30 @@ def make_heatmap(data, metric, output_path, title, task_order):
             if np.isnan(mu):
                 continue
             text_color = "white" if mu < 0.6 else "black"
-            # Mean in normal size, ±std smaller beneath it
             ax.text(c, r - 0.13, f"{mu:.0%}", ha="center", va="center",
-                    fontsize=8, color=text_color, fontweight="bold")
+                    fontsize=7.5, color=text_color, fontweight="bold")
             ax.text(c, r + 0.28, f"±{sd:.0%}", ha="center", va="center",
-                    fontsize=6, color=text_color, alpha=0.85)
+                    fontsize=5.5, color=text_color, alpha=0.85)
 
-        # Summary column
         mu = float(row_means[r, 0])
         sd = float(row_stds[r, 0])
         text_color = "white" if mu < 0.6 else "black"
         ax.text(n_tasks, r - 0.13, f"{mu:.0%}", ha="center", va="center",
-                fontsize=8, color=text_color, fontweight="bold")
+                fontsize=7.5, color=text_color, fontweight="bold")
         ax.text(n_tasks, r + 0.28, f"±{sd:.0%}", ha="center", va="center",
-                fontsize=6, color=text_color, alpha=0.85)
+                fontsize=5.5, color=text_color, alpha=0.85)
 
     ax.axvline(n_tasks - 0.5, color="white", linewidth=2)
-
-    # Horizontal divider between baseline (A-D) and canon (E-H) rows
-    n_base = sum(1 for c in conds if c in "ABCD")
-    if n_base > 0 and n_base < n_conds:
-        ax.axhline(n_base - 0.5, color="white", linewidth=2)
+    # White divider between outer=8 and outer=16 blocks
+    if "D" in conds:
+        ax.axhline(conds.index("D") - 0.5, color="white", linewidth=2.5)
 
     ax.set_yticks(range(n_conds))
-    ax.set_yticklabels([COND_LABELS[c] for c in conds], fontsize=10)
+    ax.set_yticklabels([COND_LABELS[c] for c in conds], fontsize=9)
     ax.set_xticks(range(n_cols))
     ax.set_xticklabels(
         [TASK_DISPLAY.get(t, t) for t in tasks] + ["Mean ± Std"],
-        fontsize=8.5, rotation=35, ha="right",
+        fontsize=8, rotation=35, ha="right",
     )
 
     cbar = fig.colorbar(im, ax=ax, fraction=0.02, pad=0.02)
@@ -173,7 +136,6 @@ def make_heatmap(data, metric, output_path, title, task_order):
     cbar.set_label("Exact Match", fontsize=9)
 
     ax.set_title(title, fontsize=11, pad=8)
-
     plt.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
     print(f"Saved: {output_path}")
@@ -181,7 +143,6 @@ def make_heatmap(data, metric, output_path, title, task_order):
 
 
 def val_task_order(data):
-    """Return tasks sorted by mean val exact match descending."""
     conds = [c for c in COND_LABELS if any(c in data[t] for t in data)]
     return sorted(
         data.keys(),
@@ -193,41 +154,29 @@ def val_task_order(data):
     )
 
 
-def process(results_dir: Path, task_order=None):
-    data = load_results(results_dir)
-    n_runs = sum(len(v) for t in data.values() for v in t.values())
-    print(f"{results_dir.name}: {len(data)} tasks, {n_runs} seed×condition entries")
-
-    out_dir = results_dir / "plots"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    order = task_order if task_order is not None else val_task_order(data)
-
-    split_label = {"val": "Validation", "test": "Test"}
-    for metric in ("val", "test"):
-        title = (
-            f"ARC-1D Ablation — {split_label[metric]} Exact Match"
-            f"\n{results_dir.name}  (mean ± std across seeds)"
-        )
-        make_heatmap(data, metric, out_dir / f"heatmap_{metric}.png", title, order)
-
-
 def main():
     dirs = [Path(p) for p in sys.argv[1:]] if len(sys.argv) > 1 else [
-        Path("outputs/arc1d_recursion_ablation_8k"),
-        Path("outputs/arc1d_recursion_ablation_large"),
-        Path("outputs/arc1d_recursion_ablation_large_8k"),
+        Path("outputs/arc1d_rope_wide_middle_ablation"),
     ]
     dirs = [d for d in dirs if d.exists()]
 
-    # Derive fixed task order from 8k val results
-    ref_dir = Path("outputs/arc1d_recursion_ablation_8k")
-    ref_data = load_results(ref_dir)
-    order = val_task_order(ref_data)
-    print(f"Task order (from {ref_dir.name} val): {order}\n")
+    for results_dir in dirs:
+        data = load_results(results_dir)
+        n_runs = sum(len(v) for t in data.values() for v in t.values())
+        print(f"{results_dir.name}: {len(data)} tasks, {n_runs} seed×condition entries")
 
-    for d in dirs:
-        process(d, task_order=order)
+        out_dir = results_dir / "plots"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        order = val_task_order(data)
+
+        split_label = {"val": "Validation", "test": "Test"}
+        for metric in ("val", "test"):
+            title = (
+                f"ARC-1D RoPE Wide-Middle Sandwich — {split_label[metric]} Exact Match"
+                f"\n{results_dir.name}  (mean ± std across seeds)"
+            )
+            make_heatmap(data, metric, out_dir / f"heatmap_{metric}.png", title, order)
 
 
 if __name__ == "__main__":

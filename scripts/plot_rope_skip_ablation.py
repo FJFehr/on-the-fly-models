@@ -1,18 +1,19 @@
-"""Heatmaps for arc1d_rope_unet_skip_ablation: mean ± std across seeds.
+"""Heatmaps for arc1d_rope_skip_ablation: mean ± std across seeds.
 
-7 conditions (A, B, F reused; N, O, P, Q new):
-  A: no skip                     (from arc1d_rope_wide_middle_ablation)
-  B: block skip only             (from arc1d_rope_skip_ablation)
-  F: block + per-iter loop skip  (from arc1d_rope_loop_skip_ablation)
-  N: inner bypass only           — single skip over all loops
-  O: outer bypass only           — single skip over all 3 blocks
-  P: inner + outer bypass        — U-Net
-  Q: block + inner + outer       — block skip + U-Net
+4 conditions diagnosing the flip/padded_fill failure modes:
+  A: Canon ABCD, no skip  (reference — reused from arc1d_rope_wide_middle_ablation)
+  B: Canon ABCD + block highway skip
+  C: Canon BCD  (no A — clean attention input)
+  D: Canon ACD  (no B — clean QKV)
 
-White divider separates reference conditions (A, B, F) from new conditions (N–Q).
+Row order: A (reference), B (highway), C (no A), D (no B).
+White divider separates reference from diagnostic conditions.
 
 Usage:
-    python scripts/plot_rope_unet_skip_ablation.py
+    python scripts/plot_rope_skip_ablation.py
+    python scripts/plot_rope_skip_ablation.py outputs/arc1d_rope_skip_ablation
+    python scripts/plot_rope_skip_ablation.py \
+        outputs/arc1d_rope_wide_middle_ablation outputs/arc1d_rope_skip_ablation
 """
 
 import re
@@ -24,14 +25,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 COND_LABELS = {
-    "A": "no skip  (reference)",
-    "B": "block skip only",
-    "E": "loop skip only  (per-iter h0, no block skip)",
-    "F": "block + loop skip  (per-iter h0)",
-    "N": "inner bypass  (single, over all loops)",
-    "O": "outer bypass  (single, over all blocks)",
-    "P": "inner + outer  (U-Net)",
-    "Q": "block + inner + outer  (block + U-Net)",
+    "A": "ABCD  no skip  (reference)",
+    "B": "ABCD  + highway skip",
+    "C": "BCD   no A  (clean attn input)",
+    "D": "ACD   no B  (clean QKV)",
 }
 
 TASK_DISPLAY = {
@@ -55,17 +52,12 @@ TASK_DISPLAY = {
     "1d_scale_dp":      "Scale dp",
 }
 
+# Matches runs from both the skip ablation (B/C/D) and the reference from wide_middle (A)
 _SUFFIXES = (
-    "wide8_6L"           # A
-    "|skip_abcd_hw"      # B
-    "|loop_skip_e4"      # E
-    "|loop_skip_f4"      # F
-    "|unet_n_inner"      # N
-    "|unet_o_outer"      # O
-    "|unet_p_both"       # P
-    "|unet_q_all"        # Q
+    "skip_abcd_hw|skip_bcd|skip_acd"          # new conditions B, C, D
+    "|wide8_6L"                                # condition A reference (n_loops=4, outer=8)
 )
-EXP_RE = re.compile(rf"ablation_([A-Q])_(.*?)_({_SUFFIXES})(?:_seed(\d+))?$")  # noqa: E501
+EXP_RE = re.compile(rf"ablation_([A-D])_(.*?)_({_SUFFIXES})(?:_seed(\d+))?$")
 VAL_RE  = re.compile(r"val_query_exact_match: ([0-9.]+)")
 TEST_RE = re.compile(r"test_query_exact_match: ([0-9.]+)")
 
@@ -116,7 +108,7 @@ def make_heatmap(data, metric, output_path, title, task_order):
     data_full = np.hstack([means, row_means])
     n_cols = n_tasks + 1
 
-    fig, ax = plt.subplots(figsize=(max(12, n_cols * 0.85), n_conds * 0.9 + 1.5))
+    fig, ax = plt.subplots(figsize=(max(12, n_cols * 0.85), 3.8))
     im = ax.imshow(data_full, aspect="auto", cmap="viridis", vmin=0, vmax=1)
 
     for r in range(n_conds):
@@ -140,9 +132,9 @@ def make_heatmap(data, metric, output_path, title, task_order):
                 fontsize=5.5, color=text_color, alpha=0.85)
 
     ax.axvline(n_tasks - 0.5, color="white", linewidth=2)
-    # Divider after reference conditions (A, B, E, F)
-    if "F" in conds and "N" in conds:
-        ax.axhline(conds.index("N") - 0.5, color="white", linewidth=2.5)
+    # White divider after reference condition A
+    if "A" in conds and "B" in conds:
+        ax.axhline(conds.index("B") - 0.5, color="white", linewidth=2.5)
 
     ax.set_yticks(range(n_conds))
     ax.set_yticklabels([COND_LABELS[c] for c in conds], fontsize=9)
@@ -176,21 +168,20 @@ def val_task_order(data):
 
 
 def main():
+    # Default: load reference from wide_middle (cond A) + new skip conditions (B, C, D)
     if len(sys.argv) > 1:
         dirs = [Path(p) for p in sys.argv[1:]]
     else:
         dirs = [
             Path("outputs/arc1d_rope_wide_middle_ablation"),
             Path("outputs/arc1d_rope_skip_ablation"),
-            Path("outputs/arc1d_rope_loop_skip_ablation"),
-            Path("outputs/arc1d_rope_unet_skip_ablation"),
         ]
 
     data = load_results(*dirs)
     n_runs = sum(len(v) for t in data.values() for v in t.values())
     print(f"Loaded: {len(data)} tasks, {n_runs} seed×condition entries")
 
-    out_dir = Path("outputs/arc1d_rope_unet_skip_ablation/plots")
+    out_dir = Path("outputs/arc1d_rope_skip_ablation/plots")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     order = val_task_order(data)
@@ -198,8 +189,8 @@ def main():
     split_label = {"val": "Validation", "test": "Test"}
     for metric in ("val", "test"):
         title = (
-            f"ARC-1D U-Net Skip Ablation — {split_label[metric]} Exact Match"
-            f"\n(mean ± std across seeds, outer=8 inner=32 Canon ABCD RoPE 4-loops)"
+            f"ARC-1D Skip Connection Ablation — {split_label[metric]} Exact Match"
+            f"\n(mean ± std across seeds, outer=8 inner=32 RoPE 4-loops)"
         )
         make_heatmap(data, metric, out_dir / f"heatmap_{metric}.png", title, order)
 

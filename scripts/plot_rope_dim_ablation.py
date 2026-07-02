@@ -10,7 +10,7 @@
   L: outer=16, inner=32, no skip
   M: outer=16, inner=32, block+loop skip
 
-White divider separates reference conditions (A, F) from new conditions (H–M).
+Rows ordered by increasing parameter count; white dividers between size groups.
 
 Usage:
     python scripts/plot_rope_dim_ablation.py
@@ -24,16 +24,21 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Row order: increasing parameter count
+# H/I: 6.4k  →  A/F: 16.7k  →  L/M: 22.6k  →  J/K: 55.6k
 COND_LABELS = {
-    "A": "outer8  inner32  no skip  (ref)",
-    "F": "outer8  inner32  blk+loop skip  (ref)",
     "H": "outer8  inner16  no skip        6.4k",
     "I": "outer8  inner16  blk+loop skip  6.4k",
-    "J": "outer8  inner64  no skip       55.6k",
-    "K": "outer8  inner64  blk+loop skip 55.6k",
+    "A": "outer8  inner32  no skip       16.7k",
+    "F": "outer8  inner32  blk+loop skip 16.7k",
     "L": "outer16 inner32  no skip       22.6k",
     "M": "outer16 inner32  blk+loop skip 22.6k",
+    "J": "outer8  inner64  no skip       55.6k",
+    "K": "outer8  inner64  blk+loop skip 55.6k",
 }
+
+# Dividers between parameter-size groups (after last cond in each group)
+_SIZE_GROUP_ENDS = {"I", "F", "M"}
 
 TASK_DISPLAY = {
     "1d_denoising_1c":  "Denoising 1c",
@@ -141,9 +146,10 @@ def make_heatmap(data, metric, output_path, title, task_order):
                 fontsize=5.5, color=text_color, alpha=0.85)
 
     ax.axvline(n_tasks - 0.5, color="white", linewidth=2)
-    # Divider after reference conditions (A, F)
-    if "F" in conds and "H" in conds:
-        ax.axhline(conds.index("H") - 0.5, color="white", linewidth=2.5)
+    # Dividers between parameter-size groups
+    for i, cond in enumerate(conds[:-1]):
+        if cond in _SIZE_GROUP_ENDS:
+            ax.axhline(i + 0.5, color="white", linewidth=2.5)
 
     ax.set_yticks(range(n_conds))
     ax.set_yticklabels([COND_LABELS[c] for c in conds], fontsize=8.5)
