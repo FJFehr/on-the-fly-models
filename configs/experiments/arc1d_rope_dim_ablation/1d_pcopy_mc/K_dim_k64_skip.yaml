@@ -1,0 +1,21 @@
+_base_: configs/experiments/arc1d_rope_dim_ablation/base_dim_ablation.yaml
+experiment_name: ablation_K_1d_pcopy_mc_dim_k64_skip
+project_name: arc1d_rope_dim_ablation
+task_categories:
+- 1d_pcopy_mc
+backbone_model:
+  name: rope_canon_sandwich_transformer
+  params:
+    hidden_dim: 8
+    num_heads: 1
+    inner_dim: 64
+    inner_num_heads: 8
+    use_block_skip: true
+    use_loop_skip: true
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    n_loops: 4
