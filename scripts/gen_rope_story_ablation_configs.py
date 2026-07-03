@@ -6,6 +6,10 @@ scripts/plot_story_ablation.py, bridging the plain transformer
 
   SC1: Canon ABCD on the plain N_sup transformer (dim=512, no RoPE)  — feeds story step S3
   SC2: + RoPE, flat (n_loops=1, dim=16, Canon carries over from SC1) — feeds story step S4
+  SC3: SC2 + block skip, still n_loops=1 (no looping, no wide middle)
+       — diagnostic: isolates block skip's effect from looping/widening,
+         since S5/S6 (looped/wide middle) showed no improvement over S4.
+         Not part of the plotted 8-step narrative.
 
   S3: Flat 3L transformer with RoPE  (n_loops=1, dim=16, no Canon)   — legacy, reference only
   S4: Looped middle with RoPE        (n_loops=4, dim=16, no Canon)   — legacy, reference only
@@ -139,6 +143,28 @@ CONDITIONS = {
             },
         },
     },
+    # SC3: SC2 + block skip, still n_loops=1. Diagnostic — isolates block skip's
+    # effect from looping/wide-middle (S5/S6 showed no improvement over S4).
+    "SC3": {
+        "task_encoding": {
+            "embedding_dim": 16,
+            "value_vocab_size": 11,
+            "use_sinusoidal_pe": False,
+        },
+        "backbone_model": {
+            "name": "rope_canon_sandwich_transformer",
+            "params": {
+                **_ROPE_COMMON,
+                "canon_set": "ABCD",
+                "hidden_dim": 16,
+                "num_heads": 2,
+                "inner_dim": 16,
+                "inner_num_heads": 2,
+                "n_loops": 1,
+                "use_block_skip": True,
+            },
+        },
+    },
 }
 
 COND_BASE = {
@@ -147,6 +173,7 @@ COND_BASE = {
     "S5": BASE_CFG_STORY,
     "SC1": BASE_CFG_RECURSION,
     "SC2": BASE_CFG_STORY,
+    "SC3": BASE_CFG_STORY,
 }
 
 COND_SUFFIX = {
@@ -155,6 +182,7 @@ COND_SUFFIX = {
     "S5": "story_wide_nc",
     "SC1": "story_canon_plain",
     "SC2": "story_canon_rope_flat",
+    "SC3": "story_flat_block_skip",
 }
 
 DST.mkdir(parents=True, exist_ok=True)

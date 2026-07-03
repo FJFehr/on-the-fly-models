@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Run arc1d_rope_story_ablation across seeds 1–5.
-# Max 425 jobs: 5 conditions × 17 tasks × 5 seeds (skips already-completed runs).
+# Max 510 jobs: 6 conditions × 17 tasks × 5 seeds (skips already-completed runs).
 #
-# Five conditions build the 8-step story narrative. SC1/SC2 feed the current
-# narrative (steps S3/S4 — Canon ABCD, then RoPE); S3/S4/S5 are the original
-# no-Canon variants, kept as untouched reference data and no longer plotted by
-# scripts/plot_story_ablation.py:
+# Six conditions. SC1/SC2 feed the 8-step story narrative (steps S3/S4 — Canon
+# ABCD, then RoPE); SC3 is a diagnostic (not part of the plotted narrative);
+# S3/S4/S5 are the original no-Canon variants, kept as untouched reference data
+# and no longer plotted by scripts/plot_story_ablation.py:
 #   SC1: Canon ABCD added onto the plain N_sup=4 transformer (dim=512, no RoPE)
 #   SC2: + RoPE, flat (dim=16, n_loops=1, Canon carries over from SC1)
+#   SC3: [diagnostic] SC2 + block skip, still n_loops=1 — isolates block skip
+#        from looping/wide-middle, since S5/S6 showed no gain over S4
 #   S3:  [reference] Flat 3L RoPE transformer, no Canon (n_loops=1, dim=16)
 #   S4:  [reference] Looped middle, no Canon (n_loops=4, dim=16)
 #   S5:  [reference] Wide middle, no Canon (outer=8, inner=32, n_loops=4)
