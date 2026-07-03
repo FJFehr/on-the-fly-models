@@ -10,6 +10,14 @@ scripts/plot_story_ablation.py, bridging the plain transformer
        — diagnostic: isolates block skip's effect from looping/widening,
          since S5/S6 (looped/wide middle) showed no improvement over S4.
          Not part of the plotted 8-step narrative.
+  SC4: uniform dim=16, n_loops=4, + block skip, no wide middle
+       — S7 (skip_abcd_hw) without the wide middle: is looping-with-skip
+         enough, or does skip need the wide middle specifically?
+  SC5: uniform dim=16, n_loops=4, + block skip + loop skip, no wide middle
+       — S8 (loop_skip_f4) without the wide middle, same question for the
+         full skip combo. Neither SC4 nor SC5 is part of the plotted
+         8-step narrative — both are diagnostics for the "does the
+         sandwich (wide middle) actually do anything" question.
 
   S3: Flat 3L transformer with RoPE  (n_loops=1, dim=16, no Canon)   — legacy, reference only
   S4: Looped middle with RoPE        (n_loops=4, dim=16, no Canon)   — legacy, reference only
@@ -165,6 +173,51 @@ CONDITIONS = {
             },
         },
     },
+    # SC4: uniform dim=16, n_loops=4, + block skip, no wide middle.
+    # S7 (skip_abcd_hw) without the wide middle.
+    "SC4": {
+        "task_encoding": {
+            "embedding_dim": 16,
+            "value_vocab_size": 11,
+            "use_sinusoidal_pe": False,
+        },
+        "backbone_model": {
+            "name": "rope_canon_sandwich_transformer",
+            "params": {
+                **_ROPE_COMMON,
+                "canon_set": "ABCD",
+                "hidden_dim": 16,
+                "num_heads": 2,
+                "inner_dim": 16,
+                "inner_num_heads": 2,
+                "n_loops": 4,
+                "use_block_skip": True,
+            },
+        },
+    },
+    # SC5: uniform dim=16, n_loops=4, + block skip + loop skip, no wide middle.
+    # S8 (loop_skip_f4) without the wide middle.
+    "SC5": {
+        "task_encoding": {
+            "embedding_dim": 16,
+            "value_vocab_size": 11,
+            "use_sinusoidal_pe": False,
+        },
+        "backbone_model": {
+            "name": "rope_canon_sandwich_transformer",
+            "params": {
+                **_ROPE_COMMON,
+                "canon_set": "ABCD",
+                "hidden_dim": 16,
+                "num_heads": 2,
+                "inner_dim": 16,
+                "inner_num_heads": 2,
+                "n_loops": 4,
+                "use_block_skip": True,
+                "use_loop_skip": True,
+            },
+        },
+    },
 }
 
 COND_BASE = {
@@ -174,6 +227,8 @@ COND_BASE = {
     "SC1": BASE_CFG_RECURSION,
     "SC2": BASE_CFG_STORY,
     "SC3": BASE_CFG_STORY,
+    "SC4": BASE_CFG_STORY,
+    "SC5": BASE_CFG_STORY,
 }
 
 COND_SUFFIX = {
@@ -183,6 +238,8 @@ COND_SUFFIX = {
     "SC1": "story_canon_plain",
     "SC2": "story_canon_rope_flat",
     "SC3": "story_flat_block_skip",
+    "SC4": "story_uniform_block_skip",
+    "SC5": "story_uniform_block_loop_skip",
 }
 
 DST.mkdir(parents=True, exist_ok=True)
