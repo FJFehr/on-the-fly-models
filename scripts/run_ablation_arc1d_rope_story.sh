@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# Run arc1d_rope_story_ablation across seeds 1–5 (255 jobs: 3 conditions × 17 tasks × 5 seeds).
+# Run arc1d_rope_story_ablation across seeds 1–5.
+# Max 425 jobs: 5 conditions × 17 tasks × 5 seeds (skips already-completed runs).
 #
-# Three new conditions that fill the story between the plain transformer and the full model:
-#   S3: Flat 3L RoPE transformer (n_loops=1, dim=16, no Canon)
-#   S4: Looped middle (n_loops=4, dim=16, no Canon)
-#   S5: Wide middle (outer=8, inner=32, n_loops=4, no Canon)
+# Five conditions build the 8-step story narrative. SC1/SC2 feed the current
+# narrative (steps S3/S4 — Canon ABCD, then RoPE); S3/S4/S5 are the original
+# no-Canon variants, kept as untouched reference data and no longer plotted by
+# scripts/plot_story_ablation.py:
+#   SC1: Canon ABCD added onto the plain N_sup=4 transformer (dim=512, no RoPE)
+#   SC2: + RoPE, flat (dim=16, n_loops=1, Canon carries over from SC1)
+#   S3:  [reference] Flat 3L RoPE transformer, no Canon (n_loops=1, dim=16)
+#   S4:  [reference] Looped middle, no Canon (n_loops=4, dim=16)
+#   S5:  [reference] Wide middle, no Canon (outer=8, inner=32, n_loops=4)
 #
 # Note: 1d_padded_fill is excluded from this experiment.
 #
@@ -24,8 +30,17 @@ mkdir -p "$LOG_DIR"
 SEEDS=(1 2 3 4 5)
 
 JOBS=()
+SKIPPED=0
 for SEED in "${SEEDS[@]}"; do
     while IFS= read -r cfg; do
+        logging_name=$(grep '^experiment_name:' "$cfg" | awk '{print $2}')
+        exp_name="${logging_name}_seed${SEED}"
+        results_file="outputs/${PROJECT}/${exp_name}/results.txt"
+
+        if [ -f "$results_file" ]; then
+            (( SKIPPED++ )) || true
+            continue
+        fi
         JOBS+=("${cfg}|${SEED}")
     done < <(find "$CFG_DIR" -mindepth 2 -maxdepth 2 -name "*.yaml" \
                   ! -name "base_*" ! -path "*/overfit/*" | sort)
@@ -33,8 +48,14 @@ done
 
 N_JOBS=${#JOBS[@]}
 echo "Launching $N_JOBS jobs across $N_GPUS GPUs (~$((N_JOBS / N_GPUS)) jobs/GPU)"
+echo "Already complete: $SKIPPED (skipped)"
 echo "Project: $PROJECT  |  Logs: $LOG_DIR/"
 echo ""
+
+if [ "$N_JOBS" -eq 0 ]; then
+    echo "Nothing to run — all conditions already at 5 seeds."
+    exit 0
+fi
 
 for gpu in $(seq 0 $((N_GPUS - 1))); do
     sleep $((gpu * 5))

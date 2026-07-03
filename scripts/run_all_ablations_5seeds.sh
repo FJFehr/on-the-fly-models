@@ -11,9 +11,10 @@
 #   arc1d_rope_loop_skip_ablation      — per-iteration loop h0 injection
 #   arc1d_rope_dim_ablation            — inner/outer dim sweep
 #   arc1d_rope_unet_skip_ablation      — U-Net style single bypass connections
-#   arc1d_rope_story_ablation          — story conditions S3/S4/S5 (RoPE flat/loop/wide-nc)
+#   arc1d_rope_story_ablation          — story conditions SC1/SC2 (Canon-plain, Canon+RoPE-flat)
+#                                         + legacy reference conditions S3/S4/S5 (no longer plotted)
 #
-# Total from scratch: ~1734 jobs across all experiments × 5 seeds.
+# Total from scratch: ~1904 jobs across all experiments × 5 seeds.
 #
 # Usage:
 #   bash scripts/run_all_ablations_5seeds.sh        # 8 GPUs

@@ -1,0 +1,21 @@
+_base_: configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
+experiment_name: ablation_SC1_1d_denoising_1c_story_canon_plain
+project_name: arc1d_rope_story_ablation
+task_categories:
+- 1d_denoising_1c
+model: looped_supervised
+N_supervision: 4
+learning_rate: 0.00025
+max_steps: 2000
+backbone_model:
+  name: canon_transformer
+  params:
+    hidden_dim: 512
+    num_layers: 4
+    num_heads: 8
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false

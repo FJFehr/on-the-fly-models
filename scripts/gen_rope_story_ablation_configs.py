@@ -1,12 +1,21 @@
 """Generate configs for arc1d_rope_story_ablation.
 
-Three new conditions that fill in the story between the plain transformer
-(arc1d_recursion_ablation) and the full Canon+skip model. All use RoPE, no Canon,
-N_sup=2, outer=8 embedding dim.
+Five conditions used to build the 8-step "story" heatmap in
+scripts/plot_story_ablation.py, bridging the plain transformer
+(arc1d_recursion_ablation) and the full Canon+skip model:
 
-  S3: Flat 3L transformer with RoPE  (n_loops=1, dim=16, no Canon)
-  S4: Looped middle with RoPE        (n_loops=4, dim=16, no Canon)
-  S5: Wide middle with RoPE          (outer=8, inner=32, n_loops=4, no Canon)
+  SC1: Canon ABCD on the plain N_sup transformer (dim=512, no RoPE)  — feeds story step S3
+  SC2: + RoPE, flat (n_loops=1, dim=16, Canon carries over from SC1) — feeds story step S4
+
+  S3: Flat 3L transformer with RoPE  (n_loops=1, dim=16, no Canon)   — legacy, reference only
+  S4: Looped middle with RoPE        (n_loops=4, dim=16, no Canon)   — legacy, reference only
+  S5: Wide middle with RoPE          (outer=8, inner=32, n_loops=4, no Canon) — legacy, reference only
+
+S3/S4/S5 were the original "no Canon" baselines for the RoPE progression. They are
+kept as-is (not deleted, not regenerated with changes) for full-reproducibility
+reference, but scripts/plot_story_ablation.py no longer plots them — SC1/SC2 now
+carry the story's Canon/RoPE steps instead, so Canon appears earlier (step 3) and
+the heatmap increases monotonically. See configs/experiments/arc1d_rope_story_ablation/README.md.
 
 1d_padded_fill is excluded (not included in the story narrative).
 """
@@ -17,7 +26,8 @@ import yaml
 
 SRC_TASKS = Path("configs/experiments/arc1d_recursion_ablation")
 DST = Path("configs/experiments/arc1d_rope_story_ablation")
-BASE_CFG = "configs/experiments/arc1d_rope_story_ablation/base_story.yaml"
+BASE_CFG_STORY = "configs/experiments/arc1d_rope_story_ablation/base_story.yaml"
+BASE_CFG_RECURSION = "configs/experiments/arc1d_recursion_ablation/base_ablation.yaml"
 PROJECT = "arc1d_rope_story_ablation"
 SKIP_DIRS = {"overfit", "1d_padded_fill"}
 
@@ -85,12 +95,66 @@ CONDITIONS = {
             },
         },
     },
+    # SC1: Canon ABCD added directly onto the S2 architecture (dim=512, no RoPE yet).
+    # Mirrors arc1d_recursion_ablation_large_8k cond C exactly, but with backbone
+    # canon_transformer instead of transformer (drop-in superset interface).
+    "SC1": {
+        "model": "looped_supervised",
+        "N_supervision": 4,
+        "learning_rate": 0.00025,
+        "max_steps": 2000,
+        "backbone_model": {
+            "name": "canon_transformer",
+            "params": {
+                "hidden_dim": 512,
+                "num_layers": 4,
+                "num_heads": 8,
+                "dropout": 0.1,
+                "canon_set": "ABCD",
+                "canon_kernel": 5,
+                "canon_activation": True,
+                "canon_residual": True,
+                "canon_causal": False,
+            },
+        },
+    },
+    # SC2: + RoPE, flat (n_loops=1, dim=16). Identical to S3 but with Canon ABCD
+    # carried over from SC1 instead of turned off.
+    "SC2": {
+        "task_encoding": {
+            "embedding_dim": 16,
+            "value_vocab_size": 11,
+            "use_sinusoidal_pe": False,
+        },
+        "backbone_model": {
+            "name": "rope_canon_sandwich_transformer",
+            "params": {
+                **_ROPE_COMMON,
+                "canon_set": "ABCD",
+                "hidden_dim": 16,
+                "num_heads": 2,
+                "inner_dim": 16,
+                "inner_num_heads": 2,
+                "n_loops": 1,
+            },
+        },
+    },
+}
+
+COND_BASE = {
+    "S3": BASE_CFG_STORY,
+    "S4": BASE_CFG_STORY,
+    "S5": BASE_CFG_STORY,
+    "SC1": BASE_CFG_RECURSION,
+    "SC2": BASE_CFG_STORY,
 }
 
 COND_SUFFIX = {
     "S3": "story_rope_flat",
     "S4": "story_rope_loop",
     "S5": "story_wide_nc",
+    "SC1": "story_canon_plain",
+    "SC2": "story_canon_rope_flat",
 }
 
 DST.mkdir(parents=True, exist_ok=True)
@@ -111,7 +175,7 @@ for task_dir in sorted(d for d in SRC_TASKS.iterdir() if d.is_dir()):
     for cond, overrides in CONDITIONS.items():
         exp_name = f"ablation_{cond}_{task}_{COND_SUFFIX[cond]}"
         cfg = {
-            "_base_": BASE_CFG,
+            "_base_": COND_BASE[cond],
             "experiment_name": exp_name,
             "project_name": PROJECT,
             "task_categories": task_categories,
