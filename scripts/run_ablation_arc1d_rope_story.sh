@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Run arc1d_rope_story_ablation across seeds 1–5.
-# Max 1020 jobs: 12 conditions × 17 tasks × 5 seeds (skips already-completed runs).
+# Max 1105 jobs: 13 conditions × 17 tasks × 5 seeds (skips already-completed runs).
 #
-# Twelve conditions. SC1/SC2 feed the 8-step story narrative (steps S3/S4 —
-# Canon ABCD, then RoPE); SC3-SC9 are diagnostics (not part of the plotted
+# Thirteen conditions. SC1/SC2 feed the 8-step story narrative (steps S3/S4 —
+# Canon ABCD, then RoPE); SC3-SC10 are diagnostics (not part of the plotted
 # narrative) testing whether the wide-middle "sandwich" actually helps once
-# skip connections are added, and whether that's capacity or the outer/inner
-# bottleneck structure itself; S3/S4/S5 are the original no-Canon variants,
-# kept as untouched reference data and no longer plotted by
-# scripts/plot_story_ablation.py:
+# skip connections are added, whether that's capacity or the outer/inner
+# bottleneck structure itself, and whether looping itself is even needed; S3/
+# S4/S5 are the original no-Canon variants, kept as untouched reference data
+# and no longer plotted by scripts/plot_story_ablation.py:
 #   SC1: Canon ABCD added onto the plain N_sup=4 transformer (dim=512, no RoPE)
 #   SC2: + RoPE, flat (dim=16, n_loops=1, Canon carries over from SC1)
 #   SC3: [diagnostic] SC2 + block skip, still n_loops=1 — isolates block skip
@@ -25,6 +25,9 @@
 #        55,552 backbone params)
 #   SC9: [diagnostic] SC8 + block skip — param-matched to cond K of
 #        arc1d_rope_dim_ablation (note: K also has loop skip)
+#   SC10: [diagnostic] wide middle (outer=8, inner=32), n_loops=1, + block
+#         skip — S7 (skip_abcd_hw) with looping removed: does the gain need
+#         the loop, or is it wide capacity + skip alone?
 #   S3:  [reference] Flat 3L RoPE transformer, no Canon (n_loops=1, dim=16)
 #   S4:  [reference] Looped middle, no Canon (n_loops=4, dim=16)
 #   S5:  [reference] Wide middle, no Canon (outer=8, inner=32, n_loops=4)

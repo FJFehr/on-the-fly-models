@@ -35,6 +35,13 @@ scripts/plot_story_ablation.py, bridging the plain transformer
 
 Neither SC6/SC7 nor SC8/SC9 is part of the plotted 8-step narrative.
 
+  SC10: wide middle (outer=8, inner=32), n_loops=1, + block skip
+       — S7 (skip_abcd_hw) with looping removed (n_loops=1 instead of 4).
+         Answers directly: does S7's gain need the loop, or is it wide
+         capacity + skip alone? use_loop_skip is meaningless at n_loops=1
+         (nothing to inject across), so this is block skip only. Not part
+         of the plotted 8-step narrative.
+
   S3: Flat 3L transformer with RoPE  (n_loops=1, dim=16, no Canon)   — legacy, reference only
   S4: Looped middle with RoPE        (n_loops=4, dim=16, no Canon)   — legacy, reference only
   S5: Wide middle with RoPE          (outer=8, inner=32, n_loops=4, no Canon) — legacy, reference only
@@ -321,6 +328,30 @@ CONDITIONS = {
             },
         },
     },
+    # SC10: wide middle (outer=8, inner=32), n_loops=1, + block skip.
+    # S7 (skip_abcd_hw) with looping removed — does the gain need the loop,
+    # or is it wide capacity + skip alone? use_loop_skip omitted: meaningless
+    # at n_loops=1.
+    "SC10": {
+        "task_encoding": {
+            "embedding_dim": 8,
+            "value_vocab_size": 11,
+            "use_sinusoidal_pe": False,
+        },
+        "backbone_model": {
+            "name": "rope_canon_sandwich_transformer",
+            "params": {
+                **_ROPE_COMMON,
+                "canon_set": "ABCD",
+                "hidden_dim": 8,
+                "num_heads": 1,
+                "inner_dim": 32,
+                "inner_num_heads": 4,
+                "n_loops": 1,
+                "use_block_skip": True,
+            },
+        },
+    },
 }
 
 COND_BASE = {
@@ -336,6 +367,7 @@ COND_BASE = {
     "SC7": BASE_CFG_STORY,
     "SC8": BASE_CFG_STORY,
     "SC9": BASE_CFG_STORY,
+    "SC10": BASE_CFG_STORY,
 }
 
 COND_SUFFIX = {
@@ -351,6 +383,7 @@ COND_SUFFIX = {
     "SC7": "story_dim20_block_skip",
     "SC8": "story_dim36_base",
     "SC9": "story_dim36_block_skip",
+    "SC10": "story_wide_noloop_block_skip",
 }
 
 DST.mkdir(parents=True, exist_ok=True)
