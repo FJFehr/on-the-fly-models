@@ -55,10 +55,27 @@ ablation, run at two capacities to check the pattern holds across scale.
 | T6 | + Block skip | `rope_canon_sandwich_transformer` | 11,760 / 42,464 |
 | T7 | + Per-loop h0 (loop skip) | `rope_canon_sandwich_transformer` | 11,760 / 42,464 |
 
+## Loop-skip diagnostics (L1–L4)
+
+Not part of the plotted T1–T7 narrative. On the old wide/sandwich architecture, loop-skip
+alone (no block skip) did nothing at n_loops=4 (91.5%, ≈ no-skip's 91.7%) but became the
+single best result found at n_loops=8 (95.8%, beating block+loop skip at n_loops=4's 95.5%).
+These check whether that finding replicates on the clean uniform dim=16/32 architecture
+(N_supervision stays fixed at 2 — n_loops is the architectural recursive-loop depth, an
+orthogonal knob from the training-time supervision depth):
+
+| Code | n_loops | Block skip | Loop skip |
+|------|---------|-------------|-----------|
+| L1 | 8 | – | – (control: does n_loops=8 alone help?) |
+| L2 | 4 | – | ✓ |
+| L3 | 8 | – | ✓ |
+| L4 | 8 | ✓ | ✓ |
+
 ## Jobs
 
-7 steps × 2 widths × 17 tasks × 5 seeds = **1,190 jobs**, all new (1d_padded_fill excluded,
-established convention for this story family).
+7 steps × 2 widths × 17 tasks × 5 seeds = **1,190 jobs** (the T1–T7 story) + 4 diagnostic
+conditions × 2 widths × 17 tasks × 5 seeds = **680 jobs** (L1–L4) = **1,870 jobs total**, all
+new (1d_padded_fill excluded, established convention for this story family).
 
 ```bash
 python scripts/gen_uniform_ablation_configs.py

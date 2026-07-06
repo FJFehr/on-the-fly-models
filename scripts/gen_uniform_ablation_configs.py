@@ -25,10 +25,29 @@ Design choices (confirmed by user):
     (num_layers=3) and rope_canon_sandwich_transformer (n_loops=1) both give
     exactly 11,760 backbone params at dim=16, and 42,464 at dim=32.
   - N_supervision=2 for every looped step (T2-T7); T1 is direct (N_sup=1).
+    n_loops (the architectural recursive-loop depth) is a separate, orthogonal
+    knob from N_supervision (the training-time MAML-style supervision depth) -
+    N_supervision stays fixed at 2 throughout, including the L1-L4 diagnostics
+    below.
   - learning_rate=0.0005 throughout, including T1.
   - max_steps scaled inversely with N_sup so total compute is constant:
     T1 (N_sup=1) -> max_steps=8000; T2-T7 (N_sup=2) -> max_steps=4000.
   - head_dim=8 convention: dim=16 -> 2 heads, dim=32 -> 4 heads.
+
+Additional diagnostic conditions (L1-L4), same project, testing whether the
+per-loop h0 injection needs more loop iterations to pay off - on the old
+wide/sandwich architecture, loop-skip-alone at n_loops=4 did nothing (91.5%,
+~= no-skip's 91.7%) but at n_loops=8 it became the single best result found
+(95.8%, beating block+loop skip at n_loops=4's 95.5%). These check whether
+that finding replicates on the clean uniform dim=16/32 architecture:
+
+  L1: n_loops=8, no skip                     (control - does n_loops=8 alone help?)
+  L2: n_loops=4, loop skip only (no block skip)
+  L3: n_loops=8, loop skip only (no block skip)
+  L4: n_loops=8, block skip + loop skip
+
+Not part of the plotted T1-T7 narrative (excluded by plot_uniform_ablation.py's
+regex, which only matches T[1-7]).
 
 1d_padded_fill is excluded (established convention for this story family).
 """
@@ -156,6 +175,49 @@ STEP_SUFFIX = {
     "T7": "loop_skip",
 }
 
+
+def loop_diag_l1(dim: int, heads: int) -> dict:
+    """n_loops=8, no skip (control)."""
+    cfg = step5(dim, heads)
+    cfg["backbone_model"]["params"]["n_loops"] = 8
+    return cfg
+
+
+def loop_diag_l2(dim: int, heads: int) -> dict:
+    """n_loops=4, loop skip only (no block skip)."""
+    cfg = step5(dim, heads)
+    cfg["backbone_model"]["params"]["use_loop_skip"] = True
+    return cfg
+
+
+def loop_diag_l3(dim: int, heads: int) -> dict:
+    """n_loops=8, loop skip only (no block skip)."""
+    cfg = loop_diag_l1(dim, heads)
+    cfg["backbone_model"]["params"]["use_loop_skip"] = True
+    return cfg
+
+
+def loop_diag_l4(dim: int, heads: int) -> dict:
+    """n_loops=8, block skip + loop skip."""
+    cfg = loop_diag_l3(dim, heads)
+    cfg["backbone_model"]["params"]["use_block_skip"] = True
+    return cfg
+
+
+LOOP_DIAG_BUILDERS = {
+    "L1": loop_diag_l1,
+    "L2": loop_diag_l2,
+    "L3": loop_diag_l3,
+    "L4": loop_diag_l4,
+}
+
+LOOP_DIAG_SUFFIX = {
+    "L1": "n8_base",
+    "L2": "n4_loop_skip_only",
+    "L3": "n8_loop_skip_only",
+    "L4": "n8_block_loop_skip",
+}
+
 DST.mkdir(parents=True, exist_ok=True)
 
 n_written = 0
@@ -183,6 +245,21 @@ for task_dir in sorted(d for d in SRC_TASKS.iterdir() if d.is_dir()):
                 **copy.deepcopy(builder(dim, heads)),
             }
             out_path = out_task_dir / f"{step}_dim{dim}_{suffix}.yaml"
+            with open(out_path, "w") as f:
+                yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+            n_written += 1
+
+        for code, builder in LOOP_DIAG_BUILDERS.items():
+            suffix = LOOP_DIAG_SUFFIX[code]
+            exp_name = f"ablation_{code}_dim{dim}_{task}_{suffix}"
+            cfg = {
+                "_base_": BASE_CFG,
+                "experiment_name": exp_name,
+                "project_name": PROJECT,
+                "task_categories": task_categories,
+                **copy.deepcopy(builder(dim, heads)),
+            }
+            out_path = out_task_dir / f"{code}_dim{dim}_{suffix}.yaml"
             with open(out_path, "w") as f:
                 yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
             n_written += 1

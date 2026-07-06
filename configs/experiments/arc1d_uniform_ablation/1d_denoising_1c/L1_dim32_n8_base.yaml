@@ -1,0 +1,29 @@
+_base_: configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
+experiment_name: ablation_L1_dim32_1d_denoising_1c_n8_base
+project_name: arc1d_uniform_ablation
+task_categories:
+- 1d_denoising_1c
+model: looped_supervised
+learning_rate: 0.0005
+max_steps: 4000
+task_encoding:
+  embedding_dim: 32
+  value_vocab_size: 11
+  use_sinusoidal_pe: false
+backbone_model:
+  name: rope_canon_sandwich_transformer
+  params:
+    hidden_dim: 32
+    num_heads: 4
+    inner_dim: 32
+    inner_num_heads: 4
+    n_loops: 8
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_block_skip: false
+    use_loop_skip: false
+N_supervision: 2
