@@ -20,9 +20,9 @@ Seven steps, identical structure at both widths:
 
 Design choices (confirmed by user):
   - num_layers=3 always for the plain transformer/canon_transformer family
-    (T1-T3), for block-count parity with the RoPE-sandwich family's
+    (T1-T3), for block-count parity with the RoPE-looped family's
     pre+middle+post=3 blocks at n_loops=1 (T4). Verified: canon_transformer
-    (num_layers=3) and rope_canon_sandwich_transformer (n_loops=1) both give
+    (num_layers=3) and rope_canon_looped_transformer (n_loops=1) both give
     exactly 11,760 backbone params at dim=16, and 42,464 at dim=32.
   - N_supervision=2 for every looped step (T2-T7); T1 is direct (N_sup=1).
     n_loops (the architectural recursive-loop depth) is a separate, orthogonal
@@ -45,6 +45,28 @@ that finding replicates on the clean uniform dim=16/32 architecture:
   L2: n_loops=4, loop skip only (no block skip)
   L3: n_loops=8, loop skip only (no block skip)
   L4: n_loops=8, block skip + loop skip
+
+Result: it didn't replicate. On the clean architecture, loop-skip-alone (L2, L3)
+never beat its no-skip baseline (T5, L1) at either width; only the combined
+block+loop skip (T7) or simply more loop iterations with no skip at all (L1)
+helped, and by similar amounts (~95% at dim=32).
+
+Given that, L5/L6 extend the no-skip n_loops sweep further (1, 4, 8 already
+covered by T4/T5/L1) to see how far "just loop more, no skip mechanisms at
+all" scales before diminishing returns - in the interest of the simplest
+possible architecture:
+
+  L5: n_loops=16, no skip
+  L6: n_loops=32, no skip
+
+No gradient checkpointing exists in this codebase (training_step in
+looped_supervised_lightning.py runs N_supervision sequential forward+backward
+passes with detach() between them, but *within* one forward pass all n_loops
+iterations sit in a single unbroken autograd graph). Activation memory during
+backward and wall-clock time per run both scale roughly linearly with n_loops
+(max_steps is held fixed at 4000 regardless of n_loops, so total compute is
+NOT held constant across this sweep) - n_loops=32 is expected to take ~4x as
+long and use ~4x the activation memory of n_loops=8, and ~32x that of n_loops=1.
 
 Not part of the plotted T1-T7 narrative (excluded by plot_uniform_ablation.py's
 regex, which only matches T[1-7]).
@@ -118,7 +140,7 @@ def step4(dim: int, heads: int) -> dict:
     cfg = step3(dim, heads)
     cfg["task_encoding"]["use_sinusoidal_pe"] = False
     cfg["backbone_model"] = {
-        "name": "rope_canon_sandwich_transformer",
+        "name": "rope_canon_looped_transformer",
         "params": {
             "hidden_dim": dim,
             "num_heads": heads,
@@ -204,11 +226,27 @@ def loop_diag_l4(dim: int, heads: int) -> dict:
     return cfg
 
 
+def loop_diag_l5(dim: int, heads: int) -> dict:
+    """n_loops=16, no skip."""
+    cfg = step5(dim, heads)
+    cfg["backbone_model"]["params"]["n_loops"] = 16
+    return cfg
+
+
+def loop_diag_l6(dim: int, heads: int) -> dict:
+    """n_loops=32, no skip."""
+    cfg = step5(dim, heads)
+    cfg["backbone_model"]["params"]["n_loops"] = 32
+    return cfg
+
+
 LOOP_DIAG_BUILDERS = {
     "L1": loop_diag_l1,
     "L2": loop_diag_l2,
     "L3": loop_diag_l3,
     "L4": loop_diag_l4,
+    "L5": loop_diag_l5,
+    "L6": loop_diag_l6,
 }
 
 LOOP_DIAG_SUFFIX = {
@@ -216,6 +254,8 @@ LOOP_DIAG_SUFFIX = {
     "L2": "n4_loop_skip_only",
     "L3": "n8_loop_skip_only",
     "L4": "n8_block_loop_skip",
+    "L5": "n16_base",
+    "L6": "n32_base",
 }
 
 DST.mkdir(parents=True, exist_ok=True)

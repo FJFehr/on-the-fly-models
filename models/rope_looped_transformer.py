@@ -1,11 +1,11 @@
-"""RoPE Canon Sandwich Transformer.
+"""RoPE Canon Looped Transformer.
 
-Sandwich architecture (fixed pre + looped middle + fixed post) where every
+Looped architecture (fixed pre + looped middle + fixed post) where every
 CanonBlock uses RoPE (rotary position embedding) inside attention instead of
 the additive sinusoidal PE that lives in the input embedder.
 
 Classes mirror their counterparts in models/canon_transformer.py and
-models/sandwich_transformer.py, with the single addition of RoPE applied to
+models/looped_transformer.py, with the single addition of RoPE applied to
 Q and K after the per-head reshape, before the dot product.
 """
 
@@ -164,8 +164,8 @@ class RoPECanonBlock(nn.Module):
         return x
 
 
-class RoPECanonSandwichTransformer(nn.Module):
-    """Sandwich transformer with RoPE Canon blocks.
+class RoPECanonLoopedTransformer(nn.Module):
+    """Looped transformer with RoPE Canon blocks.
 
     Architecture (uniform width):
         input_projection → pre (1×) → middle (n_loops×, shared) → post (1×) → final_norm
@@ -291,7 +291,7 @@ class RoPECanonSandwichTransformer(nn.Module):
     def __repr__(self) -> str:
         mid = f"inner={self.inner_dim}" if self.has_wide_middle else f"hidden={self.hidden_dim}"
         return (
-            f"RoPECanonSandwichTransformer(input={self.input_dim}, hidden={self.hidden_dim}, "
+            f"RoPECanonLoopedTransformer(input={self.input_dim}, hidden={self.hidden_dim}, "
             f"{mid}, heads={self.num_heads}, n_loops={self.n_loops}, "
             f"canon_set={self.canon_set!r}, canon_kernel={self.canon_kernel})"
         )

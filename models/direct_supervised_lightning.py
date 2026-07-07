@@ -9,8 +9,8 @@ import torch.nn.functional as F
 
 from metrics import accuracy, exact_match_accuracy
 from models.canon_transformer import CanonRecursiveTransformer, CanonTransformer
-from models.sandwich_transformer import CanonSandwichTransformer, SandwichTransformer
-from models.rope_sandwich_transformer import RoPECanonSandwichTransformer
+from models.looped_transformer import CanonLoopedTransformer, LoopedTransformer
+from models.rope_looped_transformer import RoPECanonLoopedTransformer
 from models.cnn import CNN
 from models.recursive_transformer import RecursiveTransformer
 from models.rnn import RNN
@@ -112,9 +112,9 @@ class DirectSupervisedLightning(pl.LightningModule):
             "recursive_transformer": RecursiveTransformer,
             "canon_transformer": CanonTransformer,
             "canon_recursive_transformer": CanonRecursiveTransformer,
-            "sandwich_transformer": SandwichTransformer,
-            "canon_sandwich_transformer": CanonSandwichTransformer,
-            "rope_canon_sandwich_transformer": RoPECanonSandwichTransformer,
+            "looped_transformer": LoopedTransformer,
+            "canon_looped_transformer": CanonLoopedTransformer,
+            "rope_canon_looped_transformer": RoPECanonLoopedTransformer,
         }
         name = backbone_model["name"]
         if name not in registry:
@@ -159,7 +159,7 @@ class DirectSupervisedLightning(pl.LightningModule):
             pad_mask = (value_ids == self.padding_idx).unsqueeze(-1)  # (B, seq_len, 1)
             embedded = embedded.masked_fill(pad_mask, 0.0)
 
-        if isinstance(self.backbone, (Transformer, CanonTransformer, CanonRecursiveTransformer, SandwichTransformer, CanonSandwichTransformer, RoPECanonSandwichTransformer)) and self.padding_idx is not None:
+        if isinstance(self.backbone, (Transformer, CanonTransformer, CanonRecursiveTransformer, LoopedTransformer, CanonLoopedTransformer, RoPECanonLoopedTransformer)) and self.padding_idx is not None:
             padding_mask = value_ids == self.padding_idx  # (B, seq_len), True = pad
             hidden = self.backbone(embedded, src_key_padding_mask=padding_mask)
         elif isinstance(self.backbone, RNN) and self.padding_idx is not None:

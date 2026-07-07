@@ -1,4 +1,4 @@
-"""Sandwich recursive transformer: fixed pre/post layers with a looped middle layer.
+"""Looped transformer: fixed pre/post layers with a looped middle layer.
 
 Architecture:
     input_projection  →  pre_layer (1×)  →  middle_layer (n_loops×, shared weights)  →  post_layer (1×)  →  final_norm
@@ -17,7 +17,7 @@ from models.activations import resolve_activation_fn
 from models.canon_transformer import CanonBlock
 
 
-class SandwichTransformer(nn.Module):
+class LoopedTransformer(nn.Module):
     """Transformer with fixed pre/post layers and a weight-shared looped middle layer.
 
     Parameter count equals a plain 3-layer transformer regardless of n_loops.
@@ -77,15 +77,15 @@ class SandwichTransformer(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            f"SandwichTransformer(input={self.input_dim}, hidden={self.hidden_dim}, "
+            f"LoopedTransformer(input={self.input_dim}, hidden={self.hidden_dim}, "
             f"heads={self.num_heads}, n_loops={self.n_loops})"
         )
 
 
-class CanonSandwichTransformer(nn.Module):
-    """Sandwich transformer where all three layers are CanonBlocks.
+class CanonLoopedTransformer(nn.Module):
+    """Looped transformer where all three layers are CanonBlocks.
 
-    Mirrors SandwichTransformer but uses CanonBlock (depthwise 1D conv at
+    Mirrors LoopedTransformer but uses CanonBlock (depthwise 1D conv at
     positions A/B/C/D) for pre, middle, and post layers.
 
     Parameter count equals a Canon 3-layer transformer regardless of n_loops.
@@ -157,7 +157,7 @@ class CanonSandwichTransformer(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            f"CanonSandwichTransformer(input={self.input_dim}, hidden={self.hidden_dim}, "
+            f"CanonLoopedTransformer(input={self.input_dim}, hidden={self.hidden_dim}, "
             f"heads={self.num_heads}, n_loops={self.n_loops}, "
             f"canon_set={self.canon_set!r}, canon_kernel={self.canon_kernel}, "
             f"canon_causal={self.canon_causal})"
