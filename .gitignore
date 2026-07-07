@@ -5,4 +5,6 @@ __pycache__/
 .claude/
 wandb/
 outputs/
+figures/
+logs/
 .codex

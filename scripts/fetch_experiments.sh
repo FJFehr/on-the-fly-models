@@ -2,9 +2,9 @@
 # Fetch experiment outputs from torrnode11.priv, excluding model checkpoints.
 #
 # Usage:
-#   bash scripts/fetch_experiments.sh arc1d_rope_sandwich_ablation
-#   bash scripts/fetch_experiments.sh outputs/arc1d_rope_sandwich_ablation
-#   bash scripts/fetch_experiments.sh arc1d_rope_sandwich_ablation arc1d_sandwich_ablation
+#   bash scripts/fetch_experiments.sh arc1d_uniform_ablation
+#   bash scripts/fetch_experiments.sh outputs/arc1d_uniform_ablation
+#   bash scripts/fetch_experiments.sh arc1d_uniform_ablation arc1d_recursion_ablation
 
 set -uo pipefail
 
@@ -15,8 +15,8 @@ JUMP_HOST="robots.ox.ac.uk"
 
 if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <output_dir> [output_dir ...]"
-    echo "  output_dir: name under outputs/ (e.g. arc1d_rope_sandwich_ablation)"
-    echo "              or full path (e.g. outputs/arc1d_rope_sandwich_ablation)"
+    echo "  output_dir: name under outputs/ (e.g. arc1d_uniform_ablation)"
+    echo "              or full path (e.g. outputs/arc1d_uniform_ablation)"
     exit 1
 fi
 
@@ -43,7 +43,9 @@ for ARG in "$@"; do
     echo "==> Fetching: $REMOTE_PATH"
     echo "         to: $LOCAL_PATH"
 
-    if rsync -avz --exclude '*/checkpoints/*' \
+    if rsync -avz \
+        --exclude '*/checkpoints/*' \
+        --exclude '*.ckpt' \
         -e "$RSYNC_SSH" \
         "$REMOTE_PATH" "$LOCAL_PATH"; then
         N=$(find "$LOCAL_PATH" -name "results.txt" | wc -l)

@@ -1,2 +1,0 @@
-_base_: configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
-project_name: arc1d_recursion_ablation_8k
