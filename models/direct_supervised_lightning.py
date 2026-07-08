@@ -127,7 +127,7 @@ class DirectSupervisedLightning(pl.LightningModule):
         params["output_dim"] = hidden_dim
         if name == "mlp":
             params["seq_len"] = seq_len
-        if name in ("transformer", "canon_transformer"):
+        if name in ("transformer", "canon_transformer", "rope_canon_looped_transformer"):
             # These backbones have an internal output_head that is redundant when DSL
             # adds its own head on top. Disable it so the backbone returns hidden states
             # directly, matching the contract of all other backbones.

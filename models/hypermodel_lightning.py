@@ -8,11 +8,13 @@ import lightning as pl
 import torch
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
+from torch.nn.utils import clip_grad_norm_
 
 import wandb
 from models.cnn import CNN
 from models.hypermodel import AttentionPooler, HierarchicalPooler, HyperModel
 from models.rnn import RNN
+from models.rope_looped_transformer import RoPECanonLoopedTransformer
 from models.task_token_embedder import TaskTokenEmbedder
 from models.transformer import Transformer
 from visualisation import figure_to_wandb_image, render_task_prediction_figure
@@ -70,6 +72,10 @@ TARGET_MODEL_REGISTRY = {
     },
     "transformer": {
         "class": Transformer,
+        "owned_params": {},
+    },
+    "rope_canon_looped_transformer": {
+        "class": RoPECanonLoopedTransformer,
         "owned_params": {},
     },
 }
@@ -148,9 +154,14 @@ class HyperModelLightning(pl.LightningModule):
         weight_decay: float = 0.01,
         lr_scheduler: dict | None = None,
         warmup_steps: int = 0,
+        N_supervision: int = 1,
+        gradient_clip_val: float | None = None,
         **kwargs,
     ):
         super().__init__()
+        self.automatic_optimization = False
+        self.N_supervision = N_supervision
+        self.gradient_clip_val = gradient_clip_val
         self.prediction_task, self.num_classes = self.resolve_prediction_task(
             prediction_task, num_classes
         )
@@ -728,7 +739,44 @@ class HyperModelLightning(pl.LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
-        return self.common_step(batch, prefix="train")
+        opt = self.optimizers()
+        sch = self.lr_schedulers()
+
+        total_loss = 0.0
+        logits, targets = None, None
+        for _ in range(self.N_supervision):
+            logits, targets = self(batch)
+            loss = self.compute_loss(logits, targets)
+            opt.zero_grad()
+            self.manual_backward(loss)
+            if self.gradient_clip_val is not None:
+                clip_grad_norm_(self.parameters(), self.gradient_clip_val)
+            opt.step()
+            total_loss += loss.detach()
+
+        if sch is not None:
+            sch.step()
+
+        avg_loss = total_loss / self.N_supervision
+        metric_sums = self._metric_sums(logits, targets)
+        metrics = self._metrics_from_sums(metric_sums, prefix="train")
+        batch_size = batch["support_inputs"].shape[0]
+        sync_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
+        log_kwargs = {
+            "on_step": True,
+            "on_epoch": True,
+            "batch_size": batch_size,
+            "sync_dist": sync_dist,
+        }
+        self.log("train_loss", avg_loss, prog_bar=True, **log_kwargs)
+        for name, value in metrics.items():
+            self.log(
+                name,
+                value,
+                prog_bar=name.endswith("query_exact_match"),
+                **log_kwargs,
+            )
+        return avg_loss
 
     def validation_step(self, batch, batch_idx):
         self.common_step(batch, prefix="val")

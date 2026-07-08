@@ -140,7 +140,7 @@ class LoopedSupervisedLightning(pl.LightningModule):
         params["output_dim"] = hidden_dim
         if name == "mlp":
             params["seq_len"] = seq_len
-        if name in ("transformer", "canon_transformer"):
+        if name in ("transformer", "canon_transformer", "rope_canon_looped_transformer"):
             params["use_output_head"] = False
         # recursive_transformer / canon_recursive_transformer: no output_head; output_dim unused.
 

@@ -199,6 +199,7 @@ class RoPECanonLoopedTransformer(nn.Module):
         use_loop_skip: bool = False,
         use_inner_bypass: bool = False,
         use_outer_bypass: bool = False,
+        use_output_head: bool = True,
     ):
         super().__init__()
         inner_dim = inner_dim if inner_dim is not None else hidden_dim
@@ -215,6 +216,7 @@ class RoPECanonLoopedTransformer(nn.Module):
 
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
         self.num_heads = num_heads
         self.inner_dim = inner_dim
         self.inner_num_heads = inner_num_heads
@@ -226,6 +228,7 @@ class RoPECanonLoopedTransformer(nn.Module):
         self.use_loop_skip = use_loop_skip
         self.use_inner_bypass = use_inner_bypass
         self.use_outer_bypass = use_outer_bypass
+        self.use_output_head = use_output_head
 
         self.input_projection = nn.Linear(input_dim, hidden_dim, bias=bias)
 
@@ -264,6 +267,9 @@ class RoPECanonLoopedTransformer(nn.Module):
             self.up_proj   = nn.Linear(hidden_dim, inner_dim, bias=bias)
             self.down_proj = nn.Linear(inner_dim, hidden_dim, bias=bias)
 
+        if use_output_head:
+            self.output_head = nn.Linear(hidden_dim, output_dim, bias=False)
+
     def forward(
         self,
         inputs: torch.Tensor,
@@ -286,7 +292,10 @@ class RoPECanonLoopedTransformer(nn.Module):
         h = self.post_layer(h)
         if self.use_outer_bypass:
             h = h + h_outer                  # single skip over all 3 blocks
-        return self.final_norm(h)
+        h = self.final_norm(h)
+        if self.use_output_head:
+            h = self.output_head(h)
+        return h
 
     def __repr__(self) -> str:
         mid = f"inner={self.inner_dim}" if self.has_wide_middle else f"hidden={self.hidden_dim}"
