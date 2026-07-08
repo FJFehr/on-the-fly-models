@@ -56,27 +56,47 @@ ablation, run at two capacities to check the pattern holds across scale.
 | T6 | + Block skip | `rope_canon_looped_transformer` | 11,760 / 42,464 |
 | T7 | + Per-loop h0 (loop skip) | `rope_canon_looped_transformer` | 11,760 / 42,464 |
 
-## Loop-skip diagnostics (L1–L4)
+## Loop diagnostics (L1–L6)
 
-Not part of the plotted T1–T7 narrative. On the old wide/sandwich architecture, loop-skip
-alone (no block skip) did nothing at n_loops=4 (91.5%, ≈ no-skip's 91.7%) but became the
-single best result found at n_loops=8 (95.8%, beating block+loop skip at n_loops=4's 95.5%).
-These check whether that finding replicates on the clean uniform dim=16/32 architecture
-(N_supervision stays fixed at 2 — n_loops is the architectural recursive-loop depth, an
-orthogonal knob from the training-time supervision depth):
+Not part of the plotted T1–T7 narrative (see `scripts/plot_loop_diagnostics.py` instead of
+`plot_uniform_ablation.py`). On the old wide/sandwich architecture, loop-skip alone (no
+block skip) did nothing at n_loops=4 (91.5%, ≈ no-skip's 91.7%) but became the single best
+result found at n_loops=8 (95.8%, beating block+loop skip at n_loops=4's 95.5%). These check
+whether that finding replicates on the clean uniform dim=16/32 architecture (N_supervision
+stays fixed at 2 — n_loops is the architectural recursive-loop depth, an orthogonal knob
+from the training-time supervision depth), and how far "just loop more, no skip mechanisms
+at all" scales (L5/L6 extend the no-skip sweep to n_loops=16/32):
 
-| Code | n_loops | Block skip | Loop skip |
-|------|---------|-------------|-----------|
-| L1 | 8 | – | – (control: does n_loops=8 alone help?) |
-| L2 | 4 | – | ✓ |
-| L3 | 8 | – | ✓ |
-| L4 | 8 | ✓ | ✓ |
+| Code | n_loops | Block skip | Loop skip | val (dim16 / dim32) | test (dim16 / dim32) |
+|------|---------|-----------|-----------|----------------------|------------------------|
+| T4 | 1  | – | – | 91.2% / 93.7% | 91.5% / 93.4% |
+| T5 | 4  | – | – | 92.4% / 92.8% | 92.8% / 92.5% |
+| T6 | 4  | ✓ | – | 89.3% / 91.6% | 88.9% / 92.5% |
+| T7 | 4  | ✓ | ✓ | 90.8% / 95.3% | 90.4% / 95.2% |
+| L1 | 8  | – | – (control) | 93.1% / 95.0% | 93.3% / 94.9% |
+| L2 | 4  | – | ✓ | 91.6% / 91.7% | 91.4% / 92.3% |
+| L3 | 8  | – | ✓ | 91.6% / 93.4% | 92.0% / 92.6% |
+| L4 | 8  | ✓ | ✓ | 91.4% / 95.0% | 90.9% / 94.4% |
+| L5 | 16 | – | – | 92.5% / 95.9% | 92.4% / 95.2% |
+| L6 | 32 | – | – | 91.2% / 94.1% | 90.7% / 94.6% |
+
+(mean over 17 tasks × 5 seeds = 85 runs per cell; ± std omitted here, see
+`scripts/plot_loop_diagnostics.py`'s printed table.)
+
+**Result:** it didn't replicate. Loop-skip-alone (L2, L3) never beat its no-skip baseline
+(T5, L1) at either width. Combined block+loop skip only helps at dim=32/n_loops=4 (T7:
+95.2% test, well above T5's 92.5%) — at dim=16, or at n_loops=8 (L4 vs L1), it doesn't. The
+lever that reliably helps is simply more loop iterations with no skip at all: the no-skip
+sweep (T4→T5→L1→L5→L6, n_loops = 1→4→8→16→32) peaks at n_loops=8 for dim=16 (93.3% test)
+and n_loops=16 for dim=32 (95.2% test, tying T7's skip-based result), with both widths
+degrading somewhat by n_loops=32 — diminishing (and eventually negative) returns from
+looping alone set in somewhere around n_loops≈8–16.
 
 ## Jobs
 
-7 steps × 2 widths × 17 tasks × 5 seeds = **1,190 jobs** (the T1–T7 story) + 4 diagnostic
-conditions × 2 widths × 17 tasks × 5 seeds = **680 jobs** (L1–L4) = **1,870 jobs total**, all
-new (1d_padded_fill excluded, established convention for this story family).
+7 steps × 2 widths × 17 tasks × 5 seeds = **1,190 jobs** (the T1–T7 story) + 6 diagnostic
+conditions × 2 widths × 17 tasks × 5 seeds = **1,020 jobs** (L1–L6) = **2,210 jobs total**,
+all new (1d_padded_fill excluded, established convention for this story family).
 
 ```bash
 python scripts/gen_uniform_ablation_configs.py
@@ -88,8 +108,12 @@ bash scripts/run_ablation_arc1d_uniform_ablation.sh 4
 
 ```bash
 bash scripts/fetch_experiments.sh arc1d_uniform_ablation
-python scripts/plot_uniform_ablation.py
+python scripts/plot_uniform_ablation.py       # T1-T7 story heatmaps
+python scripts/plot_loop_diagnostics.py       # T4-T7/L1-L6 no-skip n_loops sweep + table
 ```
 
-Produces two independent 7-row heatmaps per metric (`outputs/uniform_ablation/heatmap_dim{16,32}_{val,test}.png`)
-— each width is its own self-contained story.
+`plot_uniform_ablation.py` produces two independent 7-row heatmaps per metric
+(`outputs/uniform_ablation/heatmap_dim{16,32}_{val,test}.png`) — each width is its own
+self-contained story. `plot_loop_diagnostics.py` produces
+`outputs/uniform_ablation/loop_diagnostics_no_skip_sweep.png` plus the full L1–L6 table
+above (printed to stdout).
