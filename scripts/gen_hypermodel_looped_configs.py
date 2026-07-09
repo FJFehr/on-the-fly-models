@@ -1,9 +1,11 @@
 """Generate single-task configs for arc1d_hypermodel_looped.
 
 Phase 1 of the hypernetwork-looped-canon-rope story: one hypernetwork target
-per task category (no task descriptor, no multi-task mixing yet), all using
-the locked-in target model (dim=16, n_loops=8, no block/loop skip -- see
-configs/experiments/arc1d_uniform_ablation's L1 result).
+per task category (no task descriptor, no multi-task mixing yet), using the
+locked-in target model (dim=16, no block/loop skip -- see
+configs/experiments/arc1d_uniform_ablation's L1 result) at n_loops=4. Note
+n_loops does not affect parameter count (middle_layer is weight-shared), so
+this is a compute/depth choice only, not a model-size change.
 
 1d_padded_fill is excluded (never part of the per-task hypermodel_augmented
 family this mirrors; see base_hypermodel_looped.yaml's header comment).
@@ -24,7 +26,7 @@ TARGET_MODEL_PARAMS = {
     "num_heads": 2,
     "inner_dim": 16,
     "inner_num_heads": 2,
-    "n_loops": 8,
+    "n_loops": 4,
     "dropout": 0.1,
     "canon_set": "ABCD",
     "canon_kernel": 5,
