@@ -1,5 +1,17 @@
 # arc1d_hypermodel_looped_mix11
 
+**Known issue (fixed going forward, results below predate the fix):** under manual
+optimization (`N_supervision > 1`), Lightning's `trainer.global_step` increments once per
+`opt.step()` call, not once per batch — so `Trainer(max_steps=...)` stopped training after
+`max_steps / N_supervision` batches instead of `max_steps` batches, and the LR scheduler
+(calibrated in batch units) never got enough `.step()` calls to complete its warmup+decay.
+Fixed in `training/trainer.py` (`max_steps` now scaled by `N_supervision` before being
+passed to the Trainer). `mix11_td.yaml` (`N_supervision=4`) only ran a quarter of its
+intended batches; `mix11_n2_loop4_noskip.yaml` (`N_supervision=2`) ran half. Both configs'
+"winning capacity settings" provenance (from `arc1d_hypermodel_looped_recolor`) is itself
+provisional for the same reason — worth re-running both variants with the fix before
+drawing conclusions from this mix.
+
 ## Goal
 
 First multi-task hypernetwork experiment: one hypernetwork trained across 11 task

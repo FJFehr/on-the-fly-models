@@ -11,6 +11,15 @@
 # 1d_padded_fill is not part of this project -- it was never in the per-task
 # arc1d_hypermodel_augmented configs this mirrors, only in the multi-task
 # mixes/ and _td configs, which are out of scope here.
+#
+# max_steps/warmup_steps are compute-matched across N_supervision (see
+# training/trainer.py: under manual optimization, Trainer(max_steps=...) is
+# scaled by N_supervision internally, so max_steps here means "batches", and
+# max_steps * N_supervision = total optimizer updates). This base's
+# N_supervision=2 default uses max_steps=1000 -> 2000 total updates;
+# configs overriding N_supervision to another value should scale max_steps
+# to keep total updates at 2000 (e.g. N_supervision=4 -> max_steps=500).
+# warmup_steps is 10% of max_steps in every case.
 project_name: arc1d_hypermodel_looped
 entity: fjfehr
 output_dir: outputs
@@ -45,8 +54,8 @@ lr_scheduler:
   params:
     T_max: ${max_steps}
     eta_min: 0.0001
-max_steps: 2000
-warmup_steps: 500
+max_steps: 1000
+warmup_steps: 100
 log_task_examples: true
 log_task_examples_every_n_epochs: 100
 num_periodic_train_task_examples: 100

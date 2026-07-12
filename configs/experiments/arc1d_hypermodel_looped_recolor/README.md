@@ -1,5 +1,16 @@
 # arc1d_hypermodel_looped_recolor
 
+**Known issue (fixed going forward, results below predate the fix):** under manual
+optimization (`N_supervision > 1`), Lightning's `trainer.global_step` increments once per
+`opt.step()` call, not once per batch — so `Trainer(max_steps=...)` stopped training after
+`max_steps / N_supervision` batches instead of `max_steps` batches, and the LR scheduler
+(calibrated in batch units) never got enough `.step()` calls to complete its warmup+decay.
+Fixed in `training/trainer.py` (`max_steps` now scaled by `N_supervision` before being
+passed to the Trainer). Every result in this sweep predates the fix — the `N_supervision=4`
+cells in particular only ran a quarter of the intended batches (likely never finishing LR
+warmup), so the "N_sup=4 beats 2" finding from this sweep should be treated as provisional
+until re-run.
+
 ## Goal
 
 `1d_flip` and the three recolor tasks (`1d_recolor_cmp/cnt/oe`) are the only tasks in

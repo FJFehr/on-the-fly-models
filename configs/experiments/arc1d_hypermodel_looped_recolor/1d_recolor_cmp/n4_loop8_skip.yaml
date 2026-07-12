@@ -8,6 +8,8 @@ task_categories:
 val_task_categories:
 - 1d_recolor_cmp
 N_supervision: 4
+max_steps: 500
+warmup_steps: 50
 target_model:
   name: rope_canon_looped_transformer
   params:

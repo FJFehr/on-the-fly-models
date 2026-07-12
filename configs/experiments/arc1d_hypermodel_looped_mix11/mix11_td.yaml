@@ -45,6 +45,11 @@ val_task_categories:
   - 1d_scale_dp
 
 N_supervision: 4
+# Compute-matched with the base config's N_supervision=2/max_steps=1000 default
+# (max_steps * N_supervision = 2000 total optimizer updates either way); warmup
+# stays at 10% of max_steps. See base_hypermodel_looped.yaml's header comment.
+max_steps: 500
+warmup_steps: 50
 
 target_model:
   name: rope_canon_looped_transformer

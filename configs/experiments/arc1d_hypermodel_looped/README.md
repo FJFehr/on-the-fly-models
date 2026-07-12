@@ -1,5 +1,14 @@
 # arc1d_hypermodel_looped
 
+**Known issue (fixed going forward, results below predate the fix):** under manual
+optimization (`N_supervision > 1`), Lightning's `trainer.global_step` increments once per
+`opt.step()` call, not once per batch — so `Trainer(max_steps=...)` stopped training after
+`max_steps / N_supervision` batches instead of `max_steps` batches, and the LR scheduler
+(calibrated in batch units) never got enough `.step()` calls to complete its warmup+decay.
+Fixed in `training/trainer.py` (`max_steps` now scaled by `N_supervision` before being
+passed to the Trainer). All phase-1 results below were collected before this fix (at
+`N_supervision=2`, so ran on half the intended batches) — not yet re-run.
+
 ## Goal
 
 Have a hypernetwork generate the weights of `RoPECanonLoopedTransformer` — the smallest,

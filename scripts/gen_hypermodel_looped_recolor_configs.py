@@ -24,6 +24,11 @@ reasoning:
 of directly testing whether capacity closes the gap on the true task). The
 n_loops=4/N_supervision=2/no-skip cell in each task dir is exactly the existing phase-1
 config, included in the naming scheme for completeness, not a new result.
+
+max_steps/warmup_steps are compute-matched across N_supervision (see
+training/trainer.py: Trainer(max_steps=...) is scaled by N_supervision internally, so
+max_steps here means "batches", and max_steps * N_supervision = total optimizer updates,
+held at 2000 across every N_supervision value tested). warmup_steps is 10% of max_steps.
 """
 
 from pathlib import Path
@@ -42,6 +47,15 @@ NSUPS = [2, 4]
 SKIP_VARIANTS = {
     "noskip": {"use_block_skip": False, "use_loop_skip": False},
     "skip": {"use_block_skip": True, "use_loop_skip": True},
+}
+
+TOTAL_OPTIMIZER_UPDATES = 2000  # max_steps * N_supervision, held constant across NSUPS
+STEPS_BY_NSUP = {
+    nsup: {
+        "max_steps": TOTAL_OPTIMIZER_UPDATES // nsup,
+        "warmup_steps": (TOTAL_OPTIMIZER_UPDATES // nsup) // 10,
+    }
+    for nsup in NSUPS
 }
 
 BASE_TARGET_MODEL_PARAMS = {
@@ -82,6 +96,8 @@ for task in TASKS:
                     "task_categories": [task],
                     "val_task_categories": [task],
                     "N_supervision": nsup,
+                    "max_steps": STEPS_BY_NSUP[nsup]["max_steps"],
+                    "warmup_steps": STEPS_BY_NSUP[nsup]["warmup_steps"],
                     "target_model": {
                         "name": "rope_canon_looped_transformer",
                         "params": target_params,

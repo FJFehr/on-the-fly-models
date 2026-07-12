@@ -351,9 +351,19 @@ def build_trainer(
     if runtime_cfg.get("precision") is not None:
         trainer_kwargs["precision"] = runtime_cfg["precision"]
 
+    # Under manual optimization (N_supervision > 1: LoopedSupervisedLightning,
+    # HyperModelLightning), Lightning's trainer.global_step increments once per
+    # opt.step() call, not once per training_step() call -- so a bare max_steps
+    # would stop training after max_steps / N_supervision batches instead of
+    # max_steps batches, starving both the run itself and any LR scheduler
+    # (warmup_steps/T_max are counted in batches, since the scheduler's own
+    # .step() is called once per training_step()). Scale max_steps by
+    # N_supervision so the config value keeps meaning "number of batches",
+    # matching every other runtime's semantics.
+    n_supervision = runtime_cfg.get("N_supervision") or 1
     return pl.Trainer(
         **trainer_kwargs,
-        max_steps=runtime_cfg["max_steps"],
+        max_steps=runtime_cfg["max_steps"] * n_supervision,
         overfit_batches=1 if cfg.get("overfit_single_batch", False) else 0,
         log_every_n_steps=1,
     )
