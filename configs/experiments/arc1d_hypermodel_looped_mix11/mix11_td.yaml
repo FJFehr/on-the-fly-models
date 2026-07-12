@@ -13,6 +13,11 @@ _base_: configs/experiments/arc1d_hypermodel_looped/base_hypermodel_looped.yaml
 experiment_name: looped_hyper_mix11_td
 project_name: arc1d_hypermodel_looped_mix11
 
+# Use all GPUs on the node for this run (train.py resolves "auto" -> all free GPUs,
+# see resolve_free_gpus in training/gpu_utils.py), matching the convention already used
+# by arc1d_hypermodel_augmented_td for its multi-task runs.
+devices: auto
+
 task_categories:
   - 1d_denoising_1c
   - 1d_denoising_mc

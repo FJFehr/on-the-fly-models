@@ -27,11 +27,15 @@ with a one-hot task descriptor so the model can disambiguate which task it's sol
 ## Running
 
 ```bash
-bash scripts/run_hypermodel_looped_mix11.sh        # up to 3 GPUs, seeds 1-3 in parallel
+bash scripts/run_hypermodel_looped_mix11.sh
 ```
 
 Single hand-written config (`mix11_td.yaml`), not a generated family — this is one
-multi-task experiment, not a per-task sweep.
+multi-task experiment, not a per-task sweep. `devices: auto` makes each seed's run claim
+every GPU on the node (`train.py`'s `resolve_free_gpus`, same convention already used by
+`arc1d_hypermodel_augmented_td`), so the 3 seeds run one after another rather than in
+parallel — there's nothing left to parallelise against once a single run already spans the
+whole node.
 
 ## Reading results
 
