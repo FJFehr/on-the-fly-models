@@ -1,0 +1,62 @@
+# 11-task multi-task hypernetwork mix with a one-hot task descriptor -- same task set and
+# task descriptor as mix11_td.yaml, but at the ORIGINAL phase-1 default capacity settings
+# (N_supervision=2, n_loops=4, no skip) instead of the winning settings from the
+# flip+recolor sweep. Logs to the same wandb project as mix11_td.yaml for a direct
+# side-by-side comparison of capacity settings on the multi-task mix.
+_base_: configs/experiments/arc1d_hypermodel_looped/base_hypermodel_looped.yaml
+experiment_name: looped_hyper_mix11_n2_loop4_noskip
+project_name: arc1d_hypermodel_looped_mix11
+
+# Use all GPUs on the node for this run (train.py resolves "auto" -> all free GPUs,
+# see resolve_free_gpus in training/gpu_utils.py), matching mix11_td.yaml's convention.
+devices: auto
+
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p_dp
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_scale_dp
+task_ids: null
+val_task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p_dp
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_scale_dp
+
+N_supervision: 2
+
+target_model:
+  name: rope_canon_looped_transformer
+  params:
+    hidden_dim: 16
+    num_heads: 2
+    inner_dim: 16
+    inner_num_heads: 2
+    n_loops: 4
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_block_skip: false
+    use_loop_skip: false
+
+hyper_head:
+  pooling: hierarchical
+  bottleneck_dim: 128
+  num_tasks: 18
