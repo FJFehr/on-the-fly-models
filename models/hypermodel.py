@@ -25,7 +25,23 @@ def _describe_hyper_projection(model: "HyperModel") -> str:
                 parts.append("GELU")
         m = model._low_rank_m
         r = model.low_rank_rank
-        parts.append(f"[A: Linear(-> {m}×{r}), B: Linear(-> {m}×{r})] rank-{r} outer-product -> {model.total_target_params}")
+        parts.append(
+            f"[A: Linear(-> {m}×{r}), B: Linear(-> {m}×{r})] rank-{r} outer-product -> {model.total_target_params}"
+        )
+        return " + ".join(parts)
+    if model.lora_adapter:
+        parts = []
+        for layer in model.hyper_proj_shared:
+            if isinstance(layer, nn.Linear):
+                parts.append(f"Linear({layer.in_features} -> {layer.out_features})")
+            elif isinstance(layer, nn.GELU):
+                parts.append("GELU")
+        backbone_state = "trainable" if model.lora_adapter_train_backbone else "frozen"
+        other_numel = model.lora_proj_other.out_features
+        parts.append(
+            f"[{len(model.lora_proj_b)}x per-tensor rank-{model.lora_adapter_rank} B@A "
+            f"adapters on {backbone_state} random backbone] + [other: Linear(-> {other_numel})]"
+        )
         return " + ".join(parts)
     parts = []
     for layer in model.hyper_projection:
@@ -201,15 +217,29 @@ class HyperModel(nn.Module):
         num_tasks: int | None = None,
         low_rank_output: bool = False,
         low_rank_rank: int = 1,
+        lora_adapter: bool = False,
+        lora_adapter_rank: int = 1,
+        lora_adapter_train_backbone: bool = False,
     ):
         super().__init__()
+        if lora_adapter and low_rank_output:
+            msg = "hyper_head.lora_adapter and hyper_head.low_rank_output are mutually exclusive."
+            raise ValueError(msg)
+        if lora_adapter_train_backbone and not lora_adapter:
+            msg = "hyper_head.lora_adapter_train_backbone requires hyper_head.lora_adapter=True."
+            raise ValueError(msg)
+
         self.hypernetwork = hypernetwork
         self.target_model = target_model
 
-        # The target module is only used as a parameter/template container.
-        # Training happens through the hypernetwork and the hyper head.
+        # The target module normally only serves as a parameter/template container: with
+        # lora_adapter on, its own randomly-initialized values are also used directly as the
+        # frozen (or, if lora_adapter_train_backbone, jointly-trained) backbone that the
+        # generated low-rank delta is added to. Training otherwise happens entirely through
+        # the hypernetwork and the hyper head.
+        backbone_requires_grad = lora_adapter and lora_adapter_train_backbone
         for p in target_model.parameters():
-            p.requires_grad_(False)
+            p.requires_grad_(backbone_requires_grad)
 
         self._target_parameter_specs = [
             (name, tuple(parameter.shape), parameter.numel())
@@ -220,18 +250,24 @@ class HyperModel(nn.Module):
         self.hyper_pooling = hyper_pooling or AttentionPooler(self.hyper_output_dim)
         self.num_tasks = num_tasks
         self.task_indicator_proj = (
-            nn.Linear(num_tasks, hyper_output_dim, bias=False)
-            if num_tasks is not None else None
+            nn.Linear(num_tasks, hyper_output_dim, bias=False) if num_tasks is not None else None
         )
 
         # Build the projection MLP from hyper_output_dim to total_target_params.
         # projection_dims specifies intermediate hidden sizes; bottleneck_dim is the
         # legacy single-intermediate fallback.
-        intermediate = projection_dims if projection_dims is not None else [bottleneck_dim if bottleneck_dim is not None else hyper_output_dim]
+        intermediate = (
+            projection_dims
+            if projection_dims is not None
+            else [bottleneck_dim if bottleneck_dim is not None else hyper_output_dim]
+        )
         dims = [hyper_output_dim] + list(intermediate)
 
         self.low_rank_output = low_rank_output
         self.low_rank_rank = low_rank_rank
+        self.lora_adapter = lora_adapter
+        self.lora_adapter_rank = lora_adapter_rank
+        self.lora_adapter_train_backbone = lora_adapter_train_backbone
         if low_rank_output:
             # Shared MLP up to (but not including) the final output layer.
             shared_layers: list[nn.Module] = []
@@ -249,6 +285,46 @@ class HyperModel(nn.Module):
                 target_std = (low_rank_rank * self._low_rank_m) ** (-0.25)
                 nn.init.normal_(self.hyper_proj_a.weight, std=target_std)
                 nn.init.normal_(self.hyper_proj_b.weight, std=target_std)
+            # Unused in this path but kept as empty seq so __repr__ helpers stay simple.
+            self.hyper_projection = nn.Sequential()
+        elif lora_adapter:
+            # Shared MLP up to (but not including) the per-tensor adapter heads.
+            shared_layers = []
+            for in_d, out_d in zip(dims[:-1], dims[1:]):
+                shared_layers += [nn.Linear(in_d, out_d, bias=False), nn.GELU()]
+            self.hyper_proj_shared = nn.Sequential(*shared_layers)
+
+            # Every 2D weight matrix gets its own rank-r pair of factor heads, sized to that
+            # tensor's own (d_out, d_in) shape -- unlike low_rank_output's single global
+            # reshape, this keeps the rank constraint meaningful per matrix. A ModuleList
+            # (not ModuleDict) is used because parameter names contain dots.
+            self._lora_2d_specs = [
+                (name, shape) for name, shape, _ in self._target_parameter_specs if len(shape) == 2
+            ]
+            other_numel = sum(
+                numel for _, shape, numel in self._target_parameter_specs if len(shape) != 2
+            )
+
+            lora_proj_b: list[nn.Module] = []
+            lora_proj_a: list[nn.Module] = []
+            for _, (d_out, d_in) in self._lora_2d_specs:
+                b_head = nn.Linear(dims[-1], d_out * lora_adapter_rank, bias=False)
+                a_head = nn.Linear(dims[-1], lora_adapter_rank * d_in, bias=False)
+                # Zero-init B (real-LoRA convention): delta = B @ A is exactly zero at
+                # step 0, so the effective weight starts at the backbone's own random
+                # init -- an ordinary-scale network, not the all-zero collapse the old
+                # low_rank_output path hit before its variance-matching fix. A keeps its
+                # default init so gradients reach B (and, once B moves, A) from step 0.
+                with torch.no_grad():
+                    nn.init.zeros_(b_head.weight)
+                lora_proj_b.append(b_head)
+                lora_proj_a.append(a_head)
+            self.lora_proj_b = nn.ModuleList(lora_proj_b)
+            self.lora_proj_a = nn.ModuleList(lora_proj_a)
+            # Non-matrix params (norms, Canon kernels) have no meaningful low-rank
+            # structure -- generate them fully, same as the dense path.
+            self.lora_proj_other = nn.Linear(dims[-1], other_numel, bias=False)
+
             # Unused in this path but kept as empty seq so __repr__ helpers stay simple.
             self.hyper_projection = nn.Sequential()
         else:
@@ -302,7 +378,40 @@ class HyperModel(nn.Module):
             # Rank-r outer product: ΔW = A @ B^T ∈ R^{m×m}
             flat = torch.einsum("bir,bjr->bij", a, b).flatten(1)  # (batch, m*m)
             return flat[:, : self.total_target_params]
+        if self.lora_adapter:
+            return self._generate_lora_adapter_params(task_representation)
         return self.hyper_projection(task_representation)
+
+    def _generate_lora_adapter_params(self, task_representation: torch.Tensor) -> torch.Tensor:
+        """Generate target weights as backbone + per-tensor low-rank delta.
+
+        Every 2D weight matrix is generated as W_backbone + B @ A, where W_backbone is the
+        target model's own (frozen, or jointly-trained if lora_adapter_train_backbone) random
+        init, and B, A are rank-lora_adapter_rank factors sized to that tensor's own shape.
+        Non-matrix parameters (norms, Canon kernels) have no meaningful low-rank structure and
+        are generated fully, same as the dense hyper_projection path.
+        """
+        batch = task_representation.shape[0]
+        shared = self.hyper_proj_shared(task_representation)
+        r = self.lora_adapter_rank
+
+        other_flat = self.lora_proj_other(shared)
+        other_offset = 0
+        lora_index = 0
+        pieces: list[torch.Tensor] = []
+        for name, shape, numel in self._target_parameter_specs:
+            if len(shape) == 2:
+                d_out, d_in = shape
+                base = self.target_model.get_parameter(name).reshape(1, d_out, d_in)
+                b = self.lora_proj_b[lora_index](shared).reshape(batch, d_out, r)
+                a = self.lora_proj_a[lora_index](shared).reshape(batch, r, d_in)
+                delta = torch.bmm(b, a)
+                pieces.append((base + delta).reshape(batch, numel))
+                lora_index += 1
+            else:
+                pieces.append(other_flat[:, other_offset : other_offset + numel])
+                other_offset += numel
+        return torch.cat(pieces, dim=1)
 
     def forward(
         self,

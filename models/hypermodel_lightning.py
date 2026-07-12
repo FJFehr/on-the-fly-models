@@ -189,6 +189,11 @@ class HyperModelLightning(pl.LightningModule):
         num_tasks = hyper_head_cfg.get("num_tasks")
         low_rank_output = bool(hyper_head_cfg.get("low_rank_output", False))
         low_rank_rank = int(hyper_head_cfg.get("low_rank_rank", 1))
+        lora_adapter = bool(hyper_head_cfg.get("lora_adapter", False))
+        lora_adapter_rank = int(hyper_head_cfg.get("lora_adapter_rank", 1))
+        lora_adapter_train_backbone = bool(
+            hyper_head_cfg.get("lora_adapter_train_backbone", False)
+        )
         hyper_pooling = self.build_hyper_pooling(hyper_head_cfg, hyper_output_dim)
         self.hypermodel = HyperModel(
             hypernetwork=hypernetwork,
@@ -200,6 +205,9 @@ class HyperModelLightning(pl.LightningModule):
             num_tasks=num_tasks,
             low_rank_output=low_rank_output,
             low_rank_rank=low_rank_rank,
+            lora_adapter=lora_adapter,
+            lora_adapter_rank=lora_adapter_rank,
+            lora_adapter_train_backbone=lora_adapter_train_backbone,
         )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
