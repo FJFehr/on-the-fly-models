@@ -3,8 +3,20 @@
 ## Goal
 
 Test a random-backbone + generated LoRA-adapter weight-generation mode against the existing
-full-weight-generation baseline (`arc1d_hypermodel_looped_mix11/mix11_td.yaml`), on the same
-11-task descriptor mix and the same `rope_canon_looped_transformer` capacity settings.
+full-weight-generation baseline, on the same 11-task descriptor mix, at **two** capacity
+settings -- mirroring how `arc1d_hypermodel_looped_mix11` itself keeps both `mix11_td.yaml`
+and `mix11_n2_loop4_noskip.yaml` as sibling variants rather than picking one:
+
+- **`base.yaml`** -- matches `arc1d_hypermodel_looped_mix11/mix11_td.yaml`'s capacity settings
+  (the flip+recolor sweep's winning settings: `n_loops=8`, `N_supervision=4`, block+loop skip
+  on).
+- **`base_n2_loop4_noskip.yaml`** -- matches
+  `arc1d_hypermodel_looped_mix11/mix11_n2_loop4_noskip.yaml`'s capacity settings (the original
+  phase-1 default settings: `n_loops=4`, `N_supervision=2`, no block/loop skip).
+
+Both are preserved side by side rather than one replacing the other, so the lora_adapter
+mechanism can be checked at both capacity settings independently, same reason the mix11
+project keeps both.
 
 ### Background: why not the existing `low_rank_output` path
 
@@ -71,17 +83,24 @@ deeply low-rank.
 
 ## Settings
 
-Same as `arc1d_hypermodel_looped_mix11/mix11_td.yaml`: the same 11-task subset
+Both `base.yaml` and `base_n2_loop4_noskip.yaml` use the same 11-task subset
 (`1d_denoising_1c, 1d_denoising_mc, 1d_fill, 1d_hollow, 1d_mirror, 1d_move_1p,
-1d_move_2p_dp, 1d_move_dp, 1d_pcopy_1c, 1d_pcopy_mc, 1d_scale_dp`), one-hot task descriptor
-(`hyper_head.num_tasks: 18`), and `rope_canon_looped_transformer` at `n_loops=8`,
-`N_supervision=4`, block+loop skip on. `base.yaml` here is self-contained (no `_base_`,
-flattening `base_hypermodel_looped.yaml` + `mix11_td.yaml`'s overrides together) because the
-config loader only resolves one level of `_base_` inheritance and `mix11_td.yaml` already has
-its own. The only new axis relative to that baseline is `hyper_head.lora_adapter: true`, so
-this is a single-variable comparison.
+1d_move_2p_dp, 1d_move_dp, 1d_pcopy_1c, 1d_pcopy_mc, 1d_scale_dp`) and one-hot task descriptor
+(`hyper_head.num_tasks: 18`), differing only in `target_model.params`
+(`n_loops`/`use_block_skip`/`use_loop_skip`) and the compute-matched `N_supervision`/
+`max_steps`/`warmup_steps` triple (`max_steps * N_supervision = 2000` total optimizer
+updates in both cases -- 500*4 vs 1000*2). Each is self-contained (no `_base_`, flattening
+`base_hypermodel_looped.yaml` + the corresponding `arc1d_hypermodel_looped_mix11` variant's
+overrides together) because the config loader only resolves one level of `_base_`
+inheritance and both `mix11_td.yaml`/`mix11_n2_loop4_noskip.yaml` already have their own.
+The only new axis relative to each baseline is `hyper_head.lora_adapter: true`, so both are
+single-variable comparisons against their respective `mix11` sibling.
 
-Rank sweep: `r = 1, 2, 4, 8`, matching the historical `low_rank_output` sweep's convention.
+Rank sweep: `r = 1, 2, 4, 8` for each capacity setting (8 configs total), matching the
+historical `low_rank_output` sweep's convention --
+`mix11_td_lora_adapter_r{1,2,4,8}.yaml` (`_base_: base.yaml`) and
+`mix11_n2_loop4_noskip_lora_adapter_r{1,2,4,8}.yaml`
+(`_base_: base_n2_loop4_noskip.yaml`).
 
 ## Not yet built
 
@@ -101,15 +120,19 @@ the frozen-random primary experiment above.
 uv run python train.py --config configs/experiments/arc1d_hypermodel_looped_lora_adapter/overfit/lora_adapter_overfit.yaml
 uv run python train.py --config configs/experiments/arc1d_hypermodel_looped_lora_adapter/overfit/standard_overfit.yaml
 
-# Full rank sweep, 3 seeds each.
+# Full rank sweep, both capacity settings (8 configs), 3 seeds each -- 24 jobs total.
 bash scripts/run_hypermodel_looped_lora_adapter.sh
 ```
 
 ## Reading results
 
 Compare `val_query_exact_match` / `test_query_exact_match` (mean ± std across 3 seeds), per
-task and averaged, against `arc1d_hypermodel_looped_mix11/mix11_td.yaml`'s own numbers on the
-same 11 tasks -- not hyper-head parameter count, which is a secondary consideration here (the
-old low-rank path's motivation was shrinking the hyper-head; this experiment's motivation is
-whether the additive+full-rank-preserving mechanism recovers accuracy, as a step toward
-eventually supporting a real pretrained backbone).
+task and averaged, against each variant's own `arc1d_hypermodel_looped_mix11` sibling on the
+same 11 tasks -- `mix11_td_lora_adapter_r*` against `mix11_td.yaml`, and
+`mix11_n2_loop4_noskip_lora_adapter_r*` against `mix11_n2_loop4_noskip.yaml` -- not hyper-head
+parameter count, which is a secondary consideration here (the old low-rank path's motivation
+was shrinking the hyper-head; this experiment's motivation is whether the
+additive+full-rank-preserving mechanism recovers accuracy, as a step toward eventually
+supporting a real pretrained backbone). Comparing the two lora_adapter capacity settings
+against each other is also informative in its own right: n_loops=8 gives the per-tensor
+adapter more loop iterations to compound its correction through, at 2x the N_supervision.

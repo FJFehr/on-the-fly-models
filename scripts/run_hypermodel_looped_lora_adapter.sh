@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# Run the arc1d_hypermodel_looped_lora_adapter rank sweep (r=1,2,4,8) across seeds 1-3.
+# Run every arc1d_hypermodel_looped_lora_adapter rank-sweep config (both capacity-setting
+# variants sharing this project directory: base.yaml's mix11_td-style settings and
+# base_n2_loop4_noskip.yaml's mix11_n2_loop4_noskip-style settings, r=1,2,4,8 each) across
+# seeds 1-3. Mirrors arc1d_hypermodel_looped_mix11's run_hypermodel_looped_mix11.sh, which
+# discovers all configs in its project directory the same way.
 #
 # Each seed run uses ALL GPUs on the node (configs set devices: auto, resolved by
 # train.py's resolve_free_gpus to every free GPU). Since each run claims the whole node,
 # jobs run one after another, not in parallel -- there's nothing left to parallelise
 # against once a single run is already spanning every GPU. Skips already-completed runs.
 #
-# base.yaml is excluded from the glob: it's a shared _base_ target for the rank configs,
-# not a standalone experiment variant (unlike arc1d_hypermodel_looped_mix11, this project's
-# base.yaml lives directly in this directory, since the config loader only resolves one
-# level of _base_ inheritance -- see base.yaml's header comment).
+# base.yaml and base_n2_loop4_noskip.yaml are excluded from the glob: they're shared
+# _base_ targets for the rank configs, not standalone experiment variants (unlike
+# arc1d_hypermodel_looped_mix11, this project's base files live directly in this
+# directory, since the config loader only resolves one level of _base_ inheritance --
+# see base.yaml's header comment).
 #
 # Usage:
 #   bash scripts/run_hypermodel_looped_lora_adapter.sh
@@ -36,7 +41,7 @@ for SEED in "${SEEDS[@]}"; do
             continue
         fi
         JOBS+=("${cfg}|${SEED}")
-    done < <(find "$CFG_DIR" -maxdepth 1 -name "*.yaml" ! -name "base.yaml" | sort)
+    done < <(find "$CFG_DIR" -maxdepth 1 -name "*.yaml" ! -name "base.yaml" ! -name "base_n2_loop4_noskip.yaml" | sort)
 done
 
 N_JOBS=${#JOBS[@]}
