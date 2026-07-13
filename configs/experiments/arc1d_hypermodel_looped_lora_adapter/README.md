@@ -122,6 +122,9 @@ uv run python train.py --config configs/experiments/arc1d_hypermodel_looped_lora
 
 # Full rank sweep, both capacity settings (8 configs), 3 seeds each -- 24 jobs total.
 bash scripts/run_hypermodel_looped_lora_adapter.sh
+
+# Or just the n2_loop4_noskip variant (4 configs, 3 seeds -- 12 jobs).
+bash scripts/run_hypermodel_looped_lora_adapter_n2_loop4_noskip.sh
 ```
 
 ## Reading results
