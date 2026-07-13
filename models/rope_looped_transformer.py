@@ -53,7 +53,9 @@ class RoPECanonSelfAttention(nn.Module):
         self.flash = hasattr(torch.nn.functional, "scaled_dot_product_attention")
 
         self.canon_b = (
-            _make_canon(3 * hidden_dim, canon_kernel, canon_activation, canon_residual, canon_causal)
+            _make_canon(
+                3 * hidden_dim, canon_kernel, canon_activation, canon_residual, canon_causal
+            )
             if "B" in canon_set
             else None
         )
@@ -71,7 +73,7 @@ class RoPECanonSelfAttention(nn.Module):
         query, key, value = qkv.split(self.hidden_dim, dim=2)
 
         head_dim = C // self.num_heads
-        key   = key.view(B, T, self.num_heads, head_dim).transpose(1, 2)
+        key = key.view(B, T, self.num_heads, head_dim).transpose(1, 2)
         query = query.view(B, T, self.num_heads, head_dim).transpose(1, 2)
         value = value.view(B, T, self.num_heads, head_dim).transpose(1, 2)
 
@@ -80,7 +82,9 @@ class RoPECanonSelfAttention(nn.Module):
 
         if self.flash:
             attended = F.scaled_dot_product_attention(
-                query, key, value,
+                query,
+                key,
+                value,
                 attn_mask=None,
                 dropout_p=self.dropout if self.training else 0.0,
                 is_causal=False,
@@ -162,6 +166,94 @@ class RoPECanonBlock(nn.Module):
         if self.use_block_skip:
             x = x + x_input
         return x
+
+
+class RoPECanonTransformer(nn.Module):
+    """Flat (non-looped) transformer with RoPE attention and Canon layers (A/B/C/D).
+
+    Structurally identical to models.canon_transformer.CanonTransformer, with
+    RoPECanonBlock (RoPE + optional Canon) in place of CanonBlock -- the flat sibling of
+    RoPECanonLoopedTransformer, matching how CanonTransformer/CanonRecursiveTransformer
+    already coexist as flat/looped siblings in models/canon_transformer.py.
+    """
+
+    def __init__(
+        self,
+        input_dim: int,
+        hidden_dim: int,
+        num_layers: int,
+        num_heads: int,
+        output_dim: int,
+        dropout: float = 0.0,
+        bias: bool = False,
+        use_output_head: bool = True,
+        block_size: int = 2048,
+        canon_set: str = "ABCD",
+        canon_kernel: int = 4,
+        canon_activation: bool = True,
+        canon_residual: bool = True,
+        canon_causal: bool = False,
+    ):
+        super().__init__()
+        if hidden_dim % num_heads != 0:
+            raise ValueError("hidden_dim must be divisible by num_heads.")
+        invalid = set(canon_set) - set("ABCD")
+        if invalid:
+            raise ValueError(
+                f"canon_set contains invalid positions {invalid}. Use only 'A', 'B', 'C', 'D'."
+            )
+
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+        self.num_heads = num_heads
+        self.output_dim = output_dim
+        self.dropout = dropout
+        self.canon_set = canon_set
+        self.canon_kernel = canon_kernel
+        self.use_output_head = use_output_head
+
+        self.input_projection = nn.Linear(input_dim, hidden_dim, bias=bias)
+        self.blocks = nn.ModuleList(
+            [
+                RoPECanonBlock(
+                    hidden_dim=hidden_dim,
+                    num_heads=num_heads,
+                    dropout=dropout,
+                    bias=bias,
+                    block_size=block_size,
+                    canon_set=canon_set,
+                    canon_kernel=canon_kernel,
+                    canon_activation=canon_activation,
+                    canon_residual=canon_residual,
+                    canon_causal=canon_causal,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        self.final_norm = nn.LayerNorm(hidden_dim)
+        if use_output_head:
+            self.output_head = nn.Linear(hidden_dim, output_dim, bias=False)
+
+    def forward(
+        self,
+        inputs: torch.Tensor,
+        src_key_padding_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        h = self.input_projection(inputs)
+        for block in self.blocks:
+            h = block(h)
+        h = self.final_norm(h)
+        if self.use_output_head:
+            h = self.output_head(h)
+        return h
+
+    def __repr__(self) -> str:
+        return (
+            f"RoPECanonTransformer(input={self.input_dim}, hidden={self.hidden_dim}, "
+            f"layers={self.num_layers}, heads={self.num_heads}, output={self.output_dim}, "
+            f"canon_set={self.canon_set!r}, canon_kernel={self.canon_kernel})"
+        )
 
 
 class RoPECanonLoopedTransformer(nn.Module):
@@ -258,13 +350,13 @@ class RoPECanonLoopedTransformer(nn.Module):
             canon_causal=canon_causal,
             use_block_skip=use_block_skip,
         )
-        self.pre_layer    = RoPECanonBlock(**outer_block_kwargs)
+        self.pre_layer = RoPECanonBlock(**outer_block_kwargs)
         self.middle_layer = RoPECanonBlock(**inner_block_kwargs)
-        self.post_layer   = RoPECanonBlock(**outer_block_kwargs)
-        self.final_norm   = nn.LayerNorm(hidden_dim)
+        self.post_layer = RoPECanonBlock(**outer_block_kwargs)
+        self.final_norm = nn.LayerNorm(hidden_dim)
 
         if self.has_wide_middle:
-            self.up_proj   = nn.Linear(hidden_dim, inner_dim, bias=bias)
+            self.up_proj = nn.Linear(hidden_dim, inner_dim, bias=bias)
             self.down_proj = nn.Linear(inner_dim, hidden_dim, bias=bias)
 
         if use_output_head:
@@ -276,22 +368,22 @@ class RoPECanonLoopedTransformer(nn.Module):
         src_key_padding_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         h = self.input_projection(inputs)
-        h_outer = h                          # outer bypass anchor (hidden_dim)
+        h_outer = h  # outer bypass anchor (hidden_dim)
         h = self.pre_layer(h)
         if self.has_wide_middle:
             h = self.up_proj(h)
-        h_inner = h                          # inner bypass anchor (inner_dim)
+        h_inner = h  # inner bypass anchor (inner_dim)
         for _ in range(self.n_loops):
             h = self.middle_layer(h)
-            if self.use_loop_skip:           # per-iteration h0 injection (old behaviour)
+            if self.use_loop_skip:  # per-iteration h0 injection (old behaviour)
                 h = h + h_inner
         if self.use_inner_bypass:
-            h = h + h_inner                  # single skip over all N loops
+            h = h + h_inner  # single skip over all N loops
         if self.has_wide_middle:
             h = self.down_proj(h)
         h = self.post_layer(h)
         if self.use_outer_bypass:
-            h = h + h_outer                  # single skip over all 3 blocks
+            h = h + h_outer  # single skip over all 3 blocks
         h = self.final_norm(h)
         if self.use_output_head:
             h = self.output_head(h)

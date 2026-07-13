@@ -11,10 +11,11 @@ from matplotlib import pyplot as plt
 from torch.nn.utils import clip_grad_norm_
 
 import wandb
+from models.canon_transformer import CanonTransformer
 from models.cnn import CNN
 from models.hypermodel import AttentionPooler, HierarchicalPooler, HyperModel
 from models.rnn import RNN
-from models.rope_looped_transformer import RoPECanonLoopedTransformer
+from models.rope_looped_transformer import RoPECanonLoopedTransformer, RoPECanonTransformer
 from models.task_token_embedder import TaskTokenEmbedder
 from models.transformer import Transformer
 from visualisation import figure_to_wandb_image, render_task_prediction_figure
@@ -57,6 +58,14 @@ HYPERNETWORK_REGISTRY = {
     },
     "rnn": {
         "class": RNN,
+        "output_dim_key": "output_dim",
+    },
+    "canon_transformer": {
+        "class": CanonTransformer,
+        "output_dim_key": "output_dim",
+    },
+    "rope_canon_transformer": {
+        "class": RoPECanonTransformer,
         "output_dim_key": "output_dim",
     },
 }
@@ -167,11 +176,14 @@ class HyperModelLightning(pl.LightningModule):
         )
         self.target_output_dim = 1 if self.is_binary_task else self.num_classes
         self.padding_idx: int | None = kwargs.get("padding_idx")
-        embedding_dim, value_vocab_size = self._resolve_embedding_params(task_encoding, kwargs)
+        embedding_dim, value_vocab_size, use_sinusoidal_pe = self._resolve_embedding_params(
+            task_encoding, kwargs
+        )
         self.embedding_dim = embedding_dim
         self.shared_task_token_embedder = TaskTokenEmbedder(
             embedding_dim=embedding_dim,
             value_vocab_size=value_vocab_size,
+            use_sinusoidal_pe=use_sinusoidal_pe,
         )
         hypernetwork, hyper_output_dim = self.build_hypernetwork(hyper_model, embedding_dim)
         target = self.build_target_model(target_model, embedding_dim)
@@ -251,8 +263,8 @@ class HyperModelLightning(pl.LightningModule):
         self,
         task_encoding: Mapping | None,
         runtime_kwargs: Mapping,
-    ) -> tuple[int, int]:
-        """Return (embedding_dim, value_vocab_size) from config."""
+    ) -> tuple[int, int, bool]:
+        """Return (embedding_dim, value_vocab_size, use_sinusoidal_pe) from config."""
         if task_encoding is None:
             task_encoding = {}
         if not isinstance(task_encoding, Mapping):
@@ -269,7 +281,9 @@ class HyperModelLightning(pl.LightningModule):
             msg = "task_encoding.value_vocab_size must be an integer >= 2."
             raise ValueError(msg)
 
-        return embedding_dim, value_vocab_size
+        use_sinusoidal_pe = bool(task_encoding.get("use_sinusoidal_pe", True))
+
+        return embedding_dim, value_vocab_size, use_sinusoidal_pe
 
     def build_hyper_pooling(
         self,

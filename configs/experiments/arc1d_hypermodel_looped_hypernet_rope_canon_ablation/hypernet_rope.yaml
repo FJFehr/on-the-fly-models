@@ -1,0 +1,27 @@
+# Arm 2 / "+RoPE": the new flat models.rope_looped_transformer.RoPECanonTransformer with
+# canon_set="" (no Canon layers) -- num_layers=2, matching arm 1's depth exactly (not the
+# looped class's n_loops=1, which would give a fixed 3-block pre/middle/post structure).
+# hidden_dim/num_heads/output_dim match arm 1.
+_base_: configs/experiments/arc1d_hypermodel_looped_hypernet_rope_canon_ablation/base.yaml
+experiment_name: looped_hyper_encoder_ablation_rope
+
+hyper_model:
+  name: rope_canon_transformer
+  params:
+    hidden_dim: 64
+    num_heads: 4
+    num_layers: 2
+    output_dim: 64
+    canon_set: ""
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    block_size: 2048
+
+task_encoding:
+  # This encoder has its own internal RoPE (unconditional inside RoPECanonSelfAttention) --
+  # external additive sinusoidal PE is redundant for it, so it's turned off. See README.md
+  # for the full reasoning, including the caveat about the fixed target model's own input
+  # PE (which is also affected by this shared flag).
+  use_sinusoidal_pe: false
