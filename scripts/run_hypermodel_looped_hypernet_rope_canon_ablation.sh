@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Run all 4 arc1d_hypermodel_looped_hypernet_rope_canon_ablation encoder-arm configs
-# (hypernet_current / hypernet_rope / hypernet_canon / hypernet_rope_canon) across seeds 1-3.
-# Mirrors run_hypermodel_looped_lora_adapter_n2_loop4_noskip.sh's pattern.
+# (hypernet_current / hypernet_rope / hypernet_canon / hypernet_rope_canon), seed 1 only.
+# Single seed: these runs (17 tasks, max_steps=2000, N_supervision=2) are expected to take
+# a while, so the multi-seed convention used by sibling scripts (e.g.
+# run_hypermodel_looped_lora_adapter_n2_loop4_noskip.sh's 3 seeds) is intentionally not
+# followed here.
 #
-# Each seed run uses ALL GPUs on the node (configs set devices: auto, resolved by
+# Each run uses ALL GPUs on the node (configs set devices: auto, resolved by
 # train.py's resolve_free_gpus to every free GPU). Since each run claims the whole node,
 # jobs run one after another, not in parallel. Skips already-completed runs.
 #
@@ -17,7 +20,7 @@ LOG_DIR="logs/arc1d_hypermodel_looped_hypernet_rope_canon_ablation"
 CFG_DIR="configs/experiments/arc1d_hypermodel_looped_hypernet_rope_canon_ablation"
 mkdir -p "$LOG_DIR"
 
-SEEDS=(1 2 3)
+SEEDS=(1)
 
 JOBS=()
 SKIPPED=0

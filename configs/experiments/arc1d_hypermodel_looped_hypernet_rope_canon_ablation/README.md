@@ -87,15 +87,18 @@ uv run python train.py --config configs/experiments/arc1d_hypermodel_looped_hype
 uv run python train.py --config configs/experiments/arc1d_hypermodel_looped_hypernet_rope_canon_ablation/overfit/hypernet_canon_overfit.yaml
 uv run python train.py --config configs/experiments/arc1d_hypermodel_looped_hypernet_rope_canon_ablation/overfit/hypernet_rope_canon_overfit.yaml
 
-# Full sweep (4 configs x 3 seeds = 12 jobs).
+# Full sweep (4 configs, seed 1 only -- single-seed given how long these runs take:
+# 17 tasks, max_steps=2000, N_supervision=2).
 bash scripts/run_hypermodel_looped_hypernet_rope_canon_ablation.sh
 ```
 
 ## Reading results
 
-Compare `val_query_exact_match`/`test_query_exact_match` (mean ± std across 3 seeds) across
-the 4 arms, per task and averaged; read both as a 4-way comparison and as two independent
-main effects (Canon, RoPE). Not directly comparable to
+Compare `val_query_exact_match`/`test_query_exact_match` (single seed -- no mean/std across
+seeds this time, given run time) across the 4 arms, per task and averaged; read both as a
+4-way comparison and as two independent main effects (Canon, RoPE). With only one seed,
+treat small differences between arms cautiously -- they may not reflect a real effect. Not
+directly comparable to
 `arc1d_hypermodel_looped_lora_adapter`'s existing results without accounting for two
 differences: 17 tasks here vs. 11 there, and `max_steps=2000` here vs. `max_steps=1000`
 there.
