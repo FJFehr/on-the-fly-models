@@ -327,6 +327,7 @@ def build_trainer(
     callbacks: list[Callback] | None = None,
     wandb_logger=None,
     *,
+    model=None,
     evaluation: bool = False,
 ) -> pl.Trainer:
     """Create the shared Lightning trainer."""
@@ -345,7 +346,14 @@ def build_trainer(
         trainer_kwargs["devices"] = 1
         return pl.Trainer(**trainer_kwargs)
 
-    if runtime_cfg.get("gradient_clip_val") is not None:
+    # Under manual optimization (HyperModelLightning, LoopedSupervisedLightning), the
+    # model already applies gradient_clip_val itself inside training_step (it has to --
+    # Lightning's automatic clipping isn't available when automatic_optimization=False,
+    # and passing gradient_clip_val to the Trainer as well raises a MisconfigurationException:
+    # "Automatic gradient clipping is not supported for manual optimization"). Only forward
+    # it to the Trainer for models that rely on Lightning's own automatic clipping.
+    manual_optimization = model is not None and not getattr(model, "automatic_optimization", True)
+    if runtime_cfg.get("gradient_clip_val") is not None and not manual_optimization:
         trainer_kwargs["gradient_clip_val"] = runtime_cfg["gradient_clip_val"]
 
     if runtime_cfg.get("precision") is not None:

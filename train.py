@@ -184,7 +184,7 @@ def main() -> None:
         run_name=cfg.get("logging_name", cfg.experiment_name),
     )
     callbacks, checkpoint_callback = build_callbacks(cfg, model, wandb_logger=wandb_logger)
-    trainer = build_trainer(cfg, runtime_cfg, callbacks, wandb_logger)
+    trainer = build_trainer(cfg, runtime_cfg, callbacks, wandb_logger, model=model)
 
     # Resume from `last.ckpt` when the run directory already contains one.
     # If it does not exist, Lightning starts from scratch.
