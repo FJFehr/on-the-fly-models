@@ -5,6 +5,7 @@ import math
 import torch
 import torch.nn as nn
 from torch.func import functional_call
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from models.transformer import Block
 
@@ -241,6 +242,29 @@ class HyperModel(nn.Module):
         for p in target_model.parameters():
             p.requires_grad_(backbone_requires_grad)
 
+        # forward() below calls target_model via functional_call + vmap whenever the
+        # target's own architecture supports it -- vmap has no batching rule at all for
+        # nn.RNN/LSTM/GRU's fused cuDNN kernel (confirmed directly: "Batching rule not
+        # implemented for aten::rnn_tanh.input"), so targets built on those (e.g.
+        # target_model.name: rnn) fall back to the original per-example functional_call
+        # loop instead, preserving their existing behavior exactly.
+        self._use_vmap = not any(
+            isinstance(module, (nn.RNN, nn.LSTM, nn.GRU)) for module in target_model.modules()
+        )
+        if self._use_vmap:
+            # scaled_dot_product_attention's fused/flash backward kernel is incompatible
+            # with vmap's batching transform (confirmed via direct GPU testing: forward
+            # works, backward raises "LSE is not correctly aligned (strideH)") -- the
+            # manual matmul+softmax fallback already built into RoPECanonSelfAttention (and
+            # mirrored by any other target class exposing a `flash` attribute) has no such
+            # issue and is itself fully vectorized by vmap. This only touches target_model's
+            # own attention modules -- the hypernetwork encoder and any direct-supervised
+            # use of the same classes elsewhere are unaffected, since they're never called
+            # through vmap.
+            for module in target_model.modules():
+                if hasattr(module, "flash"):
+                    module.flash = False
+
         self._target_parameter_specs = [
             (name, tuple(parameter.shape), parameter.numel())
             for name, parameter in self.target_model.named_parameters()
@@ -349,6 +373,16 @@ class HyperModel(nn.Module):
             offset += numel
         return params
 
+    def build_batched_param_dict(self, param_vectors: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Reshape a batched (batch, total_params) tensor into {name: (batch, *shape)},
+        matching torch.vmap's in_dims=0 batched-argument convention."""
+        params = {}
+        offset = 0
+        for name, shape, numel in self._target_parameter_specs:
+            params[name] = param_vectors[:, offset : offset + numel].reshape(-1, *shape)
+            offset += numel
+        return params
+
     def extract_task_representation(self, hyper_output: torch.Tensor) -> torch.Tensor:
         """Pool tokenwise hypernetwork features into one task representation."""
         if hyper_output.ndim != 3:
@@ -419,7 +453,11 @@ class HyperModel(nn.Module):
         target_inputs: torch.Tensor,
         task_ids: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Apply hypernetwork to task context, then run target model for each batch item.
+        """Apply hypernetwork to task context, then run target model for every batch item
+        (each task gets its own generated weights, so this can't be a normal batched
+        forward pass through one shared set of weights): one vmapped functional_call when
+        target_model's architecture supports it (self._use_vmap), else the original
+        per-example functional_call loop.
 
         task_features  : (batch, task_seq_len, hyper_input_dim)
         target_inputs  : (batch, n_examples, seq_len, target_input_dim)
@@ -429,10 +467,31 @@ class HyperModel(nn.Module):
 
         """
         hyper_output = self.hypernetwork(task_features)
-        parameter_vectors = self.extract_parameter_vectors(hyper_output, task_ids)
+        parameter_vectors = self.extract_parameter_vectors(hyper_output, task_ids).float()
+
+        if self._use_vmap:
+            params = self.build_batched_param_dict(parameter_vectors)
+            # randomness="different": each batch item draws its own independent dropout
+            # mask (target_model.dropout is commonly nonzero), matching what the
+            # equivalent per-example loop naturally did -- vmap's default ("error")
+            # rejects any random op.
+            #
+            # sdpa_kernel(MATH): belt-and-suspenders alongside the __init__-time
+            # module.flash=False forcing above. That handles the hand-rolled Canon/RoPE
+            # attention classes (which branch on their own `flash` attribute); this also
+            # covers any target built on nn.MultiheadAttention (e.g. target_model.name:
+            # transformer), which has no `flash` attribute to toggle but calls
+            # scaled_dot_product_attention internally all the same, and so is exposed to
+            # the identical fused-backward-kernel-vs-vmap incompatibility.
+            with sdpa_kernel(SDPBackend.MATH):
+                out = torch.vmap(functional_call, in_dims=(None, 0, 0), randomness="different")(
+                    self.target_model, params, target_inputs
+                )
+            return out.squeeze(-1)
+
         outputs = []
         for i in range(parameter_vectors.shape[0]):
-            params = self.build_param_dict(parameter_vectors[i].float())
+            params = self.build_param_dict(parameter_vectors[i])
             out = functional_call(self.target_model, params, target_inputs[i])
             outputs.append(out.squeeze(-1))
         return torch.stack(outputs)
