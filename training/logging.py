@@ -106,19 +106,33 @@ def _build_hypermodel_summary(model: torch.nn.Module) -> dict[str, int | str]:
     shared_task_token_embedder = getattr(model, "shared_task_token_embedder", None)
 
     hypernetwork_backbone_params = count_parameters(hypernetwork, trainable_only=True)
-    hyper_head_params = (
-        count_parameters(hypermodel.hyper_pooling, trainable_only=True)
-        + count_parameters(hypermodel.hyper_projection, trainable_only=True)
-    )
     shared_embedding_params = (
         count_parameters(shared_task_token_embedder, trainable_only=True)
         if shared_task_token_embedder is not None
         else 0
     )
-    hypernetwork_trainable_params = (
-        hypernetwork_backbone_params + hyper_head_params + shared_embedding_params
-    )
+    target_trainable_params = count_parameters(target_model, trainable_only=True)
     target_non_trainable_params = count_parameters(target_model, trainable_only=False)
+
+    # Everything else trainable in `hypermodel` is the weight-generation head: hyper_pooling
+    # plus whichever projection path is active (dense hyper_projection; low_rank_output's
+    # hyper_proj_a/hyper_proj_b; lora_adapter's hyper_proj_shared/lora_proj_b/lora_proj_a/
+    # lora_proj_other; task_indicator_proj when the task descriptor is on). Computed as a
+    # difference rather than a hardcoded list of submodule names, so this stays correct as
+    # weight-generation modes are added -- the bug this replaces summed only
+    # hyper_pooling + hyper_projection, which is an empty placeholder Sequential under
+    # low_rank_output/lora_adapter (their real heads live in different submodules), so
+    # "trainable_parameters" silently excluded them and stayed constant across e.g. a
+    # lora_adapter_rank sweep even though the real trainable count was growing with rank.
+    hyper_head_params = (
+        count_parameters(hypermodel, trainable_only=True)
+        - hypernetwork_backbone_params
+        - target_trainable_params
+    )
+
+    # Single source of truth for the headline number: a full recursive count, not a sum of
+    # the breakdown pieces above, so the two can't silently drift apart again.
+    trainable_params = count_parameters(model, trainable_only=True)
     total_params = count_parameters(model)
 
     model_repr = str(model)
@@ -133,9 +147,22 @@ def _build_hypermodel_summary(model: torch.nn.Module) -> dict[str, int | str]:
         summary_lines.append(f"Shared task embeddings: {shared_task_token_embedder!r}")
     summary_lines.extend(
         [
-            "Hypernetwork trainable params: "
-            f"{_format_parameter_count(hypernetwork_trainable_params)}",
+            "Hypernetwork backbone trainable params: "
+            f"{_format_parameter_count(hypernetwork_backbone_params)}",
+            f"Hyper head trainable params: {_format_parameter_count(hyper_head_params)}",
+            "Shared embedding trainable params: "
+            f"{_format_parameter_count(shared_embedding_params)}",
             f"Target non-trainable params: {_format_parameter_count(target_non_trainable_params)}",
+        ]
+    )
+    if target_trainable_params:
+        summary_lines.append(
+            "Target trainable params (lora_adapter_train_backbone): "
+            f"{_format_parameter_count(target_trainable_params)}"
+        )
+    summary_lines.extend(
+        [
+            f"Total trainable params: {_format_parameter_count(trainable_params)}",
             f"Total params: {_format_parameter_count(total_params)}",
             "",
             model_repr,
@@ -146,7 +173,7 @@ def _build_hypermodel_summary(model: torch.nn.Module) -> dict[str, int | str]:
         "model_repr": model_repr,
         "summary_text": summary_text,
         "total_parameters": total_params,
-        "trainable_parameters": hypernetwork_trainable_params,
+        "trainable_parameters": trainable_params,
     }
 
 
