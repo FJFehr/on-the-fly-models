@@ -776,9 +776,12 @@ class HyperModelLightning(pl.LightningModule):
         total_loss = 0.0
         inner_losses = []
         inner_grad_norms = []
+        inner_gen_weight_norms = []
+        inner_boundary_grad_norms = []
         logits, targets = None, None
         for _ in range(self.N_supervision):
             logits, targets = self(batch)
+            gen_weight_norm = self.hypermodel._last_generated_weight_norm
             loss = self.compute_loss(logits, targets)
             opt.zero_grad()
             self.manual_backward(loss)
@@ -792,6 +795,11 @@ class HyperModelLightning(pl.LightningModule):
             total_loss += loss.detach()
             inner_losses.append(loss.detach().item())
             inner_grad_norms.append(grad_norm.item())
+            inner_gen_weight_norms.append(gen_weight_norm.mean().item())
+            boundary_grad_norm = self.hypermodel._last_boundary_grad_norm
+            inner_boundary_grad_norms.append(
+                boundary_grad_norm.mean().item() if boundary_grad_norm is not None else None
+            )
 
         if sch is not None:
             sch.step()
@@ -823,16 +831,38 @@ class HyperModelLightning(pl.LightningModule):
             batch_size=batch_size,
             inner_losses=inner_losses,
             inner_grad_norms=inner_grad_norms,
+            inner_gen_weight_norms=inner_gen_weight_norms,
+            inner_boundary_grad_norms=inner_boundary_grad_norms,
         )
         return avg_loss
 
-    def _write_step_diagnostics(self, batch, batch_idx, batch_size, inner_losses, inner_grad_norms):
+    def _write_step_diagnostics(
+        self,
+        batch,
+        batch_idx,
+        batch_size,
+        inner_losses,
+        inner_grad_norms,
+        inner_gen_weight_norms,
+        inner_boundary_grad_norms,
+    ):
         """Append one JSONL record per training step for loss-spike diagnosis.
 
         Captures per-inner-supervision-step loss/grad-norm (otherwise averaged
         away into a single `train_loss` point) plus the batch's task-category
         and task-id composition, so spikes can be correlated post-hoc against
         gradient explosion, epoch position, and specific data items.
+
+        `inner_gen_weight_norms`/`inner_boundary_grad_norms` sit at the boundary
+        between the hypernetwork (encoder/pooling/projection) and the target
+        model's vmapped forward: `gen_weight_norm` is the magnitude of the
+        weights the hypernetwork generated for the target model that step, and
+        `boundary_grad_norm` is the gradient arriving at that same point during
+        backward. Comparing `boundary_grad_norm` against the final whole-model
+        `inner_grad_norms` localizes an explosion: if they're already comparable
+        at the boundary, the amplification happened inside the target-model
+        loop; if the boundary is normal but the final norm is huge, it happened
+        upstream in the hypernetwork encoder/projection instead.
         """
         if self._diagnostics_path is None:
             return
@@ -845,6 +875,8 @@ class HyperModelLightning(pl.LightningModule):
             "batch_size": batch_size,
             "inner_losses": inner_losses,
             "inner_grad_norms": inner_grad_norms,
+            "inner_gen_weight_norms": inner_gen_weight_norms,
+            "inner_boundary_grad_norms": inner_boundary_grad_norms,
             "task_category_counts": dict(Counter(batch["task_category"])),
             "task_ids": list(batch["task_id"]),
         }

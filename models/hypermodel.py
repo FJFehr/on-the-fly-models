@@ -469,6 +469,25 @@ class HyperModel(nn.Module):
         hyper_output = self.hypernetwork(task_features)
         parameter_vectors = self.extract_parameter_vectors(hyper_output, task_ids).float()
 
+        # Loss-spike localization diagnostics: parameter_vectors is the boundary between
+        # "everything the hypernetwork/hyper-head computed" (upstream) and "what the
+        # target-model loop does with those generated weights" (downstream, inside vmap).
+        # It's a plain (non-vmapped) tensor at this point, so both its forward magnitude
+        # and its backward gradient are safe/cheap to capture here without touching the
+        # vmapped internals. Comparing these against the final whole-model grad norm
+        # (logged in training_step) tells us whether an explosion originates inside the
+        # target-model loop (boundary grad already huge) or upstream in the hypernetwork
+        # encoder/projection (boundary grad normal, but the final grad norm is huge).
+        self._last_generated_weight_norm = parameter_vectors.detach().norm(dim=-1)
+        if parameter_vectors.requires_grad:
+
+            def _capture_boundary_grad(grad: torch.Tensor) -> None:
+                self._last_boundary_grad_norm = grad.detach().norm(dim=-1)
+
+            parameter_vectors.register_hook(_capture_boundary_grad)
+        else:
+            self._last_boundary_grad_norm = None
+
         if self._use_vmap:
             params = self.build_batched_param_dict(parameter_vectors)
             # randomness="different": each batch item draws its own independent dropout

@@ -9,6 +9,13 @@ task-category/task-id composition) and reports, for each detected spike:
   relative to the run's overall grad-norm distribution (exploding-gradient check)
 - how far into its epoch the spiking batch fell (epoch-boundary/reshuffle check)
 - the task-category composition and task_ids of the spiking batch (data-item check)
+- whether the explosion originates inside the target-model loop or upstream in the
+  hypernetwork encoder/projection, by comparing the gradient norm at the
+  parameter_vectors boundary (`inner_boundary_grad_norms`) against the final
+  whole-model gradient norm (`inner_grad_norms`) — if they're already comparable at
+  the boundary, the loop is amplifying; if the boundary is normal but the final norm
+  is huge, the encoder/projection network is (requires the newer diagnostics fields;
+  older JSONL files without them just skip this section)
 
 Epoch boundaries are derived directly from transitions in the record's `epoch`
 field rather than assumed from dataset_size // batch_size, so this works for
@@ -105,6 +112,43 @@ def summarize(records: list[dict], spikes: list[dict], steps_into_epoch: dict[in
     print("\nSpike position within epoch (steps_into_epoch, 0 = first batch of epoch):")
     positions = [steps_into_epoch[records[s["index"]]["global_step"]] for s in spikes]
     print(f"  {positions}")
+
+    has_localization = all(
+        r.get("inner_boundary_grad_norms") is not None and r.get("inner_gen_weight_norms") is not None
+        for r in records
+    )
+    if not has_localization:
+        print(
+            "\n(No loop-vs-encoder localization: this file predates the "
+            "inner_boundary_grad_norms/inner_gen_weight_norms diagnostics.)"
+        )
+        return
+
+    baseline_boundary = statistics.median(
+        [max(gn for gn in r["inner_boundary_grad_norms"] if gn is not None) for r in records]
+    )
+    baseline_gen_weight = statistics.median([max(r["inner_gen_weight_norms"]) for r in records])
+
+    print("\nLoop-vs-encoder localization (boundary = gradient at hypernetwork-generated weights,")
+    print("i.e. after backprop through the target-model loop but before the hyper-projection/encoder):")
+    header2 = (
+        f"{'step':>8} {'grad_max':>10} {'boundary_max':>13} {'boundary/grad':>14} "
+        f"{'gen_wt_norm':>12} {'gen_wt/baseline':>16}  likely origin"
+    )
+    print(header2)
+    print("-" * len(header2))
+    for spike in spikes:
+        rec = records[spike["index"]]
+        grad_max = max(rec["inner_grad_norms"])
+        boundary_vals = [gn for gn in rec["inner_boundary_grad_norms"] if gn is not None]
+        boundary_max = max(boundary_vals) if boundary_vals else float("nan")
+        gen_wt_max = max(rec["inner_gen_weight_norms"])
+        ratio = boundary_max / grad_max if grad_max else float("nan")
+        origin = "loop (target model)" if ratio > 0.5 else "encoder/projection"
+        print(
+            f"{rec['global_step']:>8} {grad_max:>10.4g} {boundary_max:>13.4g} {ratio:>14.2f} "
+            f"{gen_wt_max:>12.4g} {gen_wt_max / baseline_gen_weight:>16.2f}x  {origin}"
+        )
 
 
 def main() -> None:
