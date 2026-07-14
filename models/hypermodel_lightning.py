@@ -1,7 +1,9 @@
 """Lightning training wrapper for the simplified HyperModel path."""
 
+import json
 import os
 import re
+from collections import Counter
 from collections.abc import Mapping
 
 import lightning as pl
@@ -171,6 +173,13 @@ class HyperModelLightning(pl.LightningModule):
         self.automatic_optimization = False
         self.N_supervision = N_supervision
         self.gradient_clip_val = gradient_clip_val
+        # Loss-spike diagnostics: per-training-step JSONL of inner-loop loss/grad-norm
+        # traces plus batch composition, written next to the run's other outputs.
+        self._diagnostics_path = (
+            os.path.join(kwargs["output_path"], "train_step_diagnostics.jsonl")
+            if kwargs.get("output_path")
+            else None
+        )
         self.prediction_task, self.num_classes = self.resolve_prediction_task(
             prediction_task, num_classes
         )
@@ -765,16 +774,24 @@ class HyperModelLightning(pl.LightningModule):
         sch = self.lr_schedulers()
 
         total_loss = 0.0
+        inner_losses = []
+        inner_grad_norms = []
         logits, targets = None, None
         for _ in range(self.N_supervision):
             logits, targets = self(batch)
             loss = self.compute_loss(logits, targets)
             opt.zero_grad()
             self.manual_backward(loss)
-            if self.gradient_clip_val is not None:
-                clip_grad_norm_(self.parameters(), self.gradient_clip_val)
+            # Always measure the pre-clip gradient norm, even when no clip value
+            # is configured: clip_grad_norm_ with max_norm=inf never rescales
+            # (the coefficient is always >= 1), so this is a no-op for existing
+            # unclipped runs while making the norm observable for diagnostics.
+            clip_value = self.gradient_clip_val if self.gradient_clip_val is not None else float("inf")
+            grad_norm = clip_grad_norm_(self.parameters(), clip_value)
             opt.step()
             total_loss += loss.detach()
+            inner_losses.append(loss.detach().item())
+            inner_grad_norms.append(grad_norm.item())
 
         if sch is not None:
             sch.step()
@@ -791,6 +808,8 @@ class HyperModelLightning(pl.LightningModule):
             "sync_dist": sync_dist,
         }
         self.log("train_loss", avg_loss, prog_bar=True, **log_kwargs)
+        self.log("train_grad_norm_max", max(inner_grad_norms), **log_kwargs)
+        self.log("train_grad_norm_mean", sum(inner_grad_norms) / len(inner_grad_norms), **log_kwargs)
         for name, value in metrics.items():
             self.log(
                 name,
@@ -798,7 +817,39 @@ class HyperModelLightning(pl.LightningModule):
                 prog_bar=name.endswith("query_exact_match"),
                 **log_kwargs,
             )
+        self._write_step_diagnostics(
+            batch=batch,
+            batch_idx=batch_idx,
+            batch_size=batch_size,
+            inner_losses=inner_losses,
+            inner_grad_norms=inner_grad_norms,
+        )
         return avg_loss
+
+    def _write_step_diagnostics(self, batch, batch_idx, batch_size, inner_losses, inner_grad_norms):
+        """Append one JSONL record per training step for loss-spike diagnosis.
+
+        Captures per-inner-supervision-step loss/grad-norm (otherwise averaged
+        away into a single `train_loss` point) plus the batch's task-category
+        and task-id composition, so spikes can be correlated post-hoc against
+        gradient explosion, epoch position, and specific data items.
+        """
+        if self._diagnostics_path is None:
+            return
+        if not (self.trainer is None or self.trainer.is_global_zero):
+            return
+        record = {
+            "global_step": self.global_step,
+            "epoch": self.current_epoch,
+            "batch_idx": batch_idx,
+            "batch_size": batch_size,
+            "inner_losses": inner_losses,
+            "inner_grad_norms": inner_grad_norms,
+            "task_category_counts": dict(Counter(batch["task_category"])),
+            "task_ids": list(batch["task_id"]),
+        }
+        with open(self._diagnostics_path, "a") as f:
+            f.write(json.dumps(record) + "\n")
 
     def validation_step(self, batch, batch_idx):
         self.common_step(batch, prefix="val")
