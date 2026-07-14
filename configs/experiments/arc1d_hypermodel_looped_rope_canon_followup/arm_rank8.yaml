@@ -1,0 +1,8 @@
+# Rank comparison arm: lora_adapter_rank 1 -> 8, everything else identical to arm_default.
+# Question: does the higher rank unlock any task that fails under rank=1 (not just raise the
+# average), see README.md.
+_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_followup/base.yaml
+experiment_name: looped_hyper_rope_canon_followup_rank8
+
+hyper_head:
+  lora_adapter_rank: 8
