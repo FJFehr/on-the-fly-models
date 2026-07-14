@@ -221,7 +221,6 @@ class HyperModel(nn.Module):
         lora_adapter: bool = False,
         lora_adapter_rank: int = 1,
         lora_adapter_train_backbone: bool = False,
-        lora_adapter_alpha: float | None = None,
     ):
         super().__init__()
         if lora_adapter and low_rank_output:
@@ -230,13 +229,6 @@ class HyperModel(nn.Module):
         if lora_adapter_train_backbone and not lora_adapter:
             msg = "hyper_head.lora_adapter_train_backbone requires hyper_head.lora_adapter=True."
             raise ValueError(msg)
-        # Standard LoRA convention scales the generated delta by alpha/r (Hu et al. 2021),
-        # decoupling how large B@A needs to be from how large B/A individually need to grow
-        # to produce it. Defaulting to None -> scaling=1.0 preserves this codebase's existing
-        # (unscaled) behavior for every config that doesn't opt in explicitly.
-        self.lora_adapter_scaling = (
-            1.0 if lora_adapter_alpha is None else lora_adapter_alpha / lora_adapter_rank
-        )
 
         self.hypernetwork = hypernetwork
         self.target_model = target_model
@@ -447,7 +439,7 @@ class HyperModel(nn.Module):
                 base = self.target_model.get_parameter(name).reshape(1, d_out, d_in)
                 b = self.lora_proj_b[lora_index](shared).reshape(batch, d_out, r)
                 a = self.lora_proj_a[lora_index](shared).reshape(batch, r, d_in)
-                delta = self.lora_adapter_scaling * torch.bmm(b, a)
+                delta = torch.bmm(b, a)
                 pieces.append((base + delta).reshape(batch, numel))
                 lora_index += 1
             else:
