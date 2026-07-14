@@ -6,7 +6,7 @@ Isolate which architectural change to the hypernetwork **encoder** (not the targ
 which is held fixed) improves task-context reading: Canon convolutions, RoPE, or both. Every
 `hyper_model.params` value is kept as close to today's shipped `transformer` convention
 (`hidden_dim=64, num_heads=4, num_layers=2, output_dim=64`) as each class's constructor
-allows — the goal is config-similarity to "current," not parameter- or block-count-matching.
+allows, since the goal is config-similarity to "current," not parameter- or block-count-matching.
 This deliberately does **not** follow `arc1d_uniform_ablation`'s own precedent of bumping
 `num_layers` to 3 for block/parameter parity with a looped-at-`n_loops=1` RoPE class; here
 `num_layers` stays `2` everywhere it applies, and the RoPE arms use a genuinely flat
@@ -18,9 +18,9 @@ Target model: **fixed** across all 4 arms, exactly matching
 inner_num_heads=2, n_loops=4, canon_set=ABCD`). Weight generation:
 `hyper_head.lora_adapter=true, lora_adapter_rank=1` (fixed, reused as-is from
 `arc1d_hypermodel_looped_lora_adapter`, not re-validated here). `N_supervision=2,
-max_steps=2000, warmup_steps=200` — trains longer than that project's `max_steps=1000`. All
-17 task categories (`TASK_CATEGORY_INDEX` minus `1d_padded_fill`) — up from that project's
-11-task subset.
+max_steps=4000, warmup_steps=400, batch_size=1024`, which trains longer and at a larger batch
+size than that project's `max_steps=1000, batch_size=512`. All 17 task categories
+(`TASK_CATEGORY_INDEX` minus `1d_padded_fill`), up from that project's 11-task subset.
 
 ## New class: `RoPECanonTransformer`
 
@@ -51,31 +51,31 @@ The 4 arms form a clean 2×2 grid (Canon on/off × RoPE on/off) with `num_layers
 
 ## Background: `task_encoding.use_sinusoidal_pe`
 
-`HyperModelLightning` previously never read `task_encoding.use_sinusoidal_pe` — every run
+`HyperModelLightning` previously never read `task_encoding.use_sinusoidal_pe`, so every run
 got additive sinusoidal PE unconditionally, including RoPE-based encoders/targets (whose own
 docstrings say the input embedder should have `use_sinusoidal_pe=False` to avoid
 double-encoding position). This is now wired through (mirroring
 `DirectSupervisedLightning`/`LoopedSupervisedLightning`'s existing pattern), defaulting to
-`true` so no existing config's behavior changes.
+`true` so no existing config's behaviour changes.
 
 **Two caveats, disclosed rather than engineered around:**
 
 - **PE-stacking on the fixed target model.** `HyperModelLightning` has exactly one shared
   `TaskTokenEmbedder` feeding both the encoder's input and the target model's input. The
   target model's RoPE is unconditional (applied regardless of `canon_set`), so its
-  *architecture* is genuinely fixed across all 4 arms — but its *effective input positional
+  *architecture* is genuinely fixed across all 4 arms, but its *effective input positional
   treatment* isn't perfectly constant: arms 1/3 give the target both its own RoPE and
   redundant external sinusoidal PE; arms 2/4 give it only its own RoPE. This is a real,
   second-order effect (RoPE is generally understood to dominate over an embedding-layer-only
-  additive PE, but that assumption hasn't been previously validated in this repo — no
+  additive PE, but that assumption hasn't been previously validated in this repo, and no
   existing codepath has one embedder feeding two structurally different consumers like this).
   Not worth blocking on or building a per-consumer override for; noted here as an accepted
   caveat.
 - **ReLU vs. GELU FFN activation.** `Transformer` (arm 1) has a configurable FFN activation
   (`activation: str = "relu"`, unset in every existing config → ReLU). `CanonTransformer` and
   `RoPECanonTransformer`'s FFN (`CanonMLP`) both hardcode `nn.GELU()` with no activation
-  parameter at all. So arms 2–4 are unconditionally GELU-activated regardless of RoPE/Canon
-  settings, while arm 1 is ReLU — not a pure RoPE/Canon-presence comparison. Per the "match
+  parameter at all. So arms 2-4 are unconditionally GELU-activated regardless of RoPE/Canon
+  settings, while arm 1 is ReLU: not a pure RoPE/Canon-presence comparison. Per the "match
   current as closely as possible" goal, arm 1 is not changed to GELU to compensate.
 
 ## Running
@@ -87,18 +87,16 @@ uv run python train.py --config configs/experiments/arc1d_hypermodel_looped_hype
 uv run python train.py --config configs/experiments/arc1d_hypermodel_looped_hypernet_rope_canon_ablation/overfit/hypernet_canon_overfit.yaml
 uv run python train.py --config configs/experiments/arc1d_hypermodel_looped_hypernet_rope_canon_ablation/overfit/hypernet_rope_canon_overfit.yaml
 
-# Full sweep (4 configs, seed 1 only -- single-seed given how long these runs take:
-# 17 tasks, max_steps=2000, N_supervision=2).
+# Full sweep (4 configs, 5 seeds each, 20 jobs total: 17 tasks, max_steps=4000,
+# batch_size=1024, N_supervision=2).
 bash scripts/run_hypermodel_looped_hypernet_rope_canon_ablation.sh
 ```
 
 ## Reading results
 
-Compare `val_query_exact_match`/`test_query_exact_match` (single seed -- no mean/std across
-seeds this time, given run time) across the 4 arms, per task and averaged; read both as a
-4-way comparison and as two independent main effects (Canon, RoPE). With only one seed,
-treat small differences between arms cautiously -- they may not reflect a real effect. Not
-directly comparable to
-`arc1d_hypermodel_looped_lora_adapter`'s existing results without accounting for two
-differences: 17 tasks here vs. 11 there, and `max_steps=2000` here vs. `max_steps=1000`
-there.
+Compare `val_query_exact_match`/`test_query_exact_match` (mean ± std across 5 seeds) across
+the 4 arms, per task and averaged; read both as a 4-way comparison and as two independent
+main effects (Canon, RoPE). Not directly comparable to
+`arc1d_hypermodel_looped_lora_adapter`'s existing results without accounting for three
+differences: 17 tasks here vs. 11 there, `max_steps=4000` here vs. `max_steps=1000` there,
+and `batch_size=1024` here vs. `batch_size=512` there.
