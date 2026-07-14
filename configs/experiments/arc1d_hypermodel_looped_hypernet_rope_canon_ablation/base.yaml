@@ -87,7 +87,7 @@ float32_matmul_precision: medium
 precision: bf16-mixed
 devices: auto
 optimizer: RAdam
-batch_size: 512
+batch_size: 1024
 learning_rate: 0.001
 weight_decay: 0.01
 lr_scheduler:
@@ -98,8 +98,8 @@ lr_scheduler:
 # Trains longer than arc1d_hypermodel_looped_lora_adapter/base_n2_loop4_noskip.yaml's
 # max_steps=1000 -- Fabio's explicit direction for this ablation. warmup_steps stays at 10%
 # of max_steps, matching that file's convention.
-max_steps: 2000
-warmup_steps: 200
+max_steps: 4000
+warmup_steps: 400
 log_task_examples: true
 log_task_examples_every_n_epochs: 100
 num_periodic_train_task_examples: 100
