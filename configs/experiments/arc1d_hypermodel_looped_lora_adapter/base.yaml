@@ -60,6 +60,12 @@ optimizer: RAdam
 batch_size: 512
 learning_rate: 0.001
 weight_decay: 0.01
+# Loss-spike diagnostics (scripts/analyze_loss_spikes.py on a seed=1 diagnostic run of the
+# sibling arc1d_hypermodel_looped_hypernet_rope_canon_ablation config) traced periodic
+# training-loss spikes to unclipped gradient explosions in the hyper-projection/rank-1
+# LoRA-adapter heads (not the target-model loop): normal steps sit around p50=6.2, p90=15.9;
+# spikes reached 40-90+. 10.0 sits between p75 (9.5) and p90 (15.9).
+gradient_clip_val: 10.0
 lr_scheduler:
   name: CosineAnnealingLR
   params:
