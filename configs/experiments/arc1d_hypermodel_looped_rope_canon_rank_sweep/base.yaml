@@ -1,0 +1,154 @@
+# Base config for the LoRA rank sweep, following on from
+# arc1d_hypermodel_looped_rope_canon_followup's results: rank 8 unlocked every task except
+# 1d_recolor_oe and 1d_recolor_cnt (clearly better than rank 1), while N_supervision=4 and
+# hierarchical pooling both showed no measurable difference over their cheaper alternatives.
+# This experiment therefore fixes N_supervision=2 and drops hierarchical pooling entirely
+# (attention pooling only, one less piece of complexity for no measured benefit), and sweeps
+# lora_adapter_rank across 1, 2, 4, 8 to see where the task-unlocking actually happens.
+#
+# hyper_model stays at num_layers=4 (not reverted to 2): that was the followup experiment's
+# actual attention-pooling arm, kept as-is per Fabio's direction rather than introducing an
+# untested change alongside the rank sweep and the gradient-clip change below.
+#
+# gradient_clip_val lowered 10 -> 5, per Fabio's direction. The previous value (10.0) was
+# carried forward from loss-spike diagnostics done at batch_size=1024
+# (arc1d_hypermodel_looped_hypernet_rope_canon_ablation/base.yaml); not independently
+# re-verified at this value either, so watch the loss curves for spikes.
+#
+# Self-contained (no _base_ of its own), matching every sibling base.yaml, because the config
+# loader only resolves one level of _base_ inheritance (training/config.py).
+project_name: arc1d_hypermodel_looped_rope_canon_rank_sweep
+entity: fjfehr
+output_dir: outputs
+seed: 42
+experiment_name: looped_hyper_rope_canon_rank_sweep
+output_path: ${output_dir}/${project_name}/${experiment_name}
+
+data: arc_1d_meta_multiclass
+data_dir: data/arc_1d_looped_augmented
+model: hyper_model
+primary_metric: val_loss
+num_workers: 0
+
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_cmp
+  - 1d_recolor_cnt
+  - 1d_recolor_oe
+  - 1d_scale_dp
+task_ids: null
+val_task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_cmp
+  - 1d_recolor_cnt
+  - 1d_recolor_oe
+  - 1d_scale_dp
+train_split: train
+val_split: val
+test_split: test
+overfit_single_batch: false
+
+# Use all GPUs on the node (train.py resolves "auto" -> all free GPUs, see
+# resolve_free_gpus in training/gpu_utils.py), matching sibling conventions.
+accelerator: auto
+float32_matmul_precision: medium
+precision: bf16-mixed
+devices: auto
+optimizer: RAdam
+batch_size: 512
+learning_rate: 0.001
+weight_decay: 0.01
+# Lowered from 10.0, per Fabio's direction. See header comment.
+gradient_clip_val: 5.0
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: ${max_steps}
+    eta_min: 0.0001
+max_steps: 4000
+warmup_steps: 400
+log_task_examples: true
+log_task_examples_every_n_epochs: 100
+num_periodic_train_task_examples: 100
+num_periodic_val_task_examples: 100
+
+prediction_task: multiclass
+num_classes: 10
+padding_idx: 10
+stop_on_perfect_val_exact_match: false
+
+# Fixed at 2: the followup experiment found N_supervision=4 made no measurable difference.
+N_supervision: 2
+
+task_encoding:
+  embedding_dim: 16
+  value_vocab_size: 11
+  use_sinusoidal_pe: false
+
+# Fixed across all 4 rank arms. Exact match to
+# arc1d_hypermodel_looped_rope_canon_followup/base.yaml's target_model block.
+target_model:
+  name: rope_canon_looped_transformer
+  params:
+    hidden_dim: 16
+    num_heads: 2
+    inner_dim: 16
+    inner_num_heads: 2
+    n_loops: 4
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_block_skip: false
+    use_loop_skip: false
+
+# Fixed across all 4 rank arms: RoPE+Canon encoder, num_layers=4 (kept from the followup
+# experiment's attention-pooling arm, see header comment).
+hyper_model:
+  name: rope_canon_transformer
+  params:
+    hidden_dim: 64
+    num_heads: 4
+    num_layers: 4
+    output_dim: 64
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    block_size: 2048
+
+# Attention pooling only (hierarchical dropped, no measured benefit). lora_adapter_rank is
+# overridden per leaf config (rank1.yaml/rank2.yaml/rank4.yaml/rank8.yaml).
+hyper_head:
+  pooling: attention
+  bottleneck_dim: 128
+  num_tasks: 18
+  lora_adapter: true
+  lora_adapter_rank: 1
