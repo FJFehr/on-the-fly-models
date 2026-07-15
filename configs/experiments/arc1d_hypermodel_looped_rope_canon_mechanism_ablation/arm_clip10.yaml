@@ -1,0 +1,7 @@
+# Re-isolates gradient_clip_val: 5 -> 10, single-axis flip from the baseline (rank8.yaml's
+# settings), to help explain why rank=8's rank_sweep result underperformed the followup
+# experiment's result. See base.yaml and README.md.
+_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_mechanism_ablation/base.yaml
+experiment_name: looped_hyper_rope_canon_mechanism_ablation_clip10
+
+gradient_clip_val: 10.0

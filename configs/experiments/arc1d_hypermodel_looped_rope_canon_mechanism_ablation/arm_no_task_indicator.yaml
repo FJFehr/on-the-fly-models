@@ -1,0 +1,13 @@
+# New mechanism question: can the model still learn multiple tasks without the explicit
+# one-hot task-identity signal (hyper_head.num_tasks), relying only on the 3-shot support
+# examples to infer the task? Single-axis flip from the baseline: num_tasks: null disables
+# HyperModel.task_indicator_proj entirely (models/hypermodel.py, models/hypermodel_lightning.py)
+# via existing `is not None` guards, no code change needed. The 3-shot support-example
+# pathway (models/hypermodel_lightning.py's prepare_inputs) is independent of task_ids/
+# TASK_CATEGORY_INDEX, so this arm still has a task signal, just not the oracle one-hot label.
+# See base.yaml and README.md.
+_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_mechanism_ablation/base.yaml
+experiment_name: looped_hyper_rope_canon_mechanism_ablation_no_task_indicator
+
+hyper_head:
+  num_tasks: null

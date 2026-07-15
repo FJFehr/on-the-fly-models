@@ -215,6 +215,9 @@ class HyperModelLightning(pl.LightningModule):
         lora_adapter_train_backbone = bool(
             hyper_head_cfg.get("lora_adapter_train_backbone", False)
         )
+        lora_adapter_zero_backbone = bool(
+            hyper_head_cfg.get("lora_adapter_zero_backbone", False)
+        )
         hyper_pooling = self.build_hyper_pooling(hyper_head_cfg, hyper_output_dim)
         self.hypermodel = HyperModel(
             hypernetwork=hypernetwork,
@@ -229,6 +232,7 @@ class HyperModelLightning(pl.LightningModule):
             lora_adapter=lora_adapter,
             lora_adapter_rank=lora_adapter_rank,
             lora_adapter_train_backbone=lora_adapter_train_backbone,
+            lora_adapter_zero_backbone=lora_adapter_zero_backbone,
         )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer

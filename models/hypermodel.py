@@ -38,10 +38,11 @@ def _describe_hyper_projection(model: "HyperModel") -> str:
             elif isinstance(layer, nn.GELU):
                 parts.append("GELU")
         backbone_state = "trainable" if model.lora_adapter_train_backbone else "frozen"
+        backbone_kind = "zero" if model.lora_adapter_zero_backbone else "random"
         other_numel = model.lora_proj_other.out_features
         parts.append(
             f"[{len(model.lora_proj_b)}x per-tensor rank-{model.lora_adapter_rank} B@A "
-            f"adapters on {backbone_state} random backbone] + [other: Linear(-> {other_numel})]"
+            f"adapters on {backbone_state} {backbone_kind} backbone] + [other: Linear(-> {other_numel})]"
         )
         return " + ".join(parts)
     parts = []
@@ -221,6 +222,7 @@ class HyperModel(nn.Module):
         lora_adapter: bool = False,
         lora_adapter_rank: int = 1,
         lora_adapter_train_backbone: bool = False,
+        lora_adapter_zero_backbone: bool = False,
     ):
         super().__init__()
         if lora_adapter and low_rank_output:
@@ -292,6 +294,7 @@ class HyperModel(nn.Module):
         self.lora_adapter = lora_adapter
         self.lora_adapter_rank = lora_adapter_rank
         self.lora_adapter_train_backbone = lora_adapter_train_backbone
+        self.lora_adapter_zero_backbone = lora_adapter_zero_backbone
         if low_rank_output:
             # Shared MLP up to (but not including) the final output layer.
             shared_layers: list[nn.Module] = []
@@ -339,8 +342,16 @@ class HyperModel(nn.Module):
                 # init -- an ordinary-scale network, not the all-zero collapse the old
                 # low_rank_output path hit before its variance-matching fix. A keeps its
                 # default init so gradients reach B (and, once B moves, A) from step 0.
-                with torch.no_grad():
-                    nn.init.zeros_(b_head.weight)
+                #
+                # With lora_adapter_zero_backbone, the backbone is 0 too, so zero-init B
+                # would make the WHOLE effective weight 0 at step 0 -- the exact all-zero
+                # collapse this convention exists to avoid, and a dead-gradient trap (no
+                # backbone left to carry a real forward/backward signal). B keeps its
+                # ordinary random init in that case instead, confirmed necessary since a
+                # zero-init B reproducibly gave gradient=0.0 at the hypernetwork in testing.
+                if not lora_adapter_zero_backbone:
+                    with torch.no_grad():
+                        nn.init.zeros_(b_head.weight)
                 lora_proj_b.append(b_head)
                 lora_proj_a.append(a_head)
             self.lora_proj_b = nn.ModuleList(lora_proj_b)
@@ -422,6 +433,8 @@ class HyperModel(nn.Module):
         Every 2D weight matrix is generated as W_backbone + B @ A, where W_backbone is the
         target model's own (frozen, or jointly-trained if lora_adapter_train_backbone) random
         init, and B, A are rank-lora_adapter_rank factors sized to that tensor's own shape.
+        If lora_adapter_zero_backbone is set, W_backbone is zero instead of the target
+        model's real init, so the generated delta alone determines the weight.
         Non-matrix parameters (norms, Canon kernels) have no meaningful low-rank structure and
         are generated fully, same as the dense hyper_projection path.
         """
@@ -436,7 +449,11 @@ class HyperModel(nn.Module):
         for name, shape, numel in self._target_parameter_specs:
             if len(shape) == 2:
                 d_out, d_in = shape
-                base = self.target_model.get_parameter(name).reshape(1, d_out, d_in)
+                if self.lora_adapter_zero_backbone:
+                    template = self.target_model.get_parameter(name)
+                    base = torch.zeros(1, d_out, d_in, device=template.device, dtype=template.dtype)
+                else:
+                    base = self.target_model.get_parameter(name).reshape(1, d_out, d_in)
                 b = self.lora_proj_b[lora_index](shared).reshape(batch, d_out, r)
                 a = self.lora_proj_a[lora_index](shared).reshape(batch, r, d_in)
                 delta = torch.bmm(b, a)
