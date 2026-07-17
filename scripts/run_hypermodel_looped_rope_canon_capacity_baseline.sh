@@ -3,9 +3,11 @@
 # x task-descriptor x {on,off}, plus 2 longer-training arms for the no-descriptor case),
 # 3 seeds each (18 jobs total). 15-task list, gradient_clip_val=10 fixed.
 #
-# Each run uses ALL GPUs on the node (configs set devices: auto, resolved by
-# train.py's resolve_free_gpus to every free GPU). Since each run claims the whole node,
-# jobs run one after another, not in parallel. Skips already-completed runs.
+# Each run uses every GPU with <500MB used on the node (configs set devices: auto; train.py
+# is invoked with --free-gpus so resolve_free_gpus restricts to actually-idle GPUs rather
+# than grabbing all 8 regardless of other users' jobs, which is train.py's default without
+# that flag). Since each run claims every free GPU, jobs run one after another, not in
+# parallel. Skips already-completed runs.
 #
 # To split this across multiple nodes without clashing (nodes don't share a filesystem in
 # general, though torrnode7/12/13 happen to share NFS home directories here, so the
@@ -61,7 +63,7 @@ for job in "${JOBS[@]}"; do
     log="${LOG_DIR}/${exp_name}.log"
 
     echo "START  ${PROJECT} / ${exp_name}"
-    if .venv/bin/python train.py --config "$cfg" \
+    if .venv/bin/python train.py --config "$cfg" --free-gpus \
         seed="$seed" \
         project_name="$PROJECT" \
         experiment_name="${exp_name}" \
