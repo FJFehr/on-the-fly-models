@@ -3,11 +3,13 @@
 # x task-descriptor x {on,off}, plus 2 longer-training arms for the no-descriptor case),
 # 3 seeds each (18 jobs total). 15-task list, gradient_clip_val=10 fixed.
 #
-# Each run uses every GPU with <500MB used on the node (configs set devices: auto; train.py
-# is invoked with --free-gpus so resolve_free_gpus restricts to actually-idle GPUs rather
-# than grabbing all 8 regardless of other users' jobs, which is train.py's default without
-# that flag). Since each run claims every free GPU, jobs run one after another, not in
-# parallel. Skips already-completed runs.
+# Each run uses ALL GPUs on the node by default (configs set devices: auto), including any
+# already in use by other users' jobs -- CUDA compute is time-sliced/shared fine as long as
+# there's free memory (this repo's models are small, ~500MB-1GB per run). Set
+# FREE_GPUS_FLAG="--free-gpus" to instead restrict to GPUs with <500MB used, if a shared
+# node's other jobs are memory-heavy enough that sharing risks OOM. Since each run claims
+# every (free or shared) GPU, jobs run one after another, not in parallel. Skips
+# already-completed runs.
 #
 # To split this across multiple nodes without clashing (nodes don't share a filesystem in
 # general, though torrnode7/12/13 happen to share NFS home directories here, so the
@@ -25,6 +27,7 @@ PROJECT="arc1d_hypermodel_looped_rope_canon_capacity_baseline"
 LOG_DIR="logs/arc1d_hypermodel_looped_rope_canon_capacity_baseline"
 CFG_DIR="configs/experiments/arc1d_hypermodel_looped_rope_canon_capacity_baseline"
 CELL_GLOB="${CELL_GLOB:-arm_*.yaml}"
+FREE_GPUS_FLAG="${FREE_GPUS_FLAG:-}"
 mkdir -p "$LOG_DIR"
 
 SEEDS=(1 2 3)
@@ -63,7 +66,7 @@ for job in "${JOBS[@]}"; do
     log="${LOG_DIR}/${exp_name}.log"
 
     echo "START  ${PROJECT} / ${exp_name}"
-    if .venv/bin/python train.py --config "$cfg" --free-gpus \
+    if .venv/bin/python train.py --config "$cfg" $FREE_GPUS_FLAG \
         seed="$seed" \
         project_name="$PROJECT" \
         experiment_name="${exp_name}" \
