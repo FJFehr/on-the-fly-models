@@ -1,0 +1,163 @@
+# Base config for the capacity x task-descriptor x training-length baseline. Follows on from
+# arc1d_hypermodel_looped_rope_canon_grid's results: at gradient_clip_val=10 with the task
+# descriptor on, num_layers=8 gave a real stability improvement over num_layers=4 (mean
+# exact-match 0.864 vs. 0.856, but std 0.009 vs. 0.027, roughly 3x tighter). Pooled across
+# every clip=10/descriptor-on run, essentially every task is solved (mean >= 0.93) except
+# 1d_recolor_cnt/1d_recolor_oe (stuck at a literal 0.000 in every single run regardless of
+# layers or clip, a qualitatively different, likely structural failure, not a capacity
+# question) and 1d_move_dp (0.711 mean, never zero, partial but not catastrophic). So this
+# experiment fixes gradient_clip_val=10 (no longer swept) and drops recolor_cnt/recolor_oe
+# from the task list (15 tasks remain, move_dp stays in since it's the task most likely to
+# show a real layers=4-vs-8 capacity difference).
+#
+# Separately, the earlier arc1d_hypermodel_looped_rope_canon_mechanism_ablation experiment
+# found removing the task descriptor (hyper_head.num_tasks: null) cost a real chunk of
+# accuracy (0.629 vs. 0.746 mean exact-match), but that was measured at the OLD settings
+# (clip=5, layers=4, the harder 17-task list including the now-excluded recolor_cnt/oe).
+# This experiment re-measures that gap at the improved settings, crossed with layers {4, 8}
+# and, for the no-descriptor arms only, doubled training length (max_steps 4000 -> 8000) to
+# check whether the no-descriptor shortfall is partly just an undertraining problem.
+#
+# hyper_model.params.num_layers, hyper_head.num_tasks, max_steps, and warmup_steps are all
+# placeholders here, overridden per leaf config (see arm_*.yaml).
+#
+# No task holdout this round, task_categories and val_task_categories are identical (every
+# task is seen in training). A genuine unseen-task-category generalisation test was confirmed
+# architecturally feasible (task_categories/val_task_categories can already be disjoint with
+# zero code changes) but is explicitly deferred to a future experiment.
+#
+# Self-contained (no _base_ of its own), matching every sibling base.yaml, because the config
+# loader only resolves one level of _base_ inheritance (training/config.py).
+project_name: arc1d_hypermodel_looped_rope_canon_capacity_baseline
+entity: fjfehr
+output_dir: outputs
+seed: 42
+experiment_name: looped_hyper_rope_canon_capacity_baseline
+output_path: ${output_dir}/${project_name}/${experiment_name}
+
+data: arc_1d_meta_multiclass
+data_dir: data/arc_1d_looped_augmented
+model: hyper_model
+primary_metric: val_loss
+num_workers: 0
+
+# 15 tasks: the previous 17-task list minus 1d_recolor_cnt/1d_recolor_oe (stuck at 0.000
+# regardless of layers/clip, see header comment). 1d_padded_fill was never in any experiment's
+# task list to begin with.
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_cmp
+  - 1d_scale_dp
+task_ids: null
+val_task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_cmp
+  - 1d_scale_dp
+train_split: train
+val_split: val
+test_split: test
+overfit_single_batch: false
+
+# Use all GPUs on the node (train.py resolves "auto" -> all free GPUs, see
+# resolve_free_gpus in training/gpu_utils.py), matching sibling conventions.
+accelerator: auto
+float32_matmul_precision: medium
+precision: bf16-mixed
+devices: auto
+optimizer: RAdam
+batch_size: 512
+learning_rate: 0.001
+weight_decay: 0.01
+# Fixed at 10.0, no longer swept. See header comment.
+gradient_clip_val: 10.0
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: ${max_steps}
+    eta_min: 0.0001
+# Placeholders, overridden per leaf (4000/400 standard, 8000/800 for the _long arms).
+max_steps: 4000
+warmup_steps: 400
+log_task_examples: true
+log_task_examples_every_n_epochs: 100
+num_periodic_train_task_examples: 100
+num_periodic_val_task_examples: 100
+
+prediction_task: multiclass
+num_classes: 10
+padding_idx: 10
+stop_on_perfect_val_exact_match: false
+
+N_supervision: 2
+
+task_encoding:
+  embedding_dim: 16
+  value_vocab_size: 11
+  use_sinusoidal_pe: false
+
+# Fixed across every arm.
+target_model:
+  name: rope_canon_looped_transformer
+  params:
+    hidden_dim: 16
+    num_heads: 2
+    inner_dim: 16
+    inner_num_heads: 2
+    n_loops: 4
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_block_skip: false
+    use_loop_skip: false
+
+# RoPE+Canon encoder fixed; num_layers is a placeholder, overridden per leaf (4 or 8).
+hyper_model:
+  name: rope_canon_transformer
+  params:
+    hidden_dim: 64
+    num_heads: 4
+    num_layers: 4
+    output_dim: 64
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    block_size: 2048
+
+# Attention pooling only, rank=8 fixed. num_tasks is a placeholder, overridden per leaf
+# (18 for the _td arms, null for the _notd arms).
+hyper_head:
+  pooling: attention
+  bottleneck_dim: 128
+  num_tasks: 18
+  lora_adapter: true
+  lora_adapter_rank: 8
+  lora_adapter_zero_backbone: false

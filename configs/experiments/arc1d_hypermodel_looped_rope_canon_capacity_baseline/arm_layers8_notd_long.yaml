@@ -1,0 +1,15 @@
+# Doubled training length (max_steps 4000 -> 8000, warmup 400 -> 800), targeted at the
+# no-descriptor arms only: checks whether the descriptor-on/off gap is partly just an
+# undertraining problem.
+_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_capacity_baseline/base.yaml
+experiment_name: looped_hyper_rope_canon_capacity_baseline_layers8_notd_long
+
+hyper_model:
+  params:
+    num_layers: 8
+
+hyper_head:
+  num_tasks: null
+
+max_steps: 8000
+warmup_steps: 800
