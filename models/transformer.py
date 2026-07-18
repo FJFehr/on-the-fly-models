@@ -21,6 +21,18 @@ class LayerNorm(nn.Module):
         return F.layer_norm(inputs, self.weight.shape, self.weight, self.bias, 1e-5)
 
 
+class RMSNorm(nn.Module):
+    """RMSNorm (Zhang & Sennrich 2019): no bias, no mean-centering."""
+
+    def __init__(self, hidden_dim: int, eps: float = 1e-6):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_dim))
+        self.eps = eps
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        return F.rms_norm(inputs, self.weight.shape, self.weight, self.eps)
+
+
 class SelfAttention(nn.Module):
     """Multi-head self-attention over token features."""
 

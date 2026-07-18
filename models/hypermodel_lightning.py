@@ -17,7 +17,11 @@ from models.canon_transformer import CanonTransformer
 from models.cnn import CNN
 from models.hypermodel import AttentionPooler, HierarchicalPooler, HyperModel
 from models.rnn import RNN
-from models.rope_looped_transformer import RoPECanonLoopedTransformer, RoPECanonTransformer
+from models.rope_looped_transformer import (
+    RoPECanonLoopedTransformer,
+    RoPECanonTransformer,
+    RoPECanonZhuTransformer,
+)
 from models.task_token_embedder import TaskTokenEmbedder
 from models.transformer import Transformer
 from visualisation import figure_to_wandb_image, render_task_prediction_figure
@@ -68,6 +72,10 @@ HYPERNETWORK_REGISTRY = {
     },
     "rope_canon_transformer": {
         "class": RoPECanonTransformer,
+        "output_dim_key": "output_dim",
+    },
+    "rope_canon_zhu_transformer": {
+        "class": RoPECanonZhuTransformer,
         "output_dim_key": "output_dim",
     },
 }

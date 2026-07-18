@@ -22,6 +22,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+from models.activations import swiglu
 from models.canon_layer import CanonLayer
 from models.transformer import LayerNorm
 
@@ -77,6 +78,74 @@ class CanonMLP(nn.Module):
             h, _ = self.canon_d(h)
         h = self.gelu(h)
         return self.dropout(self.c_proj(h))
+
+
+class CanonZhuMLP(nn.Module):
+    """CanonMLP, with an optional SwiGLU path (Zhu/PhysicsLM4-style "tricks").
+
+    use_swiglu=False: identical structure and behaviour to CanonMLP (single c_fc -> Canon-D
+    -> GELU -> c_proj). use_swiglu=True: gate_up_proj -> Canon-D on the concatenated
+    [gate, up] tensor (matching canon_layer.py's own documented position for Canon-D inside a
+    SwiGLU FFN) -> split -> SwiGLU -> down_proj. intermediate_dim defaults to the standard
+    LLaMA-style int(2/3 * 4 * hidden_dim), rounded to the nearest multiple of 8, to keep total
+    FFN parameter count close to the GELU MLP's (SwiGLU has 3 weight matrices instead of 2).
+    """
+
+    def __init__(
+        self,
+        hidden_dim: int,
+        dropout: float,
+        bias: bool,
+        canon_set: str,
+        canon_kernel: int,
+        canon_activation: bool,
+        canon_residual: bool,
+        canon_causal: bool = False,
+        use_swiglu: bool = False,
+        intermediate_dim: int | None = None,
+    ):
+        super().__init__()
+        self.use_swiglu = use_swiglu
+        self.dropout = nn.Dropout(dropout)
+
+        if not use_swiglu:
+            self.c_fc = nn.Linear(hidden_dim, 4 * hidden_dim, bias=bias)
+            self.gelu = nn.GELU()
+            self.c_proj = nn.Linear(4 * hidden_dim, hidden_dim, bias=bias)
+            self.c_proj._is_residual_proj = True
+            self.canon_d = (
+                _make_canon(4 * hidden_dim, canon_kernel, canon_activation, canon_residual, canon_causal)
+                if "D" in canon_set
+                else None
+            )
+            return
+
+        if intermediate_dim is None:
+            intermediate_dim = round(2 / 3 * 4 * hidden_dim / 8) * 8
+        self.intermediate_dim = intermediate_dim
+        self.gate_up_proj = nn.Linear(hidden_dim, 2 * intermediate_dim, bias=bias)
+        self.down_proj = nn.Linear(intermediate_dim, hidden_dim, bias=bias)
+        self.down_proj._is_residual_proj = True
+        self.canon_d = (
+            _make_canon(2 * intermediate_dim, canon_kernel, canon_activation, canon_residual, canon_causal)
+            if "D" in canon_set
+            else None
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not self.use_swiglu:
+            h = self.c_fc(x)
+            if self.canon_d is not None:
+                h, _ = self.canon_d(h)
+            h = self.gelu(h)
+            return self.dropout(self.c_proj(h))
+
+        gate_up = self.gate_up_proj(x)
+        if self.canon_d is not None:
+            gate_up, _ = self.canon_d(gate_up)
+        gate, up = gate_up.split(self.intermediate_dim, dim=-1)
+        h = swiglu(gate, up)
+        return self.dropout(self.down_proj(h))
 
 
 class CanonSelfAttention(nn.Module):
