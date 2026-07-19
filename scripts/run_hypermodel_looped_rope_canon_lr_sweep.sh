@@ -12,11 +12,17 @@
 # Since each run claims every (free or shared) GPU, jobs run one after another, not in
 # parallel. Skips already-completed runs (idempotent to rerun).
 #
-# To split this across multiple nodes without clashing, override CELL_GLOB to give each node
-# a disjoint slice of the main sweep, e.g.:
+# To split this across multiple nodes without clashing, override CELL_GLOB and/or
+# SEEDS_OVERRIDE to give each node a disjoint slice, e.g. split by seed (the top-up section
+# automatically only runs for whichever of seeds 4/5 are in this node's SEEDS_OVERRIDE, so no
+# race between nodes):
+#   node A: SEEDS_OVERRIDE="1 2 3" bash scripts/run_hypermodel_looped_rope_canon_lr_sweep.sh
+#   node B: SEEDS_OVERRIDE="4 5"   bash scripts/run_hypermodel_looped_rope_canon_lr_sweep.sh
+# or by architecture:
 #   node A: CELL_GLOB="arm_baseline_*.yaml" bash scripts/run_hypermodel_looped_rope_canon_lr_sweep.sh
 #   node B: CELL_GLOB="arm_zhuall_*.yaml"   bash scripts/run_hypermodel_looped_rope_canon_lr_sweep.sh
-# (run the top-up section, below, on only one of the two nodes to avoid a race on those 2 jobs)
+# (run the top-up section, below, on only one of the two nodes to avoid a race on those 2 jobs,
+# when splitting by CELL_GLOB rather than by seed)
 #
 # Usage:
 #   bash scripts/run_hypermodel_looped_rope_canon_lr_sweep.sh
@@ -28,9 +34,10 @@ LOG_DIR="logs/arc1d_hypermodel_looped_rope_canon_lr_sweep"
 CFG_DIR="configs/experiments/arc1d_hypermodel_looped_rope_canon_lr_sweep"
 CELL_GLOB="${CELL_GLOB:-arm_*.yaml}"
 FREE_GPUS_FLAG="${FREE_GPUS_FLAG:-}"
+SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1 2 3 4 5}"
 mkdir -p "$LOG_DIR"
 
-SEEDS=(1 2 3 4 5)
+read -ra SEEDS <<< "$SEEDS_OVERRIDE"
 
 JOBS=()
 SKIPPED=0
@@ -51,7 +58,7 @@ done
 N_JOBS=${#JOBS[@]}
 echo "Main sweep: running $N_JOBS jobs sequentially (each using all GPUs)"
 echo "Already complete: $SKIPPED (skipped)"
-echo "Project: $PROJECT  |  Logs: $LOG_DIR/  |  CELL_GLOB: $CELL_GLOB"
+echo "Project: $PROJECT  |  Logs: $LOG_DIR/  |  CELL_GLOB: $CELL_GLOB  |  SEEDS: ${SEEDS[*]}"
 echo ""
 
 for job in "${JOBS[@]}"; do
@@ -85,8 +92,11 @@ TOPUP_LOG_DIR="logs/arc1d_hypermodel_looped_rope_canon_optimizer"
 TOPUP_LOGGING_NAME=$(grep '^experiment_name:' "$TOPUP_CFG" | awk '{print $2}')
 mkdir -p "$TOPUP_LOG_DIR"
 
-echo "Top-up: baseline/lr=5e-4 cell (reusing $TOPUP_CFG), seeds 4-5"
+echo "Top-up: baseline/lr=5e-4 cell (reusing $TOPUP_CFG), seeds 4-5 (whichever are in SEEDS_OVERRIDE)"
 for SEED in 4 5; do
+    if [[ " ${SEEDS[*]} " != *" $SEED "* ]]; then
+        continue
+    fi
     exp_name="${TOPUP_LOGGING_NAME}_seed${SEED}"
     results_file="outputs/${TOPUP_PROJECT}/${exp_name}/results.txt"
     if [ -f "$results_file" ]; then
