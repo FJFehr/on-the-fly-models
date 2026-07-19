@@ -1,0 +1,21 @@
+_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_lr_sweep/base.yaml
+experiment_name: looped_hyper_rope_canon_lr_sweep_zhuall_lr1e-3
+
+learning_rate: 0.001
+
+hyper_model:
+  name: rope_canon_zhu_transformer
+  params:
+    hidden_dim: 64
+    num_heads: 4
+    num_layers: 8
+    output_dim: 64
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    block_size: 2048
+    use_rmsnorm: true
+    use_qk_norm: true
+    use_swiglu: true
