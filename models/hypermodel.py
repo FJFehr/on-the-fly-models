@@ -223,6 +223,7 @@ class HyperModel(nn.Module):
         lora_adapter_rank: int = 1,
         lora_adapter_train_backbone: bool = False,
         lora_adapter_zero_backbone: bool = False,
+        freeze_task_indicator: bool = False,
     ):
         super().__init__()
         if lora_adapter and low_rank_output:
@@ -278,6 +279,13 @@ class HyperModel(nn.Module):
         self.task_indicator_proj = (
             nn.Linear(num_tasks, hyper_output_dim, bias=False) if num_tasks is not None else None
         )
+        # With freeze_task_indicator, the one-hot projection stays at its random init for
+        # every category, trained or not -- so a held-out category's column is drawn from
+        # the same distribution the rest of the network learned to interpret, rather than
+        # being the one column that never received a gradient while its 17 siblings moved.
+        self.freeze_task_indicator = freeze_task_indicator
+        if self.task_indicator_proj is not None and freeze_task_indicator:
+            self.task_indicator_proj.weight.requires_grad_(False)
 
         # Build the projection MLP from hyper_output_dim to total_target_params.
         # projection_dims specifies intermediate hidden sizes; bottleneck_dim is the

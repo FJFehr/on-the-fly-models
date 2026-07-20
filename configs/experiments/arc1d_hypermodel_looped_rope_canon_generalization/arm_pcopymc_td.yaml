@@ -1,0 +1,40 @@
+# Held out: 1d_pcopy_mc (sibling(s) remaining in training: 1d_pcopy_1c)
+# Variant: td -- Learned one-hot task-identity embedding on. The held-out category's embedding column never receives a gradient (never appears in training batches), so this arm tests generalization with an untrained/random column at that one position.
+_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_generalization/base.yaml
+experiment_name: looped_hyper_rope_canon_generalization_pcopymc_td
+
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_recolor_cmp
+  - 1d_scale_dp
+val_task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_cmp
+  - 1d_scale_dp
+
+hyper_head:
+  num_tasks: 18
+  freeze_task_indicator: false

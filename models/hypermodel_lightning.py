@@ -226,6 +226,7 @@ class HyperModelLightning(pl.LightningModule):
         lora_adapter_zero_backbone = bool(
             hyper_head_cfg.get("lora_adapter_zero_backbone", False)
         )
+        freeze_task_indicator = bool(hyper_head_cfg.get("freeze_task_indicator", False))
         hyper_pooling = self.build_hyper_pooling(hyper_head_cfg, hyper_output_dim)
         self.hypermodel = HyperModel(
             hypernetwork=hypernetwork,
@@ -241,6 +242,7 @@ class HyperModelLightning(pl.LightningModule):
             lora_adapter_rank=lora_adapter_rank,
             lora_adapter_train_backbone=lora_adapter_train_backbone,
             lora_adapter_zero_backbone=lora_adapter_zero_backbone,
+            freeze_task_indicator=freeze_task_indicator,
         )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
