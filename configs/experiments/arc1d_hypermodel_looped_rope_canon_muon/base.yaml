@@ -17,6 +17,16 @@
 # hyper_head.num_tasks/freeze_task_indicator and optimizer/learning_rate/muon_lr/muon_momentum
 # are placeholders here, overridden per leaf (see arm_*.yaml).
 #
+# max_steps=4000/warmup_steps=400 (half of every other rope_canon experiment's 8000/800):
+# a GPU smoke run of arm_notd_muon hit several task categories at 1.0 exact match within the
+# first 100 steps, prompting Fabio to try halving the schedule for a faster first pass. Note
+# this isn't uniform across categories -- the fast-converging ones (denoising, pcopy) were
+# already solved that early, but the harder ones (move family, flip, recolor_cmp) were still
+# at 0.0 at 100/8000 steps, so halving isn't guaranteed lossless for those. All 4 arms in this
+# experiment still run the same schedule as each other, so the AdamW-vs-Muon comparison stays
+# apples-to-apples; it just isn't directly comparable to the 8000-step numbers from lr_sweep
+# without accounting for the shorter schedule.
+#
 # Self-contained (no _base_ of its own), matching every sibling base.yaml, because the config
 # loader only resolves one level of _base_ inheritance (training/config.py).
 project_name: arc1d_hypermodel_looped_rope_canon_muon
@@ -84,8 +94,8 @@ lr_scheduler:
   params:
     T_max: ${max_steps}
     eta_min: 0.0001
-max_steps: 8000
-warmup_steps: 800
+max_steps: 4000
+warmup_steps: 400
 log_task_examples: true
 log_task_examples_every_n_epochs: 100
 num_periodic_train_task_examples: 100

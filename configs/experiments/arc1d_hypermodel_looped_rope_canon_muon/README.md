@@ -57,6 +57,17 @@ own `learning_rate`/`weight_decay` (0.001/0.01), matching the plain-AdamW arms, 
 intended difference between a `_muon` and `_adamw` arm is the update rule applied to the
 Muon-eligible matrix weights.
 
+## Training schedule
+
+`max_steps=4000`/`warmup_steps=400` -- half of every other rope_canon experiment's 8000/800.
+A GPU smoke run of `arm_notd_muon` hit several task categories at 1.0 exact match within the
+first 100 steps, so Fabio had this halved for a faster first pass. Not uniform across
+categories: the fast-converging ones (denoising, pcopy) were already solved that early, but
+the harder ones (move family, flip, recolor_cmp) were still at 0.0 at 100/8000 steps, so this
+isn't guaranteed lossless for those. All 4 arms here run the same (shorter) schedule as each
+other, so the AdamW-vs-Muon comparison stays apples-to-apples; the results just aren't
+directly comparable to the 8000-step numbers from `lr_sweep` without accounting for that.
+
 ## Grid
 
 2 task-identity variants x 2 optimizers, 3 seeds each = 12 jobs:
