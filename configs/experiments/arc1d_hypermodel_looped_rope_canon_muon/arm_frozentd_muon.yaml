@@ -1,10 +1,13 @@
-# Muon LR/momentum are Keller Jordan's published defaults (https://github.com/KellerJordan/Muon),
-# not tuned for this repo -- a Muon LR sweep is a natural follow-up, not in scope here.
+# muon_lr lowered 4x from Keller Jordan's published default (0.02 -> 0.005): this arm diverged
+# to NaN at 0.02 (global_step ~915/4000, pre-clip grad norms hit ~1e18 -- gradient clipping
+# doesn't protect Muon updates the way it does AdamW's, since Newton-Schulz orthogonalization
+# decouples update magnitude from the clipped gradient's norm). Still untuned beyond this one
+# adjustment -- a proper Muon LR sweep is a natural follow-up.
 _base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/base.yaml
 experiment_name: looped_hyper_rope_canon_muon_frozentd_muon
 
 optimizer: Muon
-muon_lr: 0.02
+muon_lr: 0.005
 muon_momentum: 0.95
 
 hyper_head:

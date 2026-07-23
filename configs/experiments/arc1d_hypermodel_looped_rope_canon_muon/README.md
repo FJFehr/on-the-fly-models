@@ -50,12 +50,24 @@ layer"): it's most of where this model's trainable capacity actually sits, and i
 the parameterisation Fabio's stabilisation hypothesis is about. Verified directly in
 `tests/test_muon_param_groups.py`.
 
-Muon and AdamW-aux hyperparameters: `muon_lr=0.02`, `muon_momentum=0.95` -- Keller Jordan's
-published defaults, **not tuned for this repo**. A Muon LR sweep is a natural follow-up if
-this first pass shows any signal. The AdamW-aux group inside Muon runs uses this experiment's
-own `learning_rate`/`weight_decay` (0.001/0.01), matching the plain-AdamW arms, so the only
+Muon and AdamW-aux hyperparameters: `muon_lr=0.005`, `muon_momentum=0.95`. `muon_lr` started
+at Keller Jordan's published default (0.02) but the first attempt at `arm_frozentd_muon`
+diverged to NaN loss at global_step ~915/4000 -- pre-clip grad norms hit ~1e18 in the ~40 steps
+before the blowup. Gradient clipping (`gradient_clip_val: 10`) doesn't protect Muon updates the
+way it does AdamW's: `zeropower_via_newtonschulz5` normalizes the (already-clipped) gradient
+into a near-orthogonal matrix and rescales by `muon_lr`, so update magnitude is largely
+decoupled from the clipped gradient's norm -- a clipped-but-still-bad-direction gradient still
+gets amplified into a full-size update. Lowered 4x to 0.005 as the first, cheapest fix; still
+untuned beyond this one adjustment, so a proper Muon LR sweep remains a natural follow-up if
+this shows promise. The AdamW-aux group inside Muon runs uses this experiment's own
+`learning_rate`/`weight_decay` (0.001/0.01), matching the plain-AdamW arms, so the only
 intended difference between a `_muon` and `_adamw` arm is the update rule applied to the
 Muon-eligible matrix weights.
+
+`models/hypermodel_lightning.py`'s `training_step` now also raises immediately if the pre-clip
+gradient norm is non-finite, instead of silently continuing to train (and burn GPU time) on a
+diverged run -- this is what caught `arm_frozentd_muon`'s NaN cheaply enough to fix and rerun
+same-day rather than only noticing at the end of a multi-hour run.
 
 ## Training schedule
 

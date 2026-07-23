@@ -811,6 +811,18 @@ class HyperModelLightning(pl.LightningModule):
             # unclipped runs while making the norm observable for diagnostics.
             clip_value = self.gradient_clip_val if self.gradient_clip_val is not None else float("inf")
             grad_norm = clip_grad_norm_(self.parameters(), clip_value)
+            if not torch.isfinite(grad_norm):
+                # Stop immediately rather than continuing to train (and burn GPU time) on a
+                # diverged run: once the gradient norm itself is NaN/Inf, every subsequent
+                # step's weights, loss, and metrics are garbage too, and clipping cannot
+                # protect against this for optimizers (e.g. Muon) whose update magnitude is
+                # decoupled from the raw gradient norm.
+                msg = (
+                    f"Non-finite gradient norm ({grad_norm.item()}) at "
+                    f"global_step={self.global_step}. Stopping to avoid wasting compute on a "
+                    "diverged run."
+                )
+                raise RuntimeError(msg)
             opt.step()
             total_loss += loss.detach()
             inner_losses.append(loss.detach().item())
