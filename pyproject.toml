@@ -12,13 +12,14 @@ dependencies = [
     "datasets",
     "lightning",
     "matplotlib",
+    "muon-optimizer",
     "omegaconf",
     "torch",
     "wandb",
 ]
 
 [tool.setuptools.packages.find]
-exclude = ["data*", "notebooks*", "tests*"]
+exclude = ["data*", "notebooks*", "tests*", "outputs*", "logs*", "wandb*"]
 
 [dependency-groups]
 dev = [
@@ -49,6 +50,7 @@ testpaths = ["tests"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu121" }
+muon-optimizer = { git = "https://github.com/KellerJordan/Muon" }
 
 [[tool.uv.index]]
 name = "pytorch-cu121"

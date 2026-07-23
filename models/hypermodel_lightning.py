@@ -8,8 +8,10 @@ from collections.abc import Mapping
 
 import lightning as pl
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
+from muon import SingleDeviceMuonWithAuxAdam
 from torch.nn.utils import clip_grad_norm_
 
 import wandb
@@ -169,7 +171,7 @@ class HyperModelLightning(pl.LightningModule):
         num_classes: int | None = None,
         learning_rate: float = 1e-3,
         optimizer: str = "Adam",
-        optimizer_name: str = "Adam",
+        optimizer_name: str | None = None,
         weight_decay: float = 0.01,
         lr_scheduler: dict | None = None,
         warmup_steps: int = 0,
@@ -249,6 +251,10 @@ class HyperModelLightning(pl.LightningModule):
         self.weight_decay = weight_decay
         self.lr_scheduler_cfg = lr_scheduler
         self.warmup_steps = warmup_steps
+        # Muon-specific: only used when optimizer_name == "Muon" (see configure_optimizers).
+        # Keller Jordan's published defaults, not tuned for this repo.
+        self.muon_lr = kwargs.get("muon_lr", 0.02)
+        self.muon_momentum = kwargs.get("muon_momentum", 0.95)
         self.log_task_examples = kwargs.get("log_task_examples", False)
         self.log_task_examples_every_n_epochs = kwargs.get("log_task_examples_every_n_epochs", 25)
         self.num_periodic_train_task_examples = kwargs.get("num_periodic_train_task_examples", 1)
@@ -1163,13 +1169,61 @@ class HyperModelLightning(pl.LightningModule):
         if wandb_payload and experiment is not None and hasattr(experiment, "log"):
             experiment.log(wandb_payload)
 
+    # Modules whose weight is an nn.Linear but is not a "hidden weight matrix" in the sense
+    # Muon is designed for: input_projection/output_head are the hypernetwork's input
+    # embedding and final output layer (Keller Jordan's own guidance excludes both from
+    # Muon), and task_indicator_proj is a one-hot task-identity embedding table implemented
+    # as nn.Linear(num_tasks, hyper_output_dim, bias=False) -- structurally 2D but
+    # semantically an embedding, not a matrix operator.
+    _MUON_EXCLUDED_MODULE_NAMES = ("input_projection", "output_head", "task_indicator_proj")
+
+    def _build_muon_param_groups(self) -> list[dict]:
+        """Split trainable params into a Muon group (hidden nn.Linear weights) and an AdamW
+        aux group (everything else: embeddings, norms, Canon conv weights, the attention
+        pooler's query vector, biases, and the three excluded Linear layers above)."""
+        muon_params = []
+        muon_param_ids = set()
+        for name, module in self.named_modules():
+            if not isinstance(module, nn.Linear):
+                continue
+            if name.split(".")[-1] in self._MUON_EXCLUDED_MODULE_NAMES:
+                continue
+            if module.weight.requires_grad:
+                muon_params.append(module.weight)
+                muon_param_ids.add(id(module.weight))
+
+        adam_params = [
+            p
+            for p in self.parameters()
+            if p.requires_grad and id(p) not in muon_param_ids
+        ]
+
+        return [
+            dict(
+                params=adam_params,
+                use_muon=False,
+                lr=self.learning_rate,
+                weight_decay=self.weight_decay,
+            ),
+            dict(
+                params=muon_params,
+                use_muon=True,
+                lr=self.muon_lr,
+                momentum=self.muon_momentum,
+                weight_decay=self.weight_decay,
+            ),
+        ]
+
     def configure_optimizers(self):
-        optimizer_cls = getattr(torch.optim, self.optimizer_name)
-        optimizer = optimizer_cls(
-            (parameter for parameter in self.parameters() if parameter.requires_grad),
-            lr=self.learning_rate,
-            weight_decay=self.weight_decay,
-        )
+        if self.optimizer_name == "Muon":
+            optimizer = SingleDeviceMuonWithAuxAdam(self._build_muon_param_groups())
+        else:
+            optimizer_cls = getattr(torch.optim, self.optimizer_name)
+            optimizer = optimizer_cls(
+                (parameter for parameter in self.parameters() if parameter.requires_grad),
+                lr=self.learning_rate,
+                weight_decay=self.weight_decay,
+            )
         if self.lr_scheduler_cfg:
             scheduler = self._build_scheduler(optimizer)
             return {

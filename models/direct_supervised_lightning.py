@@ -48,7 +48,7 @@ class DirectSupervisedLightning(pl.LightningModule):
         input_dim: int = 33,
         learning_rate: float = 1e-3,
         optimizer: str = "Adam",
-        optimizer_name: str = "Adam",
+        optimizer_name: str | None = None,
         weight_decay: float = 0.01,
         lr_scheduler: dict | None = None,
         warmup_steps: int = 0,

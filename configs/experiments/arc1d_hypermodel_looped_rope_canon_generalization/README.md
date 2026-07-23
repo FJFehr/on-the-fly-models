@@ -101,3 +101,52 @@ the in-distribution ceiling from the reused `lr_sweep` zhu_all data. Key questio
 - Does the answer differ between `1d_move_2p` (strong same-family siblings) and `1d_flip`
   (weaker sibling pairing)? A consistent pattern across both would be stronger evidence than
   either alone.
+
+## Findings (seed 1, all 15 arms)
+
+Held-out-category exact match (`val_query_exact_match_by_task_<held_out_category>`, pulled
+from wandb after the disk-space incident wiped local `results.txt`/checkpoints for these runs,
+see below):
+
+| Held out | `td` | `notd` | `frozentd` |
+|---|---:|---:|---:|
+| `1d_denoising_mc` | 0.0 | 0.80 | **1.0** |
+| `1d_flip` | 0.0 | 0.0 | 0.0 |
+| `1d_hollow` | 0.0 | 0.0 | 0.0 |
+| `1d_move_2p` | 0.0 | 0.0 | 0.0 |
+| `1d_pcopy_mc` | 0.0 | 0.0 | 0.0 |
+
+**Headline: the model does not generalize to an unseen task category.** For 4 of 5 held-out
+categories, exact match is exactly 0 under every task-identity variant, `td`, `notd`, and
+`frozentd` alike. Whatever these models are doing on a category they were never trained on,
+it is essentially never landing the literal right answer. On casual inspection of the logged
+task-example images, the default failure mode looks like copying the input through largely
+unchanged rather than attempting the held-out transformation, i.e. falling back to the
+closest thing to a safe default rather than synthesizing a genuinely new rule.
+
+`1d_denoising_mc` is the one exception, and it's the least surprising one: its sibling
+`1d_denoising_1c` differs only in single- vs multi-colour noise, the closest sibling pairing
+in this whole grid. `frozentd` hit a clean 1.0, `notd` 0.80, `td` 0.0. Consistent with the
+core hypothesis: the learned one-hot embedding (`td`) actively harms the one case where
+generalization was otherwise achievable, while freezing it (`frozentd`) removes that harm
+entirely.
+
+`1d_move_2p` is the interesting near-miss. Exact match is 0 across the board, but
+`frozentd`'s per-example token accuracy on the held-out examples was high on some
+(`val_hard_final_task | 1d_move_2p:47 | query_acc=0.90`) rather than uniformly near-chance.
+That's not "got it right," but it is meaningfully different from random or pure-copy output:
+it suggests `frozentd` placed the never-seen `1d_move_2p` somewhere sensible in the
+hypernetwork's latent task space, close to its trained siblings (`1d_move_1p`, `1d_move_3p`,
+`1d_move_dp`, `1d_move_2p_dp`) rather than nowhere at all, even though it didn't cross the
+line into a bit-perfect answer. Whether that's a robust effect or one lucky example needs more
+seeds to tell apart, since only seed 1 has been analysed at the time of writing.
+
+**Caveat on this data**: after this experiment's first pass finished (44 of 45 jobs done, one
+NCCL-timeout failure), a manual `rm -r outputs/*` on torrnode12 -- an attempt to fix what
+looked like a disk-space failure but was really the shared `/homes/55` NFS quota being full,
+mostly from an un-cleaned local `wandb/` run cache (49G, freed via `wandb sync --clean
+--clean-force`) -- deleted every local `results.txt`/checkpoint for this run before it was
+rsynced. The seed-1 numbers above were reconstructed from wandb (metrics/config/logged images
+survive independently of local files; `log_model=False` means no checkpoints were ever
+uploaded there, so those are gone for good). Seeds 2-3 were relaunched from scratch after
+freeing the quota.

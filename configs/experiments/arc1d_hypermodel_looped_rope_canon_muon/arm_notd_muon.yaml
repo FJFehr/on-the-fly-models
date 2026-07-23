@@ -1,0 +1,12 @@
+# Muon LR/momentum are Keller Jordan's published defaults (https://github.com/KellerJordan/Muon),
+# not tuned for this repo -- a Muon LR sweep is a natural follow-up, not in scope here.
+_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/base.yaml
+experiment_name: looped_hyper_rope_canon_muon_notd_muon
+
+optimizer: Muon
+muon_lr: 0.02
+muon_momentum: 0.95
+
+hyper_head:
+  num_tasks: null
+  freeze_task_indicator: false
