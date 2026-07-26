@@ -4,6 +4,8 @@ Uses data/arc_1d (unpadded, all 18 categories including 1d_padded_fill).
 Sequences are padded dynamically to the longest in each batch.
 """
 
+import random
+
 import lightning as pl
 import torch
 import torch.nn.functional as F
@@ -88,6 +90,8 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
         val_split: str = "dev",
         test_split: str = "test",
         padding_value: int = PAD_IDX,
+        variants_per_base_task: int | None = None,
+        data_seed: int = 42,
         **kwargs,
     ):
         super().__init__()
@@ -100,6 +104,8 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
         self.train_split = train_split
         self.val_split = val_split
         self.test_split = test_split
+        self.variants_per_base_task = variants_per_base_task
+        self.data_seed = data_seed
         self.collator = Arc1dMetaPaddingCollator(padding_value=padding_value)
 
     def resolve_split_name(self, dataset_dict: DatasetDict, split_name: str) -> str:
@@ -111,11 +117,46 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
         msg = f"Unknown ARC1D split {split_name!r}."
         raise ValueError(msg)
 
+    def _stratified_variants_per_base_task(
+        self, tasks: list[dict], variants_per_base_task: int
+    ) -> list[dict]:
+        """Keep up to variants_per_base_task rows per (category, base task) group.
+
+        Augmented rows carry task_id = original_task_id * 10000 + aug_index
+        (see scripts/augment_arc_1d.py's augment_task), so aug_index == 0 is
+        always the untransformed original example for that base task.
+        Each group's selection always includes that original first, then a
+        fixed data_seed-ordered sequence of the remaining augmented variants -
+        so level K's selection is always level K-1's plus exactly one more
+        per base task (nested/cumulative across levels), and level 1 is
+        exactly the original, unaugmented example for every base task.
+
+        Deterministic given self.data_seed, independent of the training seed,
+        so multiple training seeds at a fixed level see identical training data.
+        """
+        by_base_task: dict[tuple[str, int], list[dict]] = {}
+        for task in tasks:
+            key = (task["task_category"], task["task_id"] // 10000)
+            by_base_task.setdefault(key, []).append(task)
+
+        rng = random.Random(self.data_seed)
+        selected: list[dict] = []
+        for key in sorted(by_base_task):
+            variants = by_base_task[key]
+            original = [t for t in variants if t["task_id"] % 10000 == 0]
+            rest = [t for t in variants if t["task_id"] % 10000 != 0]
+            rng.shuffle(rest)
+            ordered = original + rest
+            n = min(variants_per_base_task, len(ordered))
+            selected.extend(ordered[:n])
+        return selected
+
     def build_dataset(
         self,
         dataset_dict: DatasetDict,
         split_name: str,
         task_categories: list[str] | None,
+        variants_per_base_task: int | None = None,
     ) -> Arc1dMetaTaskDataset:
         resolved_split_name = self.resolve_split_name(dataset_dict, split_name)
         filtered_tasks = filter_split(
@@ -126,6 +167,10 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
         if not filtered_tasks:
             msg = f"No ARC1D tasks matched the configured filters in split {split_name!r}."
             raise ValueError(msg)
+        if variants_per_base_task is not None:
+            filtered_tasks = self._stratified_variants_per_base_task(
+                filtered_tasks, variants_per_base_task
+            )
         return Arc1dMetaTaskDataset(filtered_tasks)
 
     def setup(self, stage=None):
@@ -135,6 +180,7 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
             dataset_dict,
             self.train_split,
             self.task_categories,
+            variants_per_base_task=self.variants_per_base_task,
         )
         self.val_dataset = self.build_dataset(dataset_dict, self.val_split, val_cats)
         self.test_dataset = self.build_dataset(dataset_dict, self.test_split, val_cats)

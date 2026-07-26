@@ -276,19 +276,29 @@ class TaskVisualizationCallback(Callback):
 def create_checkpoint_callback(cfg) -> ModelCheckpoint:
     """Create the shared best/last checkpoint callback.
 
-    Every run keeps both:
+    By default every run keeps both:
     - `best_model.ckpt` for metric-selected evaluation
     - `last.ckpt` for seamless resume
+
+    Set `save_checkpoints: false` in a config to skip writing either file to
+    disk (e.g. for large sweeps where only the final metrics matter and
+    checkpoint storage becomes the disk-usage bottleneck). Post-training
+    evaluation still runs correctly without a checkpoint - it just evaluates
+    the model's final in-memory weights instead of reloading a "best" epoch
+    (resolve_best_checkpoint_path/load_checkpoint_state already handle a
+    missing checkpoint path gracefully).
     """
     metric = cfg.primary_metric
     mode = "min" if metric.endswith("loss") else "max"
+    save_checkpoints = cfg.get("save_checkpoints", True)
     return ModelCheckpoint(
         monitor=metric,
         mode=mode,
         every_n_epochs=1,
         dirpath=cfg.output_path,
         filename="best_model",
-        save_last=True,
+        save_last=save_checkpoints,
+        save_top_k=1 if save_checkpoints else 0,
     )
 
 

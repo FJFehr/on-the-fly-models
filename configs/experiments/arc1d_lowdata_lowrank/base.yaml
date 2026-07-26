@@ -1,0 +1,156 @@
+# Base config for the low-data x low-rank hypernetwork experiment. Follow-on from
+# arc1d_lowdata (see its README): that experiment found variants_per_base_task=2 (only 2
+# augmented examples per base task) already reaches full performance at the default
+# lora_adapter_rank=8. This experiment asks whether a *lower-rank* LoRA adapter still
+# reaches full performance at those same low data levels, or whether rank becomes the
+# bottleneck once data is this scarce.
+#
+# Two axes, crossed: lora_adapter_rank in {1, 2, 4} x variants_per_base_task in {1, 2, 3}
+# (see scripts/gen_lowdata_lowrank_configs.py). rank=8 is NOT re-run here -- it's already
+# covered by arc1d_lowdata's cell_v1/cell_v2/cell_v3 results, which serve as this
+# experiment's rank=8 reference column.
+#
+# Everything else is carried over unchanged from arc1d_lowdata/base.yaml: Zhu block
+# backbone, frozen_td task-identity conditioning, Muon at its validated stable
+# muon_lr=0.005, max_steps=2000/warmup_steps=200 held fixed, same 15 in-distribution task
+# categories, same stratified/nested data-reduction mechanism
+# (data_modules/arc1d_meta_multiclass.py), same fixed dev/test split at every cell.
+#
+# Self-contained (no _base_ of its own) -- the config loader only resolves one level of
+# _base_ inheritance (training/config.py).
+project_name: arc1d_lowdata_lowrank
+entity: fjfehr
+output_dir: outputs
+seed: 42
+experiment_name: lowdata_lowrank
+output_path: ${output_dir}/${project_name}/${experiment_name}
+
+data: arc_1d_meta_multiclass
+data_dir: data/arc_1d_looped_augmented
+model: hyper_model
+primary_metric: val_loss
+num_workers: 0
+# Disk space on the shared cluster home is tight - this sweep only needs the
+# final metrics (results.txt/wandb), not the model weights themselves.
+save_checkpoints: false
+
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_cmp
+  - 1d_scale_dp
+task_ids: null
+val_task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_cmp
+  - 1d_scale_dp
+train_split: train
+val_split: val
+test_split: test
+overfit_single_batch: false
+
+# variants_per_base_task is a placeholder here, overridden per leaf (see cell_r*_v*.yaml).
+variants_per_base_task: null
+data_seed: 42
+
+accelerator: auto
+float32_matmul_precision: medium
+precision: bf16-mixed
+devices: auto
+optimizer: Muon
+muon_lr: 0.005
+muon_momentum: 0.95
+batch_size: 512
+learning_rate: 0.001
+weight_decay: 0.01
+gradient_clip_val: 10.0
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: ${max_steps}
+    eta_min: 0.0001
+max_steps: 2000
+warmup_steps: 200
+log_task_examples: true
+log_task_examples_every_n_epochs: 100
+num_periodic_train_task_examples: 100
+num_periodic_val_task_examples: 100
+
+prediction_task: multiclass
+num_classes: 10
+padding_idx: 10
+stop_on_perfect_val_exact_match: false
+
+N_supervision: 2
+
+task_encoding:
+  embedding_dim: 16
+  value_vocab_size: 11
+  use_sinusoidal_pe: false
+
+target_model:
+  name: rope_canon_looped_transformer
+  params:
+    hidden_dim: 16
+    num_heads: 2
+    inner_dim: 16
+    inner_num_heads: 2
+    n_loops: 4
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_block_skip: false
+    use_loop_skip: false
+
+hyper_model:
+  name: rope_canon_zhu_transformer
+  params:
+    hidden_dim: 64
+    num_heads: 4
+    num_layers: 8
+    output_dim: 64
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_rmsnorm: true
+    use_qk_norm: true
+    use_swiglu: true
+    dropout: 0.1
+
+hyper_head:
+  pooling: attention
+  bottleneck_dim: 128
+  num_tasks: 18
+  freeze_task_indicator: true
+  lora_adapter: true
+  # lora_adapter_rank is a placeholder here, overridden per leaf (see cell_r*_v*.yaml).
+  lora_adapter_rank: null
+  lora_adapter_zero_backbone: false
