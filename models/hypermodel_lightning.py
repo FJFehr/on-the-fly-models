@@ -221,7 +221,8 @@ class HyperModelLightning(pl.LightningModule):
         low_rank_output = bool(hyper_head_cfg.get("low_rank_output", False))
         low_rank_rank = int(hyper_head_cfg.get("low_rank_rank", 1))
         lora_adapter = bool(hyper_head_cfg.get("lora_adapter", False))
-        lora_adapter_rank = int(hyper_head_cfg.get("lora_adapter_rank", 1))
+        lora_adapter_rank_cfg = hyper_head_cfg.get("lora_adapter_rank")
+        lora_adapter_rank = 1 if lora_adapter_rank_cfg is None else int(lora_adapter_rank_cfg)
         lora_adapter_train_backbone = bool(
             hyper_head_cfg.get("lora_adapter_train_backbone", False)
         )
