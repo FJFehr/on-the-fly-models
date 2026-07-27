@@ -7,9 +7,13 @@ performance at the default `lora_adapter_rank=8`.
 ## Goal
 
 Does that same low-data conclusion hold at lower LoRA adapter rank, or does rank become
-the bottleneck once training data is this scarce? This experiment crosses two axes:
+the bottleneck once training data is this scarce? And is the LoRA-style low-rank
+parameterization itself even necessary at low data, or does full-rank (direct, unrestricted
+weight generation) do just as well? This experiment crosses two axes:
 
-- `hyper_head.lora_adapter_rank` in `{4, 2, 1}`
+- `hyper_head.lora_adapter_rank` in `{4, 2, 1}`, plus a `full` arm
+  (`hyper_head.lora_adapter: false` — the hypernetwork predicts every target weight
+  directly, full rank, no frozen random backbone at all; see `models/hypermodel.py`)
 - `variants_per_base_task` in `{1, 2, 3}`
 
 `rank=8` is **not** re-run here — use `arc1d_lowdata`'s `cell_v1`/`cell_v2`/`cell_v3`
@@ -40,8 +44,9 @@ stratified per base task, nested/cumulative across levels, `data_seed` fixed at 
 | `lora_adapter_rank=4` | `cell_r4_v1` | `cell_r4_v2` | `cell_r4_v3` |
 | `lora_adapter_rank=2` | `cell_r2_v1` | `cell_r2_v2` | `cell_r2_v3` |
 | `lora_adapter_rank=1` | `cell_r1_v1` | `cell_r1_v2` | `cell_r1_v3` |
+| `full` (no LoRA) | `cell_full_v1` | `cell_full_v2` | `cell_full_v3` |
 
-9 cells × 3 seeds = **27 jobs**.
+12 cells × 3 seeds = **36 jobs**.
 
 ## Running
 
@@ -54,13 +59,19 @@ Split across nodes via `SEEDS_OVERRIDE`/`CELL_GLOB` (see script header for examp
 
 ## Reading results
 
-For each `(rank, variants_per_base_task)` cell, compare `val_query_exact_match`/
+For each `(arm, variants_per_base_task)` cell, compare `val_query_exact_match`/
 `test_query_exact_match` (mean ± std across 3 seeds) against:
 1. `arc1d_lowdata`'s `rank=8` result at the same `variants_per_base_task` (the reference
    column this experiment doesn't re-run).
-2. The other cells in this grid's own rank=8-free 3×3.
+2. The other cells in this grid's own rank=8-free 4×3.
 
-The headline question: does the "2 augmentations is enough" conclusion hold as rank
-drops, or is there a rank floor below which more data is needed to compensate — i.e. does
-the data-efficiency win from cross-task transfer depend on having enough adapter capacity
-to actually express it?
+Two headline questions:
+- Does the "2 augmentations is enough" conclusion hold as rank drops, or is there a rank
+  floor below which more data is needed to compensate — i.e. does the data-efficiency win
+  from cross-task transfer depend on having enough adapter capacity to actually express it?
+- Does the `full` (no-LoRA) arm do better, worse, or the same as the rank-8 reference at
+  each data level? Worse would suggest the low-rank constraint itself is acting as a useful
+  regularizer at low data (full-rank has far more free parameters to overfit ~40-120
+  examples/category with); better or equal would suggest the constraint isn't buying
+  anything and the data-efficiency result is about the hypernetwork/cross-task transfer
+  mechanism generally, not specifically about low-rank adaptation.

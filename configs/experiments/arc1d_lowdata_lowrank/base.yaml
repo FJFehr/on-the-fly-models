@@ -10,6 +10,14 @@
 # covered by arc1d_lowdata's cell_v1/cell_v2/cell_v3 results, which serve as this
 # experiment's rank=8 reference column.
 #
+# Plus one extra mechanism arm at the same 3 data levels, per Fabio's direction
+# (models/hypermodel.py, see arc1d_hypermodel_looped_lora_adapter for prior art):
+# - "full" (hyper_head.lora_adapter: false): the hypernetwork predicts every target weight
+#   directly (full rank, no frozen random backbone at all) instead of a low-rank delta on
+#   top of one. Answers: is the LoRA-style low-rank parameterization itself a bottleneck at
+#   low data, or does unconstrained full-rank generation do just as well (or worse, e.g. by
+#   overfitting the scarce data)?
+#
 # Everything else is carried over unchanged from arc1d_lowdata/base.yaml: Zhu block
 # backbone, frozen_td task-identity conditioning, Muon at its validated stable
 # muon_lr=0.005, max_steps=2000/warmup_steps=200 held fixed, same 15 in-distribution task

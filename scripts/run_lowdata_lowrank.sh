@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Run all 9 arc1d_lowdata_lowrank cells (lora_adapter_rank in {1, 2, 4} x
-# variants_per_base_task in {1, 2, 3} - see README.md), 3 seeds each (27 jobs total).
-# Fixed architecture otherwise (Zhu backbone, frozen_td, Muon lr=0.005) - the two axes
-# under test are LoRA adapter rank and training data amount, on all 15 tasks
-# in-distribution. rank=8 is not re-run here; use arc1d_lowdata's cell_v1/v2/v3 results
-# as the rank=8 reference column.
+# Run all 12 arc1d_lowdata_lowrank cells (lora_adapter_rank in {1, 2, 4} plus a "full"
+# rank arm (no LoRA), x variants_per_base_task in {1, 2, 3} - see README.md), 3 seeds
+# each (36 jobs total). Fixed architecture otherwise (Zhu backbone, frozen_td, Muon
+# lr=0.005) - the axes under test are LoRA adapter rank (or full-rank generation) and
+# training data amount, on all 15 tasks in-distribution. rank=8 is not re-run here; use
+# arc1d_lowdata's cell_v1/v2/v3 results as the rank=8 reference column.
 # Validation/test are fixed at 100 examples/category regardless of data level.
 # See README.md for the hypothesis and how to read results.
 #
