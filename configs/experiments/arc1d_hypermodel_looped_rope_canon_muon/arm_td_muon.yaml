@@ -1,0 +1,16 @@
+# Plain learned task descriptor (not frozen), otherwise identical to arm_frozentd_muon.yaml --
+# added to give a direct "with task embeddings" vs "without" (arm_notd_muon) comparison, since
+# arm_frozentd_muon was built for the separate generalization-specific question of whether
+# freezing the one-hot at init helps a held-out category (not relevant for in-distribution
+# training on the full 15-task list). Same muon_lr=0.005 (lowered 4x from Keller Jordan's
+# published default -- see arm_frozentd_muon.yaml/README.md for the NaN-divergence history).
+_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/base.yaml
+experiment_name: looped_hyper_rope_canon_muon_td_muon
+
+optimizer: Muon
+muon_lr: 0.005
+muon_momentum: 0.95
+
+hyper_head:
+  num_tasks: 18
+  freeze_task_indicator: false

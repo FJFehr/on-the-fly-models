@@ -14,7 +14,9 @@ dependencies = [
     "matplotlib",
     "muon-optimizer",
     "omegaconf",
+    "scikit-learn",
     "torch",
+    "umap-learn",
     "wandb",
 ]
 

@@ -16,6 +16,7 @@ from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelChec
 
 from training.logging import (
     export_hard_validation_examples,
+    log_embedding_cluster_plots,
     log_final_task_visualizations,
 )
 
@@ -501,6 +502,12 @@ def run_post_training_artifacts(
     )
 
     log_final_task_visualizations(
+        model=model,
+        datamodule=datamodule,
+        output_path=cfg.output_path,
+        wandb_logger=wandb_logger,
+    )
+    log_embedding_cluster_plots(
         model=model,
         datamodule=datamodule,
         output_path=cfg.output_path,

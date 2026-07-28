@@ -160,6 +160,7 @@ class HyperModelLightning(pl.LightningModule):
 
     supports_hard_val_examples = False
     supports_task_visualization = True
+    supports_embedding_visualization = True
 
     def __init__(
         self,
@@ -258,6 +259,7 @@ class HyperModelLightning(pl.LightningModule):
         self.muon_momentum = kwargs.get("muon_momentum", 0.95)
         self.log_task_examples = kwargs.get("log_task_examples", False)
         self.log_task_examples_every_n_epochs = kwargs.get("log_task_examples_every_n_epochs", 25)
+        self.log_embedding_clusters = kwargs.get("log_embedding_clusters", False)
         self.num_periodic_train_task_examples = kwargs.get("num_periodic_train_task_examples", 1)
         self.num_periodic_val_task_examples = kwargs.get("num_periodic_val_task_examples", 1)
         self.selected_representative_task_ids: dict[str, list[int]] = {"train": [], "val": []}
@@ -1085,6 +1087,51 @@ class HyperModelLightning(pl.LightningModule):
                 records.extend(batch_records)
                 if limit is not None and len(records) >= limit:
                     return records[:limit]
+
+        return records
+
+    def collect_embedding_records_from_dataloader(
+        self,
+        dataloader,
+        limit: int | None = None,
+    ) -> list[dict]:
+        """Run inference and collect per-task pooled-embedding records.
+
+        Only the pooled task latent that actually drove weight generation is captured
+        (`hypermodel._last_task_representation`, stashed as a forward side effect), not
+        predictions -- used for the end-of-run disentanglement cluster-map diagnostic.
+        """
+        self.eval()
+        device = next(self.parameters()).device
+        records = []
+
+        with torch.no_grad():
+            for batch in dataloader:
+                tensor_batch = {
+                    key: value.to(device) if isinstance(value, torch.Tensor) else value
+                    for key, value in batch.items()
+                }
+                self(tensor_batch)
+                pooled = self.hypermodel._last_task_representation.cpu()
+                task_categories = list(batch["task_category"])
+                raw_ids = batch["task_id"]
+                task_ids = (
+                    raw_ids.detach().cpu().tolist()
+                    if isinstance(raw_ids, torch.Tensor)
+                    else list(raw_ids)
+                )
+                for index, (task_category, task_id) in enumerate(
+                    zip(task_categories, task_ids, strict=True)
+                ):
+                    records.append(
+                        {
+                            "task_category": task_category,
+                            "task_id": task_id,
+                            "pooled_embedding": pooled[index],
+                        }
+                    )
+                    if limit is not None and len(records) >= limit:
+                        return records[:limit]
 
         return records
 

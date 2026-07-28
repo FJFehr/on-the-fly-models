@@ -294,6 +294,66 @@ def test_build_task_records_trim_padding_from_visualized_sequences():
     assert record["query_accuracy"] == 0.5
 
 
+def test_forward_stashes_pooled_task_representation():
+    """A forward pass must stash the pooled task latent for embedding-cluster diagnostics."""
+    model = build_model({"embedding_dim": 8})
+    batch = make_batch()
+
+    logits, _ = model(batch)
+
+    stashed = model.hypermodel._last_task_representation
+    assert stashed is not None
+    assert stashed.shape == (logits.shape[0], model.hypermodel.hyper_output_dim)
+
+
+def test_forward_stashes_pooled_task_representation_with_task_descriptor():
+    """With a task descriptor configured, the stashed vector reflects the post-add value."""
+    model = build_model(
+        {"embedding_dim": 8},
+        {"num_tasks": 3},
+    )
+    batch = dict(make_batch())
+    batch["task_category"] = ["1d_move_1p"]
+
+    logits, _ = model(batch)
+
+    stashed = model.hypermodel._last_task_representation
+    assert stashed is not None
+    assert stashed.shape == (logits.shape[0], model.hypermodel.hyper_output_dim)
+
+
+def test_forward_stashes_pooled_task_representation_with_lora_adapter():
+    """The lora_adapter path must also stash the pooled task latent, same as the dense path."""
+    model = build_model(
+        {"embedding_dim": 8},
+        {"lora_adapter": True, "lora_adapter_rank": 1},
+    )
+    batch = make_batch()
+
+    logits, _ = model(batch)
+
+    stashed = model.hypermodel._last_task_representation
+    assert stashed is not None
+    assert stashed.shape == (logits.shape[0], model.hypermodel.hyper_output_dim)
+
+
+def test_collect_embedding_records_from_dataloader_returns_expected_records():
+    """The embedding-collection helper should pair one pooled vector per task with its label."""
+    model = build_model({"embedding_dim": 8})
+    batch = dict(make_batch())
+    batch["task_category"] = ["1d_move_1p"]
+    batch["task_id"] = torch.tensor([2], dtype=torch.long)
+    dataloader = [batch, batch]
+
+    records = model.collect_embedding_records_from_dataloader(dataloader)
+
+    assert len(records) == 2
+    for record in records:
+        assert record["task_category"] == "1d_move_1p"
+        assert record["task_id"] == 2
+        assert record["pooled_embedding"].shape == (model.hypermodel.hyper_output_dim,)
+
+
 def test_stop_on_perfect_exact_match_monitors_query_metric():
     """The perfect-exact-match stop callback should follow the query exact-match metric."""
 

@@ -11,6 +11,10 @@ import torch
 from lightning.pytorch.loggers import WandbLogger
 
 from visualisation import figure_to_wandb_image, render_val_example_figure
+from visualisation.embedding_clusters import (
+    compute_linear_probe_accuracy,
+    render_embedding_cluster_figure,
+)
 
 
 def _log_wandb_payload(
@@ -609,3 +613,80 @@ def log_final_task_visualizations(model, datamodule, output_path: str, wandb_log
                 wandb_logger=wandb_logger,
                 key_prefix="val_hard_final_task_attention",
             )
+
+
+# ---------------------------------------------------------------------------
+# Embedding cluster maps (disentanglement diagnostic)
+# ---------------------------------------------------------------------------
+
+
+def log_embedding_cluster_plots(model, datamodule, output_path: str, wandb_logger=None) -> None:
+    """Emit a PCA/t-SNE/UMAP cluster map of the pooled task latent, colored by task category.
+
+    Validation-only, end-of-run diagnostic for whether the hypernetwork's pooled task
+    representation is disentangled across task categories. Only runs for models exposing
+    `supports_embedding_visualization` (the hypermodel path) with `log_embedding_clusters`
+    explicitly opted in.
+    """
+    trainer = getattr(model, "trainer", None)
+    if trainer is not None and not trainer.is_global_zero:
+        return
+
+    if not getattr(model, "supports_embedding_visualization", False):
+        return
+
+    if not getattr(model, "log_embedding_clusters", False):
+        return
+
+    records = model.collect_embedding_records_from_dataloader(datamodule.val_dataloader())
+    if not records:
+        return
+
+    vectors = torch.stack([record["pooled_embedding"] for record in records]).numpy()
+    task_categories = [record["task_category"] for record in records]
+
+    cluster_dir = os.path.join(output_path, "embedding_clusters")
+    os.makedirs(cluster_dir, exist_ok=True)
+
+    figure = render_embedding_cluster_figure(
+        vectors,
+        task_categories,
+        title="Pooled task latent (validation)",
+    )
+    filename = "pooled_task_latent.png"
+    figure.savefig(os.path.join(cluster_dir, filename), dpi=150, bbox_inches="tight")
+
+    wandb_payload = {
+        "embedding_clusters/pooled_task_latent": figure_to_wandb_image(
+            figure, caption="Pooled task latent (validation)"
+        )
+    }
+
+    probe_message = ""
+    try:
+        probe = compute_linear_probe_accuracy(vectors, task_categories)
+    except ValueError as error:
+        print(f"Skipped linear probe accuracy: {error}")
+    else:
+        wandb_payload["embedding_clusters/linear_probe_accuracy"] = probe["mean_accuracy"]
+        summary_path = os.path.join(cluster_dir, "linear_probe_summary.txt")
+        with open(summary_path, "w") as summary_file:
+            summary_file.write(_format_linear_probe_summary(probe))
+        probe_message = f" | linear probe accuracy: {probe['mean_accuracy']:.3f}"
+
+    _log_wandb_payload(wandb_logger, wandb_payload)
+
+    print(f"Logged pooled-task-latent embedding cluster map to {cluster_dir}{probe_message}")
+
+
+def _format_linear_probe_summary(probe: dict[str, object]) -> str:
+    """Return a concise human-readable summary for `linear_probe_summary.txt`."""
+    fold_accuracies = ", ".join(f"{score:.4f}" for score in probe["fold_accuracies"])
+    lines = [
+        "Linear probe summary (task-category classification from pooled task latent)",
+        f"n_classes: {probe['n_classes']}",
+        f"n_splits: {probe['n_splits']}",
+        f"mean_accuracy: {probe['mean_accuracy']:.6f}",
+        f"fold_accuracies: [{fold_accuracies}]",
+    ]
+    return "\n".join(lines) + "\n"

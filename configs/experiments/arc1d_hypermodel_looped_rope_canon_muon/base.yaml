@@ -100,6 +100,7 @@ log_task_examples: true
 log_task_examples_every_n_epochs: 100
 num_periodic_train_task_examples: 100
 num_periodic_val_task_examples: 100
+log_embedding_clusters: true
 
 prediction_task: multiclass
 num_classes: 10

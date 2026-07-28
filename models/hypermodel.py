@@ -378,6 +378,11 @@ class HyperModel(nn.Module):
             layers.append(nn.Linear(full_dims[-2], full_dims[-1], bias=False))
             self.hyper_projection = nn.Sequential(*layers)
 
+        # Disentanglement diagnostics: the pooled per-task latent that actually drove weight
+        # generation (post task-descriptor add-in when active), stashed for offline cluster-map
+        # visualization -- see extract_parameter_vectors.
+        self._last_task_representation: torch.Tensor | None = None
+
     @property
     def total_target_params(self) -> int:
         return sum(numel for _, _, numel in self._target_parameter_specs)
@@ -423,6 +428,7 @@ class HyperModel(nn.Module):
         if self.task_indicator_proj is not None and task_ids is not None:
             one_hot = torch.nn.functional.one_hot(task_ids, num_classes=self.num_tasks).float()
             task_representation = task_representation + self.task_indicator_proj(one_hot)
+        self._last_task_representation = task_representation.detach()
         if self.low_rank_output:
             shared = self.hyper_proj_shared(task_representation)
             batch, m, r = shared.shape[0], self._low_rank_m, self.low_rank_rank
