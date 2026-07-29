@@ -17,6 +17,11 @@
 # Override CELL_GLOB to run a subset, e.g. just the annealed re-run:
 #   CELL_GLOB="beta*_anneal.yaml" bash scripts/run_hypermodel_vae_disentanglement.sh
 #
+# Set FREE_GPUS_FLAG="--free-gpus" to restrict to GPUs with <500MB used (train.py's
+# resolve_free_gpus), instead of claiming every GPU on the node -- needed when the node is
+# shared with another user's already-running job:
+#   FREE_GPUS_FLAG="--free-gpus" bash scripts/run_hypermodel_vae_disentanglement.sh
+#
 # Usage:
 #   bash scripts/run_hypermodel_vae_disentanglement.sh
 
@@ -26,6 +31,7 @@ PROJECT="arc1d_hypermodel_looped_rope_canon_muon_diag"
 LOG_DIR="logs/arc1d_hypermodel_looped_rope_canon_vae_disentanglement"
 CFG_DIR="configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement"
 CELL_GLOB="${CELL_GLOB:-beta*.yaml}"
+FREE_GPUS_FLAG="${FREE_GPUS_FLAG:-}"
 mkdir -p "$LOG_DIR"
 
 SEEDS=(1)
@@ -64,7 +70,7 @@ for job in "${JOBS[@]}"; do
     log="${LOG_DIR}/${exp_name}.log"
 
     echo "START  ${PROJECT} / ${exp_name}"
-    if .venv/bin/python train.py --config "$cfg" \
+    if .venv/bin/python train.py --config "$cfg" $FREE_GPUS_FLAG \
         seed="$seed" \
         project_name="$PROJECT" \
         experiment_name="${exp_name}" \
