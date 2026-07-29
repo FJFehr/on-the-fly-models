@@ -1,6 +1,9 @@
 """Focused tests for the optional beta-VAE bottleneck on the pooled task representation."""
 
+from types import SimpleNamespace
+
 import lightning as pl
+import pytest
 import torch
 from torch.utils.data import DataLoader, Dataset
 
@@ -153,3 +156,52 @@ def test_training_step_backprops_into_variational_heads():
     assert model.hypermodel.vae_mu_head.weight.grad.abs().sum().item() > 0
     assert model.hypermodel.vae_logvar_head.weight.grad is not None
     assert model.hypermodel.vae_logvar_head.weight.grad.abs().sum().item() > 0
+
+
+def test_current_kl_beta_defaults_to_constant():
+    """Without kl_beta_anneal='cosine', _current_kl_beta always returns kl_beta unchanged."""
+    model = build_model({"variational": True}, kl_beta=2.0)
+    model.trainer = SimpleNamespace(global_step=0)
+    assert model._current_kl_beta() == pytest.approx(2.0)
+
+    model.trainer = SimpleNamespace(global_step=10_000)
+    assert model._current_kl_beta() == pytest.approx(2.0)
+
+
+def test_current_kl_beta_cosine_ramp_shape():
+    """Cosine ramp starts at 0, reaches kl_beta at warmup_steps, and stays there after."""
+    model = build_model(
+        {"variational": True},
+        kl_beta=1.0,
+        kl_beta_anneal="cosine",
+        kl_beta_warmup_steps=100,
+    )
+
+    model.trainer = SimpleNamespace(global_step=0)
+    assert model._current_kl_beta() == pytest.approx(0.0)
+
+    model.trainer = SimpleNamespace(global_step=50)
+    assert model._current_kl_beta() == pytest.approx(0.5, abs=1e-6)
+
+    model.trainer = SimpleNamespace(global_step=100)
+    assert model._current_kl_beta() == pytest.approx(1.0)
+
+    model.trainer = SimpleNamespace(global_step=500)
+    assert model._current_kl_beta() == pytest.approx(1.0)
+
+
+def test_current_kl_beta_cosine_is_monotonically_nondecreasing():
+    model = build_model(
+        {"variational": True},
+        kl_beta=5.0,
+        kl_beta_anneal="cosine",
+        kl_beta_warmup_steps=40,
+    )
+    values = []
+    for step in range(0, 45, 5):
+        model.trainer = SimpleNamespace(global_step=step)
+        values.append(model._current_kl_beta())
+
+    assert values == sorted(values)
+    assert values[0] == pytest.approx(0.0)
+    assert values[-1] == pytest.approx(5.0)

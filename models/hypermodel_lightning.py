@@ -1,6 +1,7 @@
 """Lightning training wrapper for the simplified HyperModel path."""
 
 import json
+import math
 import os
 import re
 from collections import Counter
@@ -259,10 +260,18 @@ class HyperModelLightning(pl.LightningModule):
         # Keller Jordan's published defaults, not tuned for this repo.
         self.muon_lr = kwargs.get("muon_lr", 0.02)
         self.muon_momentum = kwargs.get("muon_momentum", 0.95)
-        # Constant beta-VAE KL multiplier (no annealing/scheduling this pass); only used when
-        # hyper_head.variational is True. See HyperModel._apply_variational_bottleneck for
-        # where the KL term itself is computed, and training_step for where it's applied.
+        # Beta-VAE KL multiplier; only used when hyper_head.variational is True. See
+        # HyperModel._apply_variational_bottleneck for where the KL term itself is computed,
+        # and training_step/_current_kl_beta for where/how it's applied.
         self.kl_beta = float(kwargs.get("kl_beta", 0.0))
+        # "constant": kl_beta applied unchanged from step 0. "cosine": ramps from 0 up to
+        # kl_beta over kl_beta_warmup_steps (a cosine ease-in, not the LR warmup_steps -- the
+        # LR scheduler advances once per training_step/batch, while this ramp is keyed to
+        # self.global_step, which -- like this repo's own max_steps -- advances once per
+        # manual opt.step() call, i.e. N_supervision times per batch. Using self.global_step
+        # here is intentional and matches that existing convention, not a separate counter).
+        self.kl_beta_anneal = kwargs.get("kl_beta_anneal", "constant")
+        self.kl_beta_warmup_steps = int(kwargs.get("kl_beta_warmup_steps", 0))
         self.log_task_examples = kwargs.get("log_task_examples", False)
         self.log_task_examples_every_n_epochs = kwargs.get("log_task_examples_every_n_epochs", 25)
         self.log_embedding_clusters = kwargs.get("log_embedding_clusters", False)
@@ -803,6 +812,22 @@ class HyperModelLightning(pl.LightningModule):
                 self._accumulate_query_exact_match_by_task_category(batch, logits, targets)
         return loss
 
+    def _current_kl_beta(self) -> float:
+        """Return the KL weight for the step about to be taken.
+
+        "constant": kl_beta from step 0. "cosine": eases in from 0 to kl_beta over
+        kl_beta_warmup_steps, keyed to self.global_step -- the count of completed manual
+        opt.step() calls so far (see the comment on self.kl_beta_anneal in __init__ for why
+        this, not a separate counter, is the right clock to use here).
+        """
+        if self.kl_beta_anneal != "cosine" or self.kl_beta_warmup_steps <= 0:
+            return self.kl_beta
+        step = self.global_step
+        if step >= self.kl_beta_warmup_steps:
+            return self.kl_beta
+        progress = step / self.kl_beta_warmup_steps
+        return self.kl_beta * 0.5 * (1 - math.cos(math.pi * progress))
+
     def training_step(self, batch, batch_idx):
         opt = self.optimizers()
         sch = self.lr_schedulers()
@@ -810,6 +835,7 @@ class HyperModelLightning(pl.LightningModule):
         total_recon_loss = 0.0
         total_backward_loss = 0.0
         total_kl_loss = 0.0
+        total_kl_beta_used = 0.0
         inner_losses = []
         inner_grad_norms = []
         inner_gen_weight_norms = []
@@ -821,7 +847,9 @@ class HyperModelLightning(pl.LightningModule):
             recon_loss = self.compute_loss(logits, targets)
             if self.hypermodel.variational:
                 kl_loss = self.hypermodel._last_kl_loss
-                backward_loss = recon_loss + self.kl_beta * kl_loss
+                kl_beta_used = self._current_kl_beta()
+                backward_loss = recon_loss + kl_beta_used * kl_loss
+                total_kl_beta_used += kl_beta_used
             else:
                 kl_loss = None
                 backward_loss = recon_loss
@@ -878,6 +906,7 @@ class HyperModelLightning(pl.LightningModule):
         if self.hypermodel.variational:
             self.log("train_kl_loss", total_kl_loss / self.N_supervision, **log_kwargs)
             self.log("train_elbo_loss", total_backward_loss / self.N_supervision, **log_kwargs)
+            self.log("train_kl_beta", total_kl_beta_used / self.N_supervision, **log_kwargs)
         self.log("train_grad_norm_max", max(inner_grad_norms), **log_kwargs)
         self.log("train_grad_norm_mean", sum(inner_grad_norms) / len(inner_grad_norms), **log_kwargs)
         for name, value in metrics.items():

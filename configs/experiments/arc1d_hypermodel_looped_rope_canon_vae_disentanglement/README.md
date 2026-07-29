@@ -41,12 +41,19 @@ to substitute for an explicit descriptor here?
 hyper_output_dim)` heads (`vae_mu_head`, `vae_logvar_head`) on the pooled task representation,
 before the (here, always-inactive) task-descriptor add-in. Samples via the reparameterization
 trick during training; uses the posterior mean deterministically at eval time -- including for
-the embedding-cluster/linear-probe diagnostics, which run in eval mode. `kl_beta` is a
-constant multiplier on the KL term added to the training loss (`recon_loss + kl_beta *
-kl_loss`); **no annealing/warmup schedule this round** -- a fixed beta per run, swept below.
-`val_loss`/`train_loss` stay reconstruction-only throughout (so `primary_metric`-based
-checkpoint selection is unaffected by beta and comparable across every arm); `train_kl_loss`,
-`train_elbo_loss`, and `{split}_kl_loss` are logged separately for visibility.
+the embedding-cluster/linear-probe diagnostics, which run in eval mode. `kl_beta` is the
+target multiplier on the KL term added to the training loss (`recon_loss + kl_beta_effective *
+kl_loss`). `val_loss`/`train_loss` stay reconstruction-only throughout (so
+`primary_metric`-based checkpoint selection is unaffected by beta and comparable across every
+arm); `train_kl_loss`, `train_elbo_loss`, `train_kl_beta` (the effective, possibly-annealed
+weight actually used that step), and `{split}_kl_loss` are logged separately for visibility.
+
+**KL annealing** (`HyperModelLightning`'s `kl_beta_anneal`/`kl_beta_warmup_steps`, top-level
+flat config keys, not under `hyper_head`): `"constant"` (default) applies `kl_beta` unchanged
+from step 0. `"cosine"` eases the weight in from 0 up to `kl_beta` over `kl_beta_warmup_steps`,
+keyed to `self.global_step` -- the count of completed manual `opt.step()` calls, which (like
+this repo's own `max_steps`) advances `N_supervision` times per batch, not once per batch. Added
+after `beta0_01` (constant, no annealing) diverged -- see Grid below.
 
 **Muon exclusion note**: `vae_mu_head`/`vae_logvar_head` are added to
 `HyperModelLightning._MUON_EXCLUDED_MODULE_NAMES` (kept on AdamW, not Muon), on the same
@@ -56,24 +63,40 @@ call, not forced by Keller Jordan's own Muon guidance.
 
 ## Grid
 
-6 `kl_beta` values, 1 seed each = 6 jobs:
+6 constant-`kl_beta` values, 1 seed each:
 
-| Config | `kl_beta` |
+| Config | `kl_beta` | Result |
+|---|---:|---|
+| `beta0_01.yaml` | 0.01 | **Diverged** -- non-finite gradient at `global_step=2772`. At this low a weight, the KL term barely constrains `logvar`, so the model can drift toward large posterior variance over training (unpenalized), eventually producing a sampled `z` large enough to blow up the gradient. Left as-is (not rerun) -- see the annealed re-run below instead. |
+| `beta0_1.yaml` | 0.1 | |
+| `beta0_5.yaml` | 0.5 | |
+| `beta1.yaml` | 1 | |
+| `beta2.yaml` | 2 | |
+| `beta10.yaml` | 10 | |
+
+**Annealed re-run of the small-beta end** (4 more jobs), after `beta0_01`'s divergence: does
+easing the KL weight in via `kl_beta_anneal: cosine` (`kl_beta_warmup_steps: 400`, 10% of the
+4000 scaled optimizer steps) avoid the same instability at very small target beta values?
+
+| Config | `kl_beta` (post-warmup) |
 |---|---:|
-| `beta0_01.yaml` | 0.01 |
-| `beta0_1.yaml` | 0.1 |
-| `beta0_5.yaml` | 0.5 |
-| `beta1.yaml` | 1 |
-| `beta2.yaml` | 2 |
-| `beta10.yaml` | 10 |
+| `beta1e-2_anneal.yaml` | 0.01 |
+| `beta1e-3_anneal.yaml` | 0.001 |
+| `beta1e-4_anneal.yaml` | 0.0001 |
+| `beta1e-5_anneal.yaml` | 0.00001 |
 
 ## Running
 
 ```bash
 bash scripts/run_hypermodel_vae_disentanglement.sh
+
+# Or just the annealed re-run:
+CELL_GLOB="beta*_anneal.yaml" bash scripts/run_hypermodel_vae_disentanglement.sh
 ```
 
-Single seed (`seed=1`), idempotent (skips a config whose `results.txt` already exists).
+Single seed (`seed=1`), idempotent (skips a config whose `results.txt` already exists) --
+note `beta0_01` (no `results.txt`, since it diverged) would be retried, and is expected to
+diverge again identically, if the full unfiltered glob is rerun.
 
 ## Reading results
 
@@ -87,7 +110,9 @@ For each beta, in `outputs/arc1d_hypermodel_looped_rope_canon_muon_diag/looped_h
 3. `train_kl_loss` / `train_elbo_loss` curves (W&B) -- watch for posterior collapse (KL
    dropping to ~0, most likely at low beta, meaning the bottleneck isn't doing anything) at
    one end and reconstruction quality visibly degrading (`val_loss`/`val_query_exact_match`
-   cratering) at the other (most likely at `beta=10`).
+   cratering) at the other (most likely at `beta=10`). For the annealed arms, `train_kl_beta`
+   confirms the ramp shape (0 at step 0, target `kl_beta` by step 400) and whether the run
+   stays stable once annealing completes and the KL weight is held at its small target value.
 
 The headline question: is there a beta where linear-probe accuracy rises meaningfully above
 73.3% without `val_query_exact_match` dropping much below 82.5% (KL buying disentanglement

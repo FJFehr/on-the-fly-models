@@ -1,0 +1,12 @@
+# kl_beta=0.01 diverged (non-finite gradient at global_step=2772) without annealing -- see
+# beta0_01.yaml / README.md. This arm re-tests the same small target beta, but with the KL
+# weight eased in via a cosine ramp (kl_beta_warmup_steps=400, 10% of the 4000 scaled
+# optimizer steps -- matching the LR warmup's 10% convention on its own clock) instead of
+# applied at full strength from step 0, to see whether the early-training dynamics were the
+# cause of the divergence.
+_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement/base.yaml
+experiment_name: looped_hyper_rope_canon_vae_disentanglement_beta1e-2_anneal
+
+kl_beta: 0.01
+kl_beta_anneal: cosine
+kl_beta_warmup_steps: 400
