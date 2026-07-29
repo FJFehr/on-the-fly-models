@@ -1,0 +1,8 @@
+# Annealed counterpart to beta0_1.yaml (constant beta=0.1 collapsed val_query_exact_match to
+# 0%). See beta1e-2_anneal.yaml for the annealing rationale.
+_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement/base.yaml
+experiment_name: looped_hyper_rope_canon_vae_disentanglement_beta0_1_anneal
+
+kl_beta: 0.1
+kl_beta_anneal: cosine
+kl_beta_warmup_steps: 400

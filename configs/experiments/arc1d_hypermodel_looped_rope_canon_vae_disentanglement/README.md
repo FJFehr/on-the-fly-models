@@ -68,30 +68,47 @@ call, not forced by Keller Jordan's own Muon guidance.
 | Config | `kl_beta` | Result |
 |---|---:|---|
 | `beta0_01.yaml` | 0.01 | **Diverged** -- non-finite gradient at `global_step=2772`. At this low a weight, the KL term barely constrains `logvar`, so the model can drift toward large posterior variance over training (unpenalized), eventually producing a sampled `z` large enough to blow up the gradient. Left as-is (not rerun) -- see the annealed re-run below instead. |
-| `beta0_1.yaml` | 0.1 | |
-| `beta0_5.yaml` | 0.5 | |
-| `beta1.yaml` | 1 | |
-| `beta2.yaml` | 2 | |
-| `beta10.yaml` | 10 | |
+| `beta0_1.yaml` | 0.1 | Probe 38.7%, `val_query_exact_match` **0%**. |
+| `beta0_5.yaml` | 0.5 | Probe 17.3%, `val_query_exact_match` **0%**. |
+| `beta1.yaml` | 1 | Probe 6.7% (chance), `val_query_exact_match` **0%**. |
+| `beta2.yaml` | 2 | Probe 10.7%, `val_query_exact_match` 5%. |
+| `beta10.yaml` | 10 | Probe 6.7% (chance -- full posterior collapse), `val_query_exact_match` **0%**. |
 
-**Annealed re-run of the small-beta end** (4 more jobs), after `beta0_01`'s divergence: does
-easing the KL weight in via `kl_beta_anneal: cosine` (`kl_beta_warmup_steps: 400`, 10% of the
-4000 scaled optimizer steps) avoid the same instability at very small target beta values?
+Every constant-beta arm from 0.1 up collapsed task-solving to ~0% `val_query_exact_match` --
+not a graceful disentanglement/accuracy trade-off, outright failure to learn the task at all,
+worse the higher beta goes. This is why every beta got an annealed re-run, not just the
+diverged 0.01 arm.
 
-| Config | `kl_beta` (post-warmup) |
-|---|---:|
-| `beta1e-2_anneal.yaml` | 0.01 |
-| `beta1e-3_anneal.yaml` | 0.001 |
-| `beta1e-4_anneal.yaml` | 0.0001 |
-| `beta1e-5_anneal.yaml` | 0.00001 |
+**Annealed re-run of the full grid**: does easing the KL weight in via `kl_beta_anneal: cosine`
+(`kl_beta_warmup_steps: 400`, 10% of the 4000 scaled optimizer steps) avoid both the small-beta
+divergence and the larger-beta task-accuracy collapse? Note annealing only ramps the KL loss
+*weight* -- the reparameterization sampling itself still happens from step 0 regardless of
+beta, so this isn't guaranteed to fix a noise-injection problem, only a loss-weighting one.
+
+| Config | `kl_beta` (post-warmup) | Result |
+|---|---:|---|
+| `beta1e-5_anneal.yaml` | 0.00001 | |
+| `beta1e-4_anneal.yaml` | 0.0001 | |
+| `beta1e-3_anneal.yaml` | 0.001 | |
+| `beta1e-2_anneal.yaml` | 0.01 | Probe **69.3%** -- close to the `notd` baseline (73.3%), no divergence. |
+| `beta0_1_anneal.yaml` | 0.1 | |
+| `beta0_5_anneal.yaml` | 0.5 | |
+| `beta1_anneal.yaml` | 1 | |
+| `beta2_anneal.yaml` | 2 | |
+| `beta10_anneal.yaml` | 10 | |
 
 ## Running
 
 ```bash
+# Sequential, whole-node-per-job (original grid):
 bash scripts/run_hypermodel_vae_disentanglement.sh
 
-# Or just the annealed re-run:
+# Just the annealed re-run, sequential:
 CELL_GLOB="beta*_anneal.yaml" bash scripts/run_hypermodel_vae_disentanglement.sh
+
+# Parallel, one job per GPU -- for a node with several genuinely free GPUs, so the 9-job
+# annealed grid doesn't wait for 9 whole-node-sequential runs:
+NUM_GPUS=8 CELL_GLOB="beta*_anneal.yaml" bash scripts/run_hypermodel_vae_disentanglement_parallel.sh
 ```
 
 Single seed (`seed=1`), idempotent (skips a config whose `results.txt` already exists) --
