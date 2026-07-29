@@ -63,6 +63,55 @@ def build_zhu_model() -> HyperModelLightning:
     )
 
 
+def build_zhu_model_variational() -> HyperModelLightning:
+    return HyperModelLightning(
+        hyper_model={
+            "name": "rope_canon_zhu_transformer",
+            "params": {
+                "hidden_dim": 16,
+                "num_heads": 2,
+                "num_layers": 2,
+                "output_dim": 16,
+                "canon_set": "ABCD",
+                "canon_kernel": 3,
+                "canon_activation": True,
+                "canon_residual": True,
+                "canon_causal": False,
+                "block_size": 64,
+                "use_rmsnorm": True,
+                "use_qk_norm": True,
+                "use_swiglu": True,
+            },
+        },
+        target_model={
+            "name": "rope_canon_looped_transformer",
+            "params": {
+                "hidden_dim": 16,
+                "num_heads": 2,
+                "inner_dim": 16,
+                "inner_num_heads": 2,
+                "n_loops": 2,
+                "dropout": 0.0,
+                "canon_set": "ABCD",
+                "canon_kernel": 3,
+                "canon_activation": True,
+                "canon_residual": True,
+                "canon_causal": False,
+                "use_block_skip": False,
+                "use_loop_skip": False,
+            },
+        },
+        hyper_head={
+            "pooling": "attention",
+            "bottleneck_dim": 32,
+            "variational": True,
+        },
+        task_encoding={"embedding_dim": 8, "value_vocab_size": 11},
+        optimizer="Muon",
+        input_dim=4,
+    )
+
+
 def test_muon_param_split_excludes_non_matrix_and_output_layers():
     model = build_zhu_model()
     groups = model._build_muon_param_groups()
@@ -131,3 +180,26 @@ def test_configure_optimizers_builds_muon_optimizer_and_scheduler():
     assert type(optimizer).__name__ == "SingleDeviceMuonWithAuxAdam"
     scheduler = result["lr_scheduler"]["scheduler"]
     assert scheduler.optimizer is optimizer
+
+
+def test_muon_param_split_excludes_variational_bottleneck_heads():
+    """vae_mu_head/vae_logvar_head are nn.Linear but must stay on AdamW, not Muon --
+    without this exclusion they'd silently run through Newton-Schulz orthogonalization."""
+    model = build_zhu_model_variational()
+    assert model.hypermodel.variational is True
+
+    groups = model._build_muon_param_groups()
+    adam_group, muon_group = groups[0], groups[1]
+    muon_ids = {id(p) for p in muon_group["params"]}
+    adam_ids = {id(p) for p in adam_group["params"]}
+
+    named = dict(model.named_parameters())
+    vae_head_names = [
+        n
+        for n in named
+        if n.rsplit(".", 2)[-2] in ("vae_mu_head", "vae_logvar_head") and n.endswith(".weight")
+    ]
+    assert vae_head_names, "expected to find vae_mu_head/vae_logvar_head weights"
+    for n in vae_head_names:
+        assert id(named[n]) not in muon_ids, f"{n} should be on AdamW, not Muon"
+        assert id(named[n]) in adam_ids

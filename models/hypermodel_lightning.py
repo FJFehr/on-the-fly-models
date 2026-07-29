@@ -231,6 +231,7 @@ class HyperModelLightning(pl.LightningModule):
             hyper_head_cfg.get("lora_adapter_zero_backbone", False)
         )
         freeze_task_indicator = bool(hyper_head_cfg.get("freeze_task_indicator", False))
+        variational = bool(hyper_head_cfg.get("variational", False))
         hyper_pooling = self.build_hyper_pooling(hyper_head_cfg, hyper_output_dim)
         self.hypermodel = HyperModel(
             hypernetwork=hypernetwork,
@@ -247,6 +248,7 @@ class HyperModelLightning(pl.LightningModule):
             lora_adapter_train_backbone=lora_adapter_train_backbone,
             lora_adapter_zero_backbone=lora_adapter_zero_backbone,
             freeze_task_indicator=freeze_task_indicator,
+            variational=variational,
         )
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name or optimizer
@@ -257,6 +259,10 @@ class HyperModelLightning(pl.LightningModule):
         # Keller Jordan's published defaults, not tuned for this repo.
         self.muon_lr = kwargs.get("muon_lr", 0.02)
         self.muon_momentum = kwargs.get("muon_momentum", 0.95)
+        # Constant beta-VAE KL multiplier (no annealing/scheduling this pass); only used when
+        # hyper_head.variational is True. See HyperModel._apply_variational_bottleneck for
+        # where the KL term itself is computed, and training_step for where it's applied.
+        self.kl_beta = float(kwargs.get("kl_beta", 0.0))
         self.log_task_examples = kwargs.get("log_task_examples", False)
         self.log_task_examples_every_n_epochs = kwargs.get("log_task_examples_every_n_epochs", 25)
         self.log_embedding_clusters = kwargs.get("log_embedding_clusters", False)
@@ -775,6 +781,11 @@ class HyperModelLightning(pl.LightningModule):
             "sync_dist": sync_dist,
         }
         self.log(f"{prefix}_loss", loss, prog_bar=True, **log_kwargs)
+        if self.hypermodel.variational:
+            # Visibility only -- {prefix}_loss above stays reconstruction-only, so
+            # primary_metric-based checkpoint selection is unaffected and stays comparable
+            # across every beta in the sweep (and every other experiment in the repo).
+            self.log(f"{prefix}_kl_loss", self.hypermodel._last_kl_loss, **log_kwargs)
         if prefix == "train":
             for name, value in metrics.items():
                 self.log(
@@ -796,7 +807,9 @@ class HyperModelLightning(pl.LightningModule):
         opt = self.optimizers()
         sch = self.lr_schedulers()
 
-        total_loss = 0.0
+        total_recon_loss = 0.0
+        total_backward_loss = 0.0
+        total_kl_loss = 0.0
         inner_losses = []
         inner_grad_norms = []
         inner_gen_weight_norms = []
@@ -805,9 +818,15 @@ class HyperModelLightning(pl.LightningModule):
         for _ in range(self.N_supervision):
             logits, targets = self(batch)
             gen_weight_norm = self.hypermodel._last_generated_weight_norm
-            loss = self.compute_loss(logits, targets)
+            recon_loss = self.compute_loss(logits, targets)
+            if self.hypermodel.variational:
+                kl_loss = self.hypermodel._last_kl_loss
+                backward_loss = recon_loss + self.kl_beta * kl_loss
+            else:
+                kl_loss = None
+                backward_loss = recon_loss
             opt.zero_grad()
-            self.manual_backward(loss)
+            self.manual_backward(backward_loss)
             # Always measure the pre-clip gradient norm, even when no clip value
             # is configured: clip_grad_norm_ with max_norm=inf never rescales
             # (the coefficient is always >= 1), so this is a no-op for existing
@@ -827,8 +846,11 @@ class HyperModelLightning(pl.LightningModule):
                 )
                 raise RuntimeError(msg)
             opt.step()
-            total_loss += loss.detach()
-            inner_losses.append(loss.detach().item())
+            total_recon_loss += recon_loss.detach()
+            total_backward_loss += backward_loss.detach()
+            if kl_loss is not None:
+                total_kl_loss += kl_loss.detach()
+            inner_losses.append(recon_loss.detach().item())
             inner_grad_norms.append(grad_norm.item())
             inner_gen_weight_norms.append(gen_weight_norm.mean().item())
             boundary_grad_norm = self.hypermodel._last_boundary_grad_norm
@@ -839,7 +861,9 @@ class HyperModelLightning(pl.LightningModule):
         if sch is not None:
             sch.step()
 
-        avg_loss = total_loss / self.N_supervision
+        # Reconstruction-only, unchanged semantics: comparable across every optimizer/arm in
+        # the repo regardless of whether this run has a VAE bottleneck or what kl_beta is.
+        avg_loss = total_recon_loss / self.N_supervision
         metric_sums = self._metric_sums(logits, targets)
         metrics = self._metrics_from_sums(metric_sums, prefix="train")
         batch_size = batch["support_inputs"].shape[0]
@@ -851,6 +875,9 @@ class HyperModelLightning(pl.LightningModule):
             "sync_dist": sync_dist,
         }
         self.log("train_loss", avg_loss, prog_bar=True, **log_kwargs)
+        if self.hypermodel.variational:
+            self.log("train_kl_loss", total_kl_loss / self.N_supervision, **log_kwargs)
+            self.log("train_elbo_loss", total_backward_loss / self.N_supervision, **log_kwargs)
         self.log("train_grad_norm_max", max(inner_grad_norms), **log_kwargs)
         self.log("train_grad_norm_mean", sum(inner_grad_norms) / len(inner_grad_norms), **log_kwargs)
         for name, value in metrics.items():
@@ -1232,10 +1259,20 @@ class HyperModelLightning(pl.LightningModule):
     # Modules whose weight is an nn.Linear but is not a "hidden weight matrix" in the sense
     # Muon is designed for: input_projection/output_head are the hypernetwork's input
     # embedding and final output layer (Keller Jordan's own guidance excludes both from
-    # Muon), and task_indicator_proj is a one-hot task-identity embedding table implemented
+    # Muon), task_indicator_proj is a one-hot task-identity embedding table implemented
     # as nn.Linear(num_tasks, hyper_output_dim, bias=False) -- structurally 2D but
-    # semantically an embedding, not a matrix operator.
-    _MUON_EXCLUDED_MODULE_NAMES = ("input_projection", "output_head", "task_indicator_proj")
+    # semantically an embedding, not a matrix operator -- and vae_mu_head/vae_logvar_head
+    # (beta-VAE bottleneck heads) produce/consume the pooled task representation itself,
+    # not an internal hidden-to-hidden interaction matrix, same rationale as
+    # task_indicator_proj. This last exclusion is a design call, not forced by Keller
+    # Jordan's own guidance.
+    _MUON_EXCLUDED_MODULE_NAMES = (
+        "input_projection",
+        "output_head",
+        "task_indicator_proj",
+        "vae_mu_head",
+        "vae_logvar_head",
+    )
 
     def _build_muon_param_groups(self) -> list[dict]:
         """Split trainable params into a Muon group (hidden nn.Linear weights) and an AdamW

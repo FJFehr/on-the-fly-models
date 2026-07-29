@@ -224,6 +224,7 @@ class HyperModel(nn.Module):
         lora_adapter_train_backbone: bool = False,
         lora_adapter_zero_backbone: bool = False,
         freeze_task_indicator: bool = False,
+        variational: bool = False,
     ):
         super().__init__()
         if lora_adapter and low_rank_output:
@@ -286,6 +287,17 @@ class HyperModel(nn.Module):
         self.freeze_task_indicator = freeze_task_indicator
         if self.task_indicator_proj is not None and freeze_task_indicator:
             self.task_indicator_proj.weight.requires_grad_(False)
+
+        # Optional beta-VAE bottleneck on the pooled task representation (see
+        # _apply_variational_bottleneck / extract_parameter_vectors below). mu/logvar heads
+        # are Linear(hyper_output_dim -> hyper_output_dim) -- same width as the pooled vector
+        # they replace -- so every downstream consumer (task-descriptor add-in, dense/
+        # low_rank_output/lora_adapter projection heads) keeps working unmodified.
+        self.variational = variational
+        self.vae_mu_head = nn.Linear(hyper_output_dim, hyper_output_dim) if variational else None
+        self.vae_logvar_head = (
+            nn.Linear(hyper_output_dim, hyper_output_dim) if variational else None
+        )
 
         # Build the projection MLP from hyper_output_dim to total_target_params.
         # projection_dims specifies intermediate hidden sizes; bottleneck_dim is the
@@ -382,6 +394,10 @@ class HyperModel(nn.Module):
         # generation (post task-descriptor add-in when active), stashed for offline cluster-map
         # visualization -- see extract_parameter_vectors.
         self._last_task_representation: torch.Tensor | None = None
+        # Beta-VAE KL term for the current forward pass (None when variational=False). Left
+        # attached to autograd (unlike _last_task_representation) so training_step can add it
+        # to the backward loss.
+        self._last_kl_loss: torch.Tensor | None = None
 
     @property
     def total_target_params(self) -> int:
@@ -420,11 +436,36 @@ class HyperModel(nn.Module):
             raise ValueError(msg)
         return self.hyper_pooling(hyper_output)
 
+    def _apply_variational_bottleneck(self, task_representation: torch.Tensor) -> torch.Tensor:
+        """Reparameterize the pooled task representation through a diagonal-Gaussian bottleneck.
+
+        Samples during training; uses the posterior mean deterministically at eval time, so
+        eval-time forward passes -- including
+        HyperModelLightning.collect_embedding_records_from_dataloader, which calls
+        self.eval() before iterating -- stash a deterministic mean for the cluster/probe
+        diagnostics, while training-time forward passes stash a stochastic sample. No
+        annealing: a single constant kl_beta is applied by the caller
+        (HyperModelLightning.training_step), not here.
+        """
+        mu = self.vae_mu_head(task_representation)
+        logvar = self.vae_logvar_head(task_representation)
+        # Per-example KL(q(z|x) || N(0, I)), summed over the latent dim, then averaged over
+        # the batch -- standard beta-VAE convention (Higgins et al., 2017).
+        kl_per_example = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=-1)
+        self._last_kl_loss = kl_per_example.mean()
+        if self.training:
+            std = torch.exp(0.5 * logvar)
+            eps = torch.randn_like(std)
+            return mu + eps * std
+        return mu
+
     def extract_parameter_vectors(
         self, hyper_output: torch.Tensor, task_ids: torch.Tensor | None = None
     ) -> torch.Tensor:
         """Pool tokenwise hypernetwork features and project them to target weights."""
         task_representation = self.extract_task_representation(hyper_output)
+        if self.variational:
+            task_representation = self._apply_variational_bottleneck(task_representation)
         if self.task_indicator_proj is not None and task_ids is not None:
             one_hot = torch.nn.functional.one_hot(task_ids, num_classes=self.num_tasks).float()
             task_representation = task_representation + self.task_indicator_proj(one_hot)
@@ -548,10 +589,18 @@ class HyperModel(nn.Module):
 
     def __repr__(self) -> str:
         n = self.total_target_params
+        variational_line = (
+            f"  Variational bottleneck: Linear({self.hyper_output_dim} -> "
+            f"{self.hyper_output_dim}) mu + Linear({self.hyper_output_dim} -> "
+            f"{self.hyper_output_dim}) logvar (beta-VAE, KL weight applied by caller)\n"
+            if self.variational
+            else ""
+        )
         return (
             f"HyperModel(\n"
             f"  Hypernetwork: {_indent_repr(self.hypernetwork)}\n"
             f"  Hyper pooling: {_describe_hyper_pooling(self)}\n"
+            f"{variational_line}"
             f"  Hyper projection: {_describe_hyper_projection(self)}\n"
             f"  Target: {_indent_repr(self.target_model)}\n"
             f"  Target params: {n:,}\n"
