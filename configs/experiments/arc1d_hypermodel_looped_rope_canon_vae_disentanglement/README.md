@@ -116,15 +116,25 @@ target value at the very last step, never holding at full strength for an extend
 and 400-step-annealed arm at `kl_beta &ge; 0.1` collapsed task-solving -- no need to re-test
 0.5/1/2/10 with this scheme:
 
-| Config | `kl_beta` (final, reached only at the last step) | Result |
-|---|---:|---|
-| `beta1e-4_annealfull.yaml` | 0.0001 | |
-| `beta5e-4_annealfull.yaml` | 0.0005 | |
-| `beta1e-3_annealfull.yaml` | 0.001 | |
-| `beta5e-3_annealfull.yaml` | 0.005 | |
-| `beta1e-2_annealfull.yaml` | 0.01 | |
-| `beta5e-2_annealfull.yaml` | 0.05 | |
-| `beta0_1_annealfull.yaml` | 0.1 | |
+| Config | `kl_beta` (final, reached only at the last step) | Probe acc | `val_query_exact_match` |
+|---|---:|---:|---:|
+| `beta1e-4_annealfull.yaml` | 0.0001 | 78.7% | 65.3% |
+| `beta5e-4_annealfull.yaml` | 0.0005 | **84.0%** | 68.0% |
+| `beta1e-3_annealfull.yaml` | 0.001 | 77.3% | **72.0%** |
+| `beta5e-3_annealfull.yaml` | 0.005 | 65.3% | 61.3% |
+| `beta1e-2_annealfull.yaml` | 0.01 | 66.7% | 73.3% |
+| `beta5e-2_annealfull.yaml` | 0.05 | 66.7% | 68.0% |
+| `beta0_1_annealfull.yaml` | 0.1 | 65.3% | 70.7% |
+
+**Result: no divergence and no collapse anywhere in this grid** -- a sharp contrast with both
+the constant-beta arms (collapsed to ~0% task accuracy from `beta=0.1` up) and the 400-step
+anneal (collapsed above `beta=0.01`, diverged at `beta=10`). Spreading the ramp across the
+*entire* run means beta never sits at full strength for long before training ends, avoiding
+the extended fight between reconstruction and a fully-engaged KL penalty that caused every
+earlier failure mode. Several betas (`5e-4`, `1e-4`, `1e-3`) beat the `notd` probe-accuracy
+baseline (73.3%) outright. `beta=1e-3` is the best combined result of the whole experiment --
+77.3% probe accuracy (above `notd`) alongside 72.0% task accuracy (closest yet to `notd`'s
+82.5%, without any of the collapse seen everywhere else in this beta range).
 
 ## Running
 
@@ -166,3 +176,26 @@ The headline question: is there a beta where linear-probe accuracy rises meaning
 73.3% without `val_query_exact_match` dropping much below 82.5% (KL buying disentanglement
 without breaking task-solving)? If no such beta exists across this range, that's evidence KL
 regularization alone can't substitute for an explicit task descriptor here.
+
+## Overall conclusion (across all three grids, 22 arms total)
+
+Whether the KL bottleneck is usable at all depends entirely on **how** beta is introduced, far
+more than on its final value:
+
+- **Constant beta** (no annealing): unstable at the low end (`0.01` diverged) and destructive
+  everywhere else (`0.1` and up collapsed task-solving to ~0%).
+- **400-step (10%-of-training) anneal**: only postpones the same failure modes -- stable at
+  `beta &le; 0.01`, but still collapses at `0.1`+ and still diverges at `10` once the ramp
+  completes and beta holds at full strength for the remaining 90% of training.
+- **Full-training anneal** (ramp spans the whole run, beta only reaches its target at the
+  final step): stable across the **entire** tested range (`1e-4` to `0.1`), no collapse, no
+  divergence. Several betas here (`5e-4`, `1e-4`, `1e-3`) beat the `notd` probe-accuracy
+  baseline outright, with `1e-3` the best combined result of the whole experiment (77.3% probe
+  / 72.0% task accuracy).
+
+Even at its best, though, the bottleneck doesn't fully close the gap to an explicit task
+descriptor -- `1e-3`'s 72.0% task accuracy is still meaningfully below `td`/`frozentd`'s
+~97%. The practical takeaway: a KL-regularized bottleneck **can** mildly improve
+disentanglement over `notd` without wrecking the model, but only when annealed across the
+full training run; and even then it's a partial improvement, not a substitute for a real
+task-identity signal.
