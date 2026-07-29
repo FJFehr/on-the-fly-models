@@ -85,30 +85,61 @@ divergence and the larger-beta task-accuracy collapse? Note annealing only ramps
 *weight* -- the reparameterization sampling itself still happens from step 0 regardless of
 beta, so this isn't guaranteed to fix a noise-injection problem, only a loss-weighting one.
 
-| Config | `kl_beta` (post-warmup) | Result |
+| Config | `kl_beta` (post-warmup) | Probe acc | `val_query_exact_match` |
+|---|---:|---:|---:|
+| `beta1e-5_anneal.yaml` | 0.00001 | 66.7% | 65.3% |
+| `beta1e-4_anneal.yaml` | 0.0001 | **74.7%** | 49.3% |
+| `beta1e-3_anneal.yaml` | 0.001 | 68.0% | 66.7% |
+| `beta1e-2_anneal.yaml` | 0.01 | 69.3% | 65.8% |
+| `beta0_1_anneal.yaml` | 0.1 | 50.7% | 9.3% |
+| `beta0_5_anneal.yaml` | 0.5 | 9.3% | 0.0% |
+| `beta1_anneal.yaml` | 1 | 18.7% | 1.3% |
+| `beta2_anneal.yaml` | 2 | 6.7% (chance) | 0.0% |
+| `beta10_anneal.yaml` | 10 | **Diverged** -- later than the constant arm (`global_step=2973` vs. constant beta=10 which completed without diverging), since the 400-step warmup only delays reaching full strength, it doesn't prevent the instability once beta gets there. |
+
+**Verdict on the 400-step (10%-of-training) anneal**: a narrow stable band exists at
+`kl_beta &le; 0.01`, where probe accuracy roughly matches or slightly beats `notd` (73.3%) but
+`val_query_exact_match` (49-67%) still falls well short of `notd`'s 82.5%. Every beta at or
+above 0.1 still collapses task-solving toward 0%, same as the constant-beta arms. Annealing
+over just the first 10% of training doesn't fix the larger-beta problem -- it only delays it.
+
+## Full-training anneal (`kl_beta_warmup_steps: 4000`)
+
+Prompted by the above: the 400-step warmup reaches full target beta by 10% of the way through
+training and holds it constant for the remaining 90% -- effectively "constant-beta training,
+started late" -- which is exactly why `beta10_anneal` still diverged once warmup completed.
+This variant instead ramps across the **entire** scaled training run (`kl_beta_warmup_steps:
+4000` = `max_steps(2000) * N_supervision(2)`, the full run length), so beta only reaches its
+target value at the very last step, never holding at full strength for an extended period.
+
+`kl_beta` values chosen densely up to 0.1 (both `1x` and `5x` per decade), since every constant
+and 400-step-annealed arm at `kl_beta &ge; 0.1` collapsed task-solving -- no need to re-test
+0.5/1/2/10 with this scheme:
+
+| Config | `kl_beta` (final, reached only at the last step) | Result |
 |---|---:|---|
-| `beta1e-5_anneal.yaml` | 0.00001 | |
-| `beta1e-4_anneal.yaml` | 0.0001 | |
-| `beta1e-3_anneal.yaml` | 0.001 | |
-| `beta1e-2_anneal.yaml` | 0.01 | Probe **69.3%** -- close to the `notd` baseline (73.3%), no divergence. |
-| `beta0_1_anneal.yaml` | 0.1 | |
-| `beta0_5_anneal.yaml` | 0.5 | |
-| `beta1_anneal.yaml` | 1 | |
-| `beta2_anneal.yaml` | 2 | |
-| `beta10_anneal.yaml` | 10 | |
+| `beta1e-4_annealfull.yaml` | 0.0001 | |
+| `beta5e-4_annealfull.yaml` | 0.0005 | |
+| `beta1e-3_annealfull.yaml` | 0.001 | |
+| `beta5e-3_annealfull.yaml` | 0.005 | |
+| `beta1e-2_annealfull.yaml` | 0.01 | |
+| `beta5e-2_annealfull.yaml` | 0.05 | |
+| `beta0_1_annealfull.yaml` | 0.1 | |
 
 ## Running
 
 ```bash
-# Sequential, whole-node-per-job (original grid):
+# Sequential, whole-node-per-job (original constant-beta grid):
 bash scripts/run_hypermodel_vae_disentanglement.sh
 
-# Just the annealed re-run, sequential:
+# Just the 400-step-warmup annealed re-run, sequential:
 CELL_GLOB="beta*_anneal.yaml" bash scripts/run_hypermodel_vae_disentanglement.sh
 
-# Parallel, one job per GPU -- for a node with several genuinely free GPUs, so the 9-job
-# annealed grid doesn't wait for 9 whole-node-sequential runs:
+# Parallel, one job per GPU -- for a node with several genuinely free GPUs:
 NUM_GPUS=8 CELL_GLOB="beta*_anneal.yaml" bash scripts/run_hypermodel_vae_disentanglement_parallel.sh
+
+# Full-training anneal grid, parallel (7 jobs, fits on one 8-GPU node):
+NUM_GPUS=8 CELL_GLOB="beta*_annealfull.yaml" bash scripts/run_hypermodel_vae_disentanglement_parallel.sh
 ```
 
 Single seed (`seed=1`), idempotent (skips a config whose `results.txt` already exists) --
