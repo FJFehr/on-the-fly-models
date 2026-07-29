@@ -118,6 +118,10 @@ and 400-step-annealed arm at `kl_beta &ge; 0.1` collapsed task-solving -- no nee
 
 | Config | `kl_beta` (final, reached only at the last step) | Probe acc | `val_query_exact_match` |
 |---|---:|---:|---:|
+| `beta1e-7_annealfull.yaml` | 0.0000001 | | |
+| `beta1e-6_annealfull.yaml` | 0.000001 | | |
+| `beta1e-5_annealfull.yaml` | 0.00001 | | |
+| `beta5e-5_annealfull.yaml` | 0.00005 | | |
 | `beta1e-4_annealfull.yaml` | 0.0001 | 78.7% | 65.3% |
 | `beta5e-4_annealfull.yaml` | 0.0005 | **84.0%** | 68.0% |
 | `beta1e-3_annealfull.yaml` | 0.001 | 77.3% | **72.0%** |
@@ -126,15 +130,21 @@ and 400-step-annealed arm at `kl_beta &ge; 0.1` collapsed task-solving -- no nee
 | `beta5e-2_annealfull.yaml` | 0.05 | 66.7% | 68.0% |
 | `beta0_1_annealfull.yaml` | 0.1 | 65.3% | 70.7% |
 
-**Result: no divergence and no collapse anywhere in this grid** -- a sharp contrast with both
-the constant-beta arms (collapsed to ~0% task accuracy from `beta=0.1` up) and the 400-step
-anneal (collapsed above `beta=0.01`, diverged at `beta=10`). Spreading the ramp across the
-*entire* run means beta never sits at full strength for long before training ends, avoiding
-the extended fight between reconstruction and a fully-engaged KL penalty that caused every
-earlier failure mode. Several betas (`5e-4`, `1e-4`, `1e-3`) beat the `notd` probe-accuracy
-baseline (73.3%) outright. `beta=1e-3` is the best combined result of the whole experiment --
-77.3% probe accuracy (above `notd`) alongside 72.0% task accuracy (closest yet to `notd`'s
-82.5%, without any of the collapse seen everywhere else in this beta range).
+**Result so far (0.0001 to 0.1): no divergence and no collapse anywhere in this range** -- a
+sharp contrast with both the constant-beta arms (collapsed to ~0% task accuracy from
+`beta=0.1` up) and the 400-step anneal (collapsed above `beta=0.01`, diverged at `beta=10`).
+Spreading the ramp across the *entire* run means beta never sits at full strength for long
+before training ends, avoiding the extended fight between reconstruction and a fully-engaged
+KL penalty that caused every earlier failure mode. Several betas (`5e-4`, `1e-4`, `1e-3`) beat
+the `notd` probe-accuracy baseline (73.3%) outright. `beta=1e-3` is the best combined result of
+the whole experiment so far -- 77.3% probe accuracy (above `notd`) alongside 72.0% task
+accuracy (closest yet to `notd`'s 82.5%, without any of the collapse seen everywhere else in
+this beta range).
+
+`1e-7` through `5e-5` extend the grid below `1e-4` to check whether performance keeps
+improving toward (or past) the `notd` baseline as beta approaches zero, or whether it
+plateaus/degrades -- i.e. whether the injected reparameterization noise itself costs
+something regardless of how weakly the KL term penalizes it.
 
 ## Running
 

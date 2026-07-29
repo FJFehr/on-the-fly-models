@@ -1,0 +1,11 @@
+# See beta1e-4_annealfull.yaml for the full-training-anneal rationale. At this magnitude the
+# KL term should have almost no effect on training dynamics -- close to a no-regularization
+# control, useful for checking whether performance plateaus back toward the notd baseline as
+# beta approaches zero, or whether the sampling noise itself still costs something regardless
+# of how weakly it's penalized.
+_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement/base.yaml
+experiment_name: looped_hyper_rope_canon_vae_disentanglement_beta1e-6_annealfull
+
+kl_beta: 0.000001
+kl_beta_anneal: cosine
+kl_beta_warmup_steps: 4000
