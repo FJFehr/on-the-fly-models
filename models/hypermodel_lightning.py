@@ -260,6 +260,9 @@ class HyperModelLightning(pl.LightningModule):
         # Keller Jordan's published defaults, not tuned for this repo.
         self.muon_lr = kwargs.get("muon_lr", 0.02)
         self.muon_momentum = kwargs.get("muon_momentum", 0.95)
+        # If True, also route the LoRA head's A/B factor projections (lora_proj_a/lora_proj_b)
+        # to the AdamW aux group instead of Muon -- see _build_muon_param_groups.
+        self.muon_exclude_lora_heads = bool(kwargs.get("muon_exclude_lora_heads", False))
         # Beta-VAE KL multiplier; only used when hyper_head.variational is True. See
         # HyperModel._apply_variational_bottleneck for where the KL term itself is computed,
         # and training_step/_current_kl_beta for where/how it's applied.
@@ -1294,7 +1297,7 @@ class HyperModelLightning(pl.LightningModule):
     # (beta-VAE bottleneck heads) produce/consume the pooled task representation itself,
     # not an internal hidden-to-hidden interaction matrix, same rationale as
     # task_indicator_proj. This last exclusion is a design call, not forced by Keller
-    # Jordan's own guidance.
+    # Jordan's own guidance. Always excluded, regardless of muon_exclude_lora_heads.
     _MUON_EXCLUDED_MODULE_NAMES = (
         "input_projection",
         "output_head",
@@ -1302,17 +1305,34 @@ class HyperModelLightning(pl.LightningModule):
         "vae_mu_head",
         "vae_logvar_head",
     )
+    # lora_proj_a/lora_proj_b (the LoRA head's low-rank A/B factor generators, see
+    # models/hypermodel.py's HyperModel.__init__) are Muon-eligible by default -- Fabio's
+    # original call was that they're most of where this model's trainable capacity sits.
+    # muon_exclude_lora_heads=True instead routes them to AdamW, to test whether Muon's
+    # orthogonalization is actually a poor fit for these particular projections.
+    # lora_proj_other (generates the non-matrix target params) is never excluded by this
+    # flag -- it isn't "the low rank vectors", it has no low-rank structure to speak of.
+    _MUON_LORA_HEAD_MODULE_NAMES = ("lora_proj_a", "lora_proj_b")
 
     def _build_muon_param_groups(self) -> list[dict]:
         """Split trainable params into a Muon group (hidden nn.Linear weights) and an AdamW
         aux group (everything else: embeddings, norms, Canon conv weights, the attention
-        pooler's query vector, biases, and the three excluded Linear layers above)."""
+        pooler's query vector, biases, the excluded Linear layers above, and -- if
+        muon_exclude_lora_heads -- the LoRA head's A/B projections)."""
+        excluded_names = set(self._MUON_EXCLUDED_MODULE_NAMES)
+        if self.muon_exclude_lora_heads:
+            excluded_names |= set(self._MUON_LORA_HEAD_MODULE_NAMES)
+
         muon_params = []
         muon_param_ids = set()
         for name, module in self.named_modules():
             if not isinstance(module, nn.Linear):
                 continue
-            if name.split(".")[-1] in self._MUON_EXCLUDED_MODULE_NAMES:
+            # Match against every dotted path segment, not just the last one: lora_proj_a/
+            # lora_proj_b are nn.ModuleLists, so a member's name ends in its list index (e.g.
+            # "lora_proj_a.3"), not the attribute name -- checking only name.split(".")[-1]
+            # would silently fail to exclude them.
+            if set(name.split(".")) & excluded_names:
                 continue
             if module.weight.requires_grad:
                 muon_params.append(module.weight)
