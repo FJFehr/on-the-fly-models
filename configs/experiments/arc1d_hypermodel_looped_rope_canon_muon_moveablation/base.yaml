@@ -1,0 +1,183 @@
+# Base config for the move-ablation follow-up to arc1d_hypermodel_looped_rope_canon_muon_sweep.
+# That 216-cell sweep (99 cells completed before being cancelled in favour of this smaller,
+# targeted follow-up) found: (1) excluding the LoRA head's A/B factor projections
+# (lora_proj_a/lora_proj_b) from Muon beats including them (mean 0.654 vs 0.618), (2)
+# batch_size=2048 pulled ahead of 512/1024, (3) muon_lr itself showed no real trend across
+# 0.008/0.01/0.016 -- the one standout result (0.973 at muon_lr=0.016) is more likely explained
+# by its adam_lr/wd/bsz/lora combination than by muon_lr specifically. muon_lr=0.02 was never
+# reached by that sweep -- notably the exact value that caused the original NaN divergence
+# before LoRA-exclusion existed as an option, so it's fixed here (not swept) as a deliberate,
+# now-better-protected retest, not an assumption it's safe.
+#
+# This experiment locks in the two clear winners (LoRA-exclusion, muon_lr=0.02 as the next
+# natural value) and crosses four axes: batch_size {2048, 4096}, weight_decay {0.01, 0.1},
+# adam_lr (aux AdamW group) {3e-4, 6e-4} (3e-3 dropped -- it was the worst performer in the prior
+# sweep), and a new hypothesis -- move-task ablation. Prior experiments
+# (arc1d_hypermodel_looped_rope_canon_generalization, arc1d_hypermodel_disentanglement) found
+# that mixing 1d_move_1p/1d_move_2p/1d_move_3p WITHOUT a task-identity signal (i.e. in notd mode,
+# what this whole line of work targets) causes catastrophic interference. This experiment tests
+# whether dropping 1d_move_1p/1d_move_2p entirely (13 categories instead of 15) improves both
+# in-distribution results and downstream generalization. See arm_*_without.yaml for the
+# 13-category task list; arm_*_with.yaml keeps the standard 15.
+#
+# Batch-size/data-volume caveat: the training pool is only 40-41 genuinely distinct raw tasks per
+# category (~601,000 augmented rows total across the 15-category list), and max_steps is fixed at
+# 4000 regardless of batch_size (training/trainer.py), so larger batches mean more recycling of
+# this fixed pool, not more raw data seen -- bsz=512 recycles ~3.4x, bsz=2048 ~13.6x, bsz=4096
+# (this experiment's upper end) ~27x. Kept as a literal batch-size-at-fixed-max_steps test
+# regardless (Fabio's call) -- it's testing whether bigger batches help optimization at this data
+# scale, not testing data scaling.
+#
+# Every run also gets a compositional-generalization zero-shot eval (scripts/
+# eval_compositional_holdout.py, reusing the arc1d_hypermodel_compositional_generalization
+# experiment's holdout set and eval script unmodified) and keeps embedding-cluster + linear-probe
+# diagnostics on (log_embedding_clusters: true) -- both "always on" per Fabio, not just for
+# in-distribution numbers. See scripts/run_hypermodel_looped_rope_canon_muon_moveablation.sh for
+# the train-then-eval pipeline.
+#
+# Same backbone/schedule as arc1d_hypermodel_looped_rope_canon_muon_sweep (Zhu block, rope_canon
+# target model, lora_adapter_rank=8, max_steps=4000/warmup_steps=400) -- NOT the
+# arc1d_hypermodel_compositional_generalization experiment's different recipe (rank=4,
+# max_steps=2000); that experiment's eval script is reused purely as an evaluation tool here, it
+# builds the model fresh from THIS config, so the differing training recipes don't conflict.
+#
+# devices: 1 (not auto) so this can run GPU-parallel across many cells at once, same as the prior
+# sweep.
+#
+# batch_size/weight_decay/learning_rate are placeholders here, overridden per leaf by
+# scripts/gen_hypermodel_muon_moveablation_configs.py. See README.md for the full grid.
+#
+# Self-contained (no _base_ of its own), matching every sibling base.yaml, because the config
+# loader only resolves one level of _base_ inheritance (training/config.py).
+project_name: arc1d_hypermodel_looped_rope_canon_muon_moveablation
+entity: fjfehr
+output_dir: outputs
+seed: 42
+experiment_name: looped_hyper_rope_canon_muon_moveablation
+output_path: ${output_dir}/${project_name}/${experiment_name}
+
+data: arc_1d_meta_multiclass
+data_dir: data/arc_1d_looped_augmented
+model: hyper_model
+primary_metric: val_loss
+num_workers: 0
+
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_cmp
+  - 1d_scale_dp
+task_ids: null
+val_task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_recolor_cmp
+  - 1d_scale_dp
+train_split: train
+val_split: val
+test_split: test
+overfit_single_batch: false
+
+accelerator: auto
+float32_matmul_precision: medium
+precision: bf16-mixed
+devices: 1
+optimizer: Muon
+muon_lr: 0.02
+muon_momentum: 0.95
+muon_exclude_lora_heads: true
+batch_size: 2048
+learning_rate: 0.0006
+weight_decay: 0.01
+gradient_clip_val: 10.0
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: ${max_steps}
+    eta_min: 0.0001
+max_steps: 4000
+warmup_steps: 400
+log_task_examples: true
+log_task_examples_every_n_epochs: 100
+num_periodic_train_task_examples: 100
+num_periodic_val_task_examples: 100
+log_embedding_clusters: true
+
+prediction_task: multiclass
+num_classes: 10
+padding_idx: 10
+stop_on_perfect_val_exact_match: false
+
+N_supervision: 2
+
+task_encoding:
+  embedding_dim: 16
+  value_vocab_size: 11
+  use_sinusoidal_pe: false
+
+target_model:
+  name: rope_canon_looped_transformer
+  params:
+    hidden_dim: 16
+    num_heads: 2
+    inner_dim: 16
+    inner_num_heads: 2
+    n_loops: 4
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_block_skip: false
+    use_loop_skip: false
+
+# Fixed Zhu backbone, matching arc1d_hypermodel_looped_rope_canon_muon_sweep.
+hyper_model:
+  name: rope_canon_zhu_transformer
+  params:
+    hidden_dim: 64
+    num_heads: 4
+    num_layers: 8
+    output_dim: 64
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    block_size: 2048
+    use_rmsnorm: true
+    use_qk_norm: true
+    use_swiglu: true
+
+# notd (no task-identity signal), matching the sweep -- baked in, no per-leaf override needed.
+hyper_head:
+  pooling: attention
+  bottleneck_dim: 128
+  num_tasks: null
+  freeze_task_indicator: false
+  lora_adapter: true
+  lora_adapter_rank: 8
+  lora_adapter_zero_backbone: false

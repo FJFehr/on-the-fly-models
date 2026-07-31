@@ -1,0 +1,5 @@
+_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_muon_moveablation/base.yaml
+experiment_name: arm_bsz2048_wd0.1_alr0.0006_with
+batch_size: 2048
+weight_decay: 0.1
+learning_rate: 0.0006
