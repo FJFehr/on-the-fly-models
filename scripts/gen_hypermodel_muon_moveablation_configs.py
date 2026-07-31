@@ -3,19 +3,22 @@ arc1d_hypermodel_looped_rope_canon_muon_moveablation.
 
 Follow-up to the 216-cell arc1d_hypermodel_looped_rope_canon_muon_sweep (99 cells completed
 before being cancelled): locks in muon_lr=0.02 and muon_exclude_lora_heads=true (both fixed, see
-base.yaml), and crosses four axes:
+base.yaml), and crosses three axes:
 
-- batch_size: {2048, 4096} -- kept as a literal batch-size test at max_steps=4000 fixed (see
-  base.yaml for the data-recycling caveat).
 - weight_decay: {0.01, 0.1}.
 - adam_lr (the AdamW aux group's learning_rate): {3e-4, 6e-4}.
 - moves: "with" (standard 15 task categories) vs "without" (13 categories, dropping
   1d_move_1p/1d_move_2p entirely from both task_categories and val_task_categories) -- tests
   whether removing the notd move-family interference source (see base.yaml) helps.
 
-2 x 2 x 2 x 2 = 16 configs, 3 seeds each (seed handled by the runner script, not baked in) = 48
-jobs. batch_size is the outermost loop so CELL_GLOB="arm_bsz2048_*.yaml" /
-CELL_GLOB="arm_bsz4096_*.yaml" splits the grid into two even 8-cell halves, one per node.
+batch_size is fixed at 2048 (base.yaml), not swept: bsz=4096 was tried and genuinely OOMs
+(44.21/44.40 GiB on a single GPU, reproducible across every other axis combination) -- the
+hypernetwork generates per-example target-model weights, so activation memory scales with
+batch_size much faster than a normal transformer's. Dropped rather than chasing a memory fix.
+
+2 x 2 x 2 = 8 configs, 3 seeds each (seed handled by the runner script, not baked in) = 24 jobs.
+"moves" is the outermost loop so CELL_GLOB="arm_bsz2048_*_with.yaml" /
+CELL_GLOB="arm_bsz2048_*_without.yaml" splits the grid into two even 4-cell halves, one per node.
 """
 
 from pathlib import Path
@@ -25,7 +28,7 @@ import yaml
 DST = Path("configs/experiments/arc1d_hypermodel_looped_rope_canon_muon_moveablation")
 BASE_CFG = "configs/experiments/arc1d_hypermodel_looped_rope_canon_muon_moveablation/base.yaml"
 
-BATCH_SIZE = [2048, 4096]
+BATCH_SIZE = [2048]
 WEIGHT_DECAY = [0.01, 0.1]
 ADAM_LR = [3e-4, 6e-4]
 MOVES = ["with", "without"]

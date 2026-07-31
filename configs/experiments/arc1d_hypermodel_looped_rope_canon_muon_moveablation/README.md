@@ -14,7 +14,11 @@ work: speed up training and get notd (no task-identity signal) to solve more tas
   of the top 10 individual cells used exclusion. Locked in here (`muon_exclude_lora_heads: true`,
   fixed, not swept).
 - **batch_size=2048 pulled ahead** of 512/1024 (mean 0.658 vs ~0.623-0.629), 7 of the top 10 cells
-  used it. This experiment pushes further: `batch_size in {2048, 4096}`.
+  used it. This experiment tried pushing further to `batch_size=4096`, but that genuinely OOMs
+  (44.21/44.40 GiB on a single GPU, reproducible across every other axis combination — the
+  hypernetwork generates per-example target-model weights, so activation memory scales with
+  batch_size much faster than a normal transformer's) — dropped from the grid entirely rather than
+  chasing a memory fix. `batch_size=2048` is fixed here.
 - **muon_lr itself showed no real trend** across 0.008/0.01/0.016 (means all ~0.63-0.64, within
   noise). The one standout result (0.973 at muon_lr=0.016, adam_lr=6e-4, wd=0.1, bsz=2048,
   lora=excl) is more likely explained by that adam_lr/wd/bsz/lora combination than by muon_lr
@@ -51,14 +55,13 @@ and the compositional-generalization eval below, on the remaining 13 categories.
 
 Fixed across every cell: Zhu backbone (`rope_canon_zhu_transformer`), `rope_canon_looped_transformer`
 target, `lora_adapter_rank=8`, `max_steps=4000`/`warmup_steps=400`, `gradient_clip_val=10.0`,
-`optimizer=Muon`, `muon_lr=0.02`, `muon_momentum=0.95`, `muon_exclude_lora_heads=true`, notd
-(`hyper_head.num_tasks: null`).
+`optimizer=Muon`, `muon_lr=0.02`, `muon_momentum=0.95`, `muon_exclude_lora_heads=true`,
+`batch_size=2048`, notd (`hyper_head.num_tasks: null`).
 
-Crossed, `2 x 2 x 2 x 2 = 16` configs, 3 seeds each = 48 jobs:
+Crossed, `2 x 2 x 2 = 8` configs, 3 seeds each = 24 jobs:
 
 | Axis | Values |
 |---|---|
-| `batch_size` | `2048`, `4096` |
 | `weight_decay` | `0.01`, `0.1` |
 | `learning_rate` (AdamW aux group) | `3e-4`, `6e-4` |
 | move-task inclusion | `with` (standard 15 categories), `without` (13, drops `1d_move_1p`/`1d_move_2p`) |
@@ -69,11 +72,11 @@ The training pool is only 40-41 genuinely distinct raw tasks per category (~601,
 augmented-but-correlated rows total across the 15-category list). `max_steps` is fixed at 4000
 regardless of `batch_size` (`training/trainer.py`), so **larger batches mean more recycling of
 this same fixed pool, not more raw data seen**: bsz=512 (prior sweep's baseline) recycled the pool
-~3.4x, bsz=2048 ~13.6x, bsz=4096 (this experiment's upper end) ~27x. Kept as a literal
-batch-size-at-fixed-max_steps test regardless (Fabio's call) — this tests whether bigger batches
-help optimization at this data scale, not data scaling. (A genuinely more data-scarce regime, for
-a different question, already exists: `arc1d_lowdata_lowrank`'s `variants_per_base_task` sweep —
-out of scope here.)
+~3.4x, bsz=2048 (fixed here) ~13.6x. `bsz=4096` was tried (kept as a literal
+batch-size-at-fixed-max_steps test, Fabio's call — testing whether bigger batches help
+optimization at this data scale, not data scaling) but hit a hard memory wall instead, see above.
+(A genuinely more data-scarce regime, for a different question, already exists:
+`arc1d_lowdata_lowrank`'s `variants_per_base_task` sweep — out of scope here.)
 
 ## Compositional-generalization eval (every run, not just in-distribution numbers)
 
@@ -99,19 +102,19 @@ probe accuracy, "always on" per Fabio, not just for the in-distribution numbers.
 ## Running
 
 ```bash
-# Generate the 16 leaf configs (only needs to be run once, or after changing the grid).
+# Generate the 8 leaf configs (only needs to be run once, or after changing the grid).
 .venv/bin/python scripts/gen_hypermodel_muon_moveablation_configs.py
 
-# Then launch, split across torrnode12 and torrnode8 (full 8-GPU parallelism each):
-# torrnode12:
-CELL_GLOB="arm_bsz2048_*.yaml" GPUS="0,1,2,3,4,5,6,7" \
+# Then launch, split across two nodes (full 8-GPU parallelism each) by move-task inclusion:
+# node A (e.g. torrnode12):
+CELL_GLOB="arm_bsz2048_*_with.yaml" GPUS="0,1,2,3,4,5,6,7" \
   bash scripts/run_hypermodel_looped_rope_canon_muon_moveablation.sh
-# torrnode8:
-CELL_GLOB="arm_bsz4096_*.yaml" GPUS="0,1,2,3,4,5,6,7" \
+# node B (e.g. torrnode8):
+CELL_GLOB="arm_bsz2048_*_without.yaml" GPUS="0,1,2,3,4,5,6,7" \
   bash scripts/run_hypermodel_looped_rope_canon_muon_moveablation.sh
 ```
 
-Each invocation trains its half of the grid (GPU-parallel, 8 cells x 3 seeds = 24 jobs), then runs
+Each invocation trains its half of the grid (GPU-parallel, 4 cells x 3 seeds = 12 jobs), then runs
 the compositional-holdout eval on each completed run in turn (sequential — eval is cheap, 400
 holdout examples on a tiny model, and runs on CPU by default per
 `eval_compositional_holdout.py`'s own convention).
@@ -119,14 +122,14 @@ holdout examples on a tiny model, and runs on CPU by default per
 ## Reading results
 
 1. **In-distribution**: `val_query_exact_match` per cell (`outputs/<project>/<exp_name>/results.txt`)
-   — does any `with`/`without`-moves pair, at matched batch_size/weight_decay/adam_lr, show the
+   — does any `with`/`without`-moves pair, at matched weight_decay/adam_lr, show the
    `without` arm winning? That's the direct test of the move-task-interference hypothesis. Compare
    the best cells here against the prior sweep's `notd_muon` baseline (mean ≈ 0.483, muon_lr=0.005
    untuned) and `notd_adamw` baseline (mean ≈ 0.675).
 2. **Compositional generalization**:
    `outputs/<project>/<exp_name>/compositional_holdout_eval/results.txt` (fixed-width table, not
    `key: value` — parse by column) — does the `without`-moves arm, or any particular
-   batch_size/weight_decay/adam_lr combination, show better zero-shot exact-match or
+   weight_decay/adam_lr combination, show better zero-shot exact-match or
    per-token seq-accuracy on the 10 composite categories than the already-run (untuned)
    `arc1d_hypermodel_compositional_generalization/notd` baseline (overall exact-match 0.013, but
    seq-accuracy 0.63-0.92 per category — the "near-miss" pattern)?

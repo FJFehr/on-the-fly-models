@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Train + compositional-holdout-eval the arc1d_hypermodel_looped_rope_canon_muon_moveablation
-# grid: batch_size x weight_decay x adam_lr x move-task-inclusion, muon_lr=0.02 and
-# muon_exclude_lora_heads=true fixed (see base.yaml), 3 seeds by default. Follow-up to the
+# grid: weight_decay x adam_lr x move-task-inclusion, muon_lr=0.02, muon_exclude_lora_heads=true,
+# and batch_size=2048 all fixed (see base.yaml -- bsz=4096 was tried and genuinely OOMs at
+# 44.21/44.40 GiB, dropped from the grid entirely), 3 seeds by default. Follow-up to the
 # (cancelled) arc1d_hypermodel_looped_rope_canon_muon_sweep -- see that experiment's README and
 # this one's base.yaml for the findings that motivate this grid.
 #
 # Two phases, matching run_hypermodel_compositional_generalization.sh's train-then-eval pattern
-# but GPU-parallel (base.yaml sets devices: 1) for the train phase, since this grid is much
-# bigger (up to 48 jobs) than that experiment's 3 arms:
+# but GPU-parallel (base.yaml sets devices: 1) for the train phase, since this grid (24 jobs) is
+# still bigger than that experiment's 3 arms:
 #   1. Train phase: GPU-parallel via GPUS=, idempotent skip via results.txt.
 #   2. Eval phase: scripts/eval_compositional_holdout.py against each completed training run's
 #      best checkpoint, sequential (matches eval_compositional_holdout.py's own --device cpu
@@ -23,11 +24,10 @@
 # Set GPUS to a comma-separated list of GPU ids to run the train phase that many jobs in
 # parallel, one per GPU (e.g. GPUS="0,1,2,3,4,5,6,7"). Leave GPUS unset to run sequentially.
 #
-# To split across nodes, override CELL_GLOB to give each node a disjoint half of the grid (batch
-# size is the outermost loop in the generator, so splitting by it gives two even 8-cell/24-job
-# halves):
-#   node A: CELL_GLOB="arm_bsz2048_*.yaml" bash scripts/run_hypermodel_looped_rope_canon_muon_moveablation.sh
-#   node B: CELL_GLOB="arm_bsz4096_*.yaml" bash scripts/run_hypermodel_looped_rope_canon_muon_moveablation.sh
+# To split across nodes, override CELL_GLOB to give each node a disjoint half of the grid ("moves"
+# is the outermost loop in the generator, so splitting by it gives two even 4-cell/12-job halves):
+#   node A: CELL_GLOB="arm_bsz2048_*_with.yaml"    bash scripts/run_hypermodel_looped_rope_canon_muon_moveablation.sh
+#   node B: CELL_GLOB="arm_bsz2048_*_without.yaml" bash scripts/run_hypermodel_looped_rope_canon_muon_moveablation.sh
 #
 # Usage:
 #   bash scripts/run_hypermodel_looped_rope_canon_muon_moveablation.sh                  # sequential, 1 GPU
