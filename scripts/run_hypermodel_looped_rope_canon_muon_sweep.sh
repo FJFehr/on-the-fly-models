@@ -70,6 +70,27 @@ if [ "$N_JOBS" -eq 0 ]; then
     exit 0
 fi
 
+# Guards against launching onto a GPU whose memory hasn't actually been released yet (e.g. right
+# after killing a previous session's process) -- CUDA_VISIBLE_DEVICES isolation is airtight once a
+# job starts, but two jobs can still momentarily land on the same physical GPU if the prior
+# occupant's memory hadn't been freed by the driver yet when this one claims that same index,
+# guaranteeing an OOM once both ramp up. Polls up to 60s; proceeds with a warning if a GPU still
+# looks occupied after that (it may be legitimately in shared use by another user's job).
+wait_for_gpu_free() {
+    local gpu_id="$1"
+    [ -z "$gpu_id" ] && return 0
+    local tries=0 used=""
+    while [ "$tries" -lt 30 ]; do
+        used=$(nvidia-smi --query-gpu=memory.used --id="$gpu_id" --format=csv,noheader,nounits 2>/dev/null | tr -d ' ')
+        if [ -n "$used" ] && [ "$used" -lt 500 ]; then
+            return 0
+        fi
+        sleep 2
+        tries=$((tries + 1))
+    done
+    echo "WARNING: gpu ${gpu_id} still shows ${used:-unknown} MiB used after 60s -- proceeding anyway" >&2
+}
+
 run_job() {
     local cfg="$1" seed="$2" gpu_id="${3:-}"
     local logging_name exp_name log
@@ -79,6 +100,7 @@ run_job() {
     local gpu_tag=""
     [ -n "$gpu_id" ] && gpu_tag="  (gpu ${gpu_id})"
 
+    wait_for_gpu_free "$gpu_id"
     echo "START  ${PROJECT} / ${exp_name}${gpu_tag}"
     if CUDA_VISIBLE_DEVICES="$gpu_id" .venv/bin/python train.py --config "$cfg" $FREE_GPUS_FLAG \
         seed="$seed" \
