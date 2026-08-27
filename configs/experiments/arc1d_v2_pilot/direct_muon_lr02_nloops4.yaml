@@ -1,0 +1,10 @@
+_base_: configs/experiments/arc1d_lowdata_baseline/base.yaml
+project_name: arc1d_v2_pilot
+experiment_name: direct_muon_lr02_nloops4
+task_categories:
+  - 1d_fill
+val_task_categories:
+  - 1d_fill
+variants_per_base_task: null
+save_checkpoints: false
+muon_lr: 0.02
