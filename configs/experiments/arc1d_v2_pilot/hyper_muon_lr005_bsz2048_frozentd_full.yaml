@@ -2,6 +2,7 @@ _base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/base.yaml
 project_name: arc1d_v2_pilot
 experiment_name: hyper_muon_lr005_bsz2048_frozentd_full
 save_checkpoints: false
+devices: 1
 
 optimizer: Muon
 muon_lr: 0.005
