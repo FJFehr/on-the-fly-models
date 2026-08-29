@@ -276,6 +276,49 @@ one fixed tiny weight set to implement a fully general in-context-binding
 circuit. Whether that mechanism actually succeeds on this task is an open,
 genuinely interesting question for Phase 2 to answer - not assumed here.
 
+### Completing the factorial, and reframing the baseline
+
+The ordering ablation above established RoPE-before-Canon as the carried-
+forward step *order*, but left RoPE and Canon partially entangled - every
+RoPE+Canon cell tested also had N_sup=2, and every Canon-alone cell (the
+original T3) also had N_sup=2. Two more configurations closed the full
+RoPE x Canon x N_sup factorial (all flat, n_loops=1, 14-task dim=10):
+
+| | N_sup=1 | N_sup=2 |
+|---|---:|---:|
+| Vanilla (no RoPE, no Canon) | T1: 0.886 | T2: 0.905 |
+| RoPE only | R2: 0.881 | R3: 0.905 |
+| Canon only | C1: 0.991 | T3: 0.995 |
+| RoPE + Canon | RC1: 0.986 | T4: 0.991 |
+
+Reading this both ways: **N_sup=2 does nothing once Canon is present**
+(C1 vs T3, RC1 vs T4 - both gaps are ~1 example out of 42, noise), and
+**RoPE does nothing once Canon is present either** (Canon-only vs
+RoPE+Canon is statistically identical in both N_sup columns). Without
+Canon, nothing gets close regardless of RoPE or N_sup (T1/T2/R2/R3 all sit
+at 0.88-0.91).
+
+**Decision (Fabio): keep both RoPE and Canon as the fixed architecture**
+going forward, matching what every downstream phase (2-6) already uses -
+dropping RoPE isn't warranted just because this one narrow setting
+(individually-trained, flat, tiny dim=10 model) didn't need it. But RoPE
+should not be *presented* as an ablated-away step, since it isn't being
+ablated away - it belongs in the baseline definition, not the story of
+what was added. **The baseline/"vanilla" for presentation purposes is
+therefore redefined as the RoPE-only transformer (R2)**, not the plain
+sinusoidal-PE transformer (T1). T1/T2 remain in this document as historical
+context (they're what originally established that RoPE and Canon both beat
+plain sinusoidal PE), but are not part of the headline progression.
+
+**The reframed headline story**: baseline (R2, RoPE-only, flat, N_sup=1,
+0.881) -> **+ Canon (RC1, 0.986) - the one step that matters** -> every
+subsequent addition tested (N_sup=2/T4, looped n_loops=4/T5, more loop
+iterations through n_loops=32/L8-L16-L32, every skip-connection combination
+at n_loops in {4,8}/B4-B8-P4-P8-S4-S8) is confirmatory, landing at
+0.986-1.000 with no further systematic gain over RC1 alone. For 14 of the
+15 ARC-1D tasks at this scale, the entire story is: **start from a RoPE
+transformer, add Canon, stop.**
+
 Recomputed Phase 1 means with `1d_recolor_cmp` excluded (n=42, vs n=45
 including it) confirm the story is even cleaner than it looked with the
 task included - `1d_recolor_cmp` alone was responsible for nearly all of
