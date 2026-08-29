@@ -203,6 +203,97 @@ flat/n_loops=1 comparison point as part of the progression).
 **Dependency**: needs Phase 0.5's validated `muon_lr`. Does not gate any
 other phase - purely a narrative/confirmatory result now.
 
+## Update: Phase 1 actual execution, and the `1d_recolor_cmp` scope decision
+
+Phase 1 as actually run diverged from this original design in ways worth
+recording here rather than editing the plan above out of place:
+
+- T6/T7 (skip variants) were dropped entirely, not just deferred - n_loops=4
+  no-skip is fixed by precedent for the whole round, so testing skip
+  connections against a question already settled elsewhere added nothing.
+- dim=16's T1-T5 turned out uninformative (14/15 tasks already ~1.0 from T1
+  onward under Muon) - dim=10 (~5,130 params, num_heads=1, the closest
+  even-head_dim fit to the older `arc1d_capacity_*` family's ~5k scale) was
+  added and is what actually shows a progression.
+- The adopted step order changed from T1-T2-T3(Canon)-T4(RoPE)-T5(looped) to
+  T1-T2-R3(RoPE, before Canon)-T4(Canon)-T5(looped) - an ordering ablation
+  (testing "RoPE before N_sup", "RoPE before Canon", and "RoPE, looped, N_sup,
+  Canon last") found reordering never beats the original, and the "Canon
+  last" variant is the worst option tested, staying stuck until Canon
+  finally lands. RoPE-before-Canon was kept as the carried-forward order
+  since it's the more natural narrative (vanilla, more supervision, better
+  positional encoding, then the two "real" architecture additions), not
+  because it scored better - it doesn't, the two orderings are
+  statistically identical wherever they overlap.
+- A loop-count/skip diagnostic was added on top of the adopted order's T5
+  (L8/L16/L32 - more loop iterations, no skip; B4/B8/P4/P8/S4/S8 - full
+  skip factorial at n_loops in {4,8}). Finding: **looping does not help at
+  this scale.** T4 (flat, n_loops=1) already matches or beats every looped
+  variant tested, all the way through n_loops=32. No skip combination beats
+  its own no-skip reference either. Canon is the entire story; nothing else
+  in Phase 1's toolkit (reordering, more supervision, more loops, skip
+  connections) moves performance further once Canon is present.
+
+**`1d_recolor_cmp` scope decision.** Every one of the ~14 configurations
+above (T1-T5, R2/R3/L3/L4, T2n4-T5n4, L8/L16/L32, B4/B8/P4/P8/S4/S8) left
+`1d_recolor_cmp` stuck at <=0.2 exact match. Investigated directly rather
+than left as an open mystery: the task's actual rule was decoded and
+verified against 300 random real instances at 300/300 correct - **recolor
+the longest contiguous run(s) of the active colour to a target colour,
+ties included, everything else unchanged.** The task is fully well-posed,
+not a data problem. But the target colour is not a fixed constant - checked
+across 2000 instances, it lands on all 9 possible colours at roughly equal
+frequency, with zero signal outside that specific instance's own 3 support
+examples. Solving it therefore requires two things bound together, fresh
+per instance: identifying the longest run (a global comparison across
+however many runs are present) and inferring which of 9 colours to apply
+(pure in-context induction, nothing to memorise).
+
+Phase 1 trains one *separate* model per task category (`task_categories:
+[task]` in every generated config) - there is no cross-task sharing, so a
+single individually-trained model must encode this "read context, extract
+an arbitrary value, apply it based on a global computation" behaviour as a
+*general, fixed-weight algorithm* discovered by SGD over ~40,000 augmented
+instances, all sharing the same tiny (5k-12k parameter) recursive backbone.
+That's a categorically different demand from the other 14 tasks, none of
+which need to bind a freshly-inferred, unconstrained value to an
+abstractly-computed target. It has now failed to learn across every lever
+Phase 1 has: scale (5,130-42,464 params), depth (n_loops 1-32), skip
+connections, training order, and supervision depth (N_sup 2 and 4) - 14
+independent attempts, all stuck.
+
+**Decision**: exclude `1d_recolor_cmp` from Phase 1's working set going
+forward (**14 tasks**, not 15, for any further individually-trained/direct
+experiments) - re-running the other 14 tasks' already-collected results is
+not needed, since each task trains as a fully independent model and none of
+their results depend on whether `1d_recolor_cmp` is in the set. **Re-include
+it starting at Phase 2** (the joint multi-task hypernetwork headline claim)
+and every phase after - the hypernetwork setting is architecturally
+different in exactly the way this task needs: a separate, larger encoder
+(the Zhu-block hypernetwork, ~1.5M+ params) reads the support examples and
+*generates* the target model's weights per-instance, rather than requiring
+one fixed tiny weight set to implement a fully general in-context-binding
+circuit. Whether that mechanism actually succeeds on this task is an open,
+genuinely interesting question for Phase 2 to answer - not assumed here.
+
+Recomputed Phase 1 means with `1d_recolor_cmp` excluded (n=42, vs n=45
+including it) confirm the story is even cleaner than it looked with the
+task included - `1d_recolor_cmp` alone was responsible for nearly all of
+the earlier "not quite at ceiling" signal, all the way back to T1:
+
+| Step | 14-task mean | 15-task mean (incl. `recolor_cmp`) |
+|---|---:|---:|
+| T1 | 0.886 | 0.827 |
+| T2 | 0.905 | 0.844 |
+| R3 | 0.905 | 0.849 |
+| T4 | 0.991 | 0.933 |
+| T5 | 0.986 | 0.929 |
+| L8 / L16 / L32 | 0.995 / 0.991 / 1.000 | 0.929 / 0.933 / 0.938 |
+| B4 / B8 / P4 / P8 / S4 / S8 | 0.991 / 1.000 / 0.995 / 0.995 / 0.991 / 0.995 | 0.924 / 0.933 / 0.933 / 0.929 / 0.924 / 0.933 |
+
+From T4 onward, every 14-task configuration sits at 0.99-1.00 - the
+remaining spread is 1-2 example flips out of 42, not a real effect.
+
 ## Phase 2 - Headline capability claim
 
 **Directory**: `configs/experiments/arc1d_v2_headline/`. Fixed architecture

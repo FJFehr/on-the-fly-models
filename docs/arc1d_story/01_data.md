@@ -133,10 +133,28 @@ The full 18-category index, from `TASK_CATEGORY_INDEX` in `models/hypermodel_lig
   and correctly determine the query." So the data is well-posed; the two categories are
   excluded because no model configuration tried has ever solved them, not because the task is
   underspecified. `1d_recolor_cmp` (the third recolor task, sharing the same 200/200
-  verification) is *not* excluded - it does not show the same zero-signal failure and remains
-  in the working set.
+  verification) is *not* excluded from the 15-task set - it does not show the same zero-signal
+  failure - but see the Round 2 scope refinement immediately below.
 
-### Working 15-task set
+**`1d_recolor_cmp` - refined scope, Round 2.** Re-verified independently during Round 2's Phase 1
+(`docs/arc1d_story/05_round2_plan.md`'s "Update" section has the full account): decoded the rule
+from real data and checked it against 300 random instances at 300/300 correct - recolor the
+longest contiguous run(s) of the active colour to a target colour (ties included), everything
+else unchanged. Confirms the historical "max-length tie-break" characterisation exactly. The new
+detail: the target colour is **not** a fixed constant - checked across 2000 instances, it lands
+on all 9 possible colours at roughly equal frequency, determinable only from that specific
+instance's own 3 support examples. Phase 1 trains one separate model per task category (no
+cross-task sharing), so a single individually-trained model must encode "read context, infer an
+unconstrained value, apply it based on a global run-length comparison" as a general fixed-weight
+algorithm - a categorically harder demand than the other 14 tasks, and one that failed to solve
+across 14 independent Phase 1 configurations (scale, depth, skip connections, ordering,
+supervision depth). **Decision**: `1d_recolor_cmp` is excluded from the working set for
+individually-trained/direct experiments (**14 tasks**), but stays in the 15-task set for joint
+multi-task hypernetwork phases (Phase 2 onward) - the hypernetwork's separate, larger encoder
+generating per-instance target weights is a plausible (untested) mechanism for exactly this kind
+of in-context value binding, unlike a single fixed-weight small model.
+
+### Working 15-task set (joint/hypernetwork phases) - 14-task set (Phase 1, direct/individual)
 
 ```
 1d_move_1p, 1d_move_2p, 1d_move_3p, 1d_move_dp, 1d_move_2p_dp,
@@ -149,6 +167,17 @@ The full 18-category index, from `TASK_CATEGORY_INDEX` in `models/hypermodel_lig
 
 (matches `task_categories`/`val_task_categories` in e.g.
 `configs/experiments/arc1d_lowdata/base.yaml`.)
+
+**14-task set** (Phase 1 and any future individually-trained/direct experiment): the same list
+with `1d_recolor_cmp` removed.
+
+```
+1d_move_1p, 1d_move_2p, 1d_move_3p, 1d_move_dp, 1d_move_2p_dp,
+1d_fill, 1d_hollow, 1d_flip, 1d_mirror,
+1d_denoising_1c, 1d_denoising_mc,
+1d_pcopy_1c, 1d_pcopy_mc,
+1d_scale_dp
+```
 
 ## 4. Splits
 
