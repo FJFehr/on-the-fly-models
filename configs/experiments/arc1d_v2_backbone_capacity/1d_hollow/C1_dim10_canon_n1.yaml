@@ -1,0 +1,28 @@
+_base_: configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
+experiment_name: v2_C1_dim10_1d_hollow_canon_n1
+project_name: arc1d_v2_backbone_capacity
+task_categories:
+- 1d_hollow
+save_checkpoints: false
+model: direct_supervised
+optimizer: Muon
+muon_lr: 0.005
+muon_momentum: 0.95
+learning_rate: 0.0005
+max_steps: 8000
+task_encoding:
+  embedding_dim: 10
+  value_vocab_size: 11
+  use_sinusoidal_pe: true
+backbone_model:
+  name: canon_transformer
+  params:
+    hidden_dim: 10
+    num_layers: 3
+    num_heads: 1
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
