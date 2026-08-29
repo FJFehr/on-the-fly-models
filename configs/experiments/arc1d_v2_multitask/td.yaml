@@ -1,0 +1,55 @@
+# Experiment 2b: joint 14-task training, WITH task embedding ("td").
+#
+# Identical to notd.yaml, except task_encoding.use_task_embedding: true adds
+# a per-task identity signal (nn.Embedding(18, embedding_dim), looked up via
+# TASK_CATEGORY_INDEX and added into the token embeddings before the
+# backbone - models/direct_supervised_lightning.py) that the model can
+# condition on, mirroring the hypernetwork's task_indicator_proj
+# (models/hypermodel.py). Reference point: same as notd.yaml, Phase 1's
+# individually-trained 14-task mean (0.986).
+_base_: configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
+experiment_name: v2_multitask_td
+project_name: arc1d_v2_multitask
+task_categories:
+- 1d_denoising_1c
+- 1d_denoising_mc
+- 1d_fill
+- 1d_flip
+- 1d_hollow
+- 1d_mirror
+- 1d_move_1p
+- 1d_move_2p
+- 1d_move_2p_dp
+- 1d_move_3p
+- 1d_move_dp
+- 1d_pcopy_1c
+- 1d_pcopy_mc
+- 1d_scale_dp
+save_checkpoints: false
+model: direct_supervised
+optimizer: Muon
+muon_lr: 0.005
+muon_momentum: 0.95
+learning_rate: 0.0005
+max_steps: 8000
+task_encoding:
+  embedding_dim: 10
+  value_vocab_size: 11
+  use_sinusoidal_pe: false
+  use_task_embedding: true
+backbone_model:
+  name: rope_canon_looped_transformer
+  params:
+    hidden_dim: 10
+    num_heads: 1
+    inner_dim: 10
+    inner_num_heads: 1
+    n_loops: 1
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_block_skip: false
+    use_loop_skip: false

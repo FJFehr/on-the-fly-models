@@ -20,6 +20,7 @@ from torch.nn.utils import clip_grad_norm_
 
 from metrics import accuracy, exact_match_accuracy
 from models.canon_transformer import CanonRecursiveTransformer, CanonTransformer
+from models.hypermodel_lightning import TASK_CATEGORY_INDEX
 from models.looped_transformer import CanonLoopedTransformer, LoopedTransformer
 from models.rope_looped_transformer import RoPECanonLoopedTransformer
 from models.cnn import CNN
@@ -105,6 +106,16 @@ class LoopedSupervisedLightning(pl.LightningModule):
             use_sinusoidal_pe=use_sinusoidal_pe,
         )
 
+        # Optional per-task identity signal for joint multi-category training
+        # (Experiment 2b, "puzzle embedding" arm) -- mirrors DirectSupervisedLightning's
+        # implementation (models/direct_supervised_lightning.py). Off by default.
+        self.use_task_embedding: bool = task_encoding.get("use_task_embedding", False)
+        self.task_embedding: nn.Embedding | None = (
+            nn.Embedding(len(TASK_CATEGORY_INDEX), embedding_dim)
+            if self.use_task_embedding
+            else None
+        )
+
         self.backbone, self.hidden_dim = self._build_backbone(
             backbone_model, embedding_dim=embedding_dim, seq_len=input_dim
         )
@@ -160,6 +171,14 @@ class LoopedSupervisedLightning(pl.LightningModule):
         B, seq_len = value_ids.shape
         position_ids = torch.arange(seq_len, device=value_ids.device).unsqueeze(0).expand(B, -1)
         embedded = self.embedder(value_ids, position_ids)
+
+        if self.task_embedding is not None:
+            task_ids = torch.tensor(
+                [TASK_CATEGORY_INDEX[cat] for cat in batch["task_category"]],
+                device=value_ids.device,
+                dtype=torch.long,
+            )
+            embedded = embedded + self.task_embedding(task_ids).unsqueeze(1)  # (B, 1, emb_dim)
 
         if self.padding_idx is not None:
             pad_mask = (value_ids == self.padding_idx).unsqueeze(-1)
