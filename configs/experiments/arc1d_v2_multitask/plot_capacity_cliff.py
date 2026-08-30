@@ -192,9 +192,13 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
     apply_latex_style()
     # Bump past the shared style's default sizes (tuned for dense multi-panel
     # LaTeX figures) -- this is a single standalone chart, larger text reads
-    # better at its actual display size.
+    # better at its actual display size. Font swapped from Computer Modern to
+    # Nimbus Roman (metric-compatible with Times New Roman -- what LaTeX's
+    # `times` package actually renders as) to match the NeurIPS template.
     plt.rcParams.update(
         {
+            "font.serif": ["Nimbus Roman", "Times New Roman", "Liberation Serif", "DejaVu Serif"],
+            "mathtext.fontset": "stix",
             "axes.labelsize": 15,
             "xtick.labelsize": 13,
             "ytick.labelsize": 13,
