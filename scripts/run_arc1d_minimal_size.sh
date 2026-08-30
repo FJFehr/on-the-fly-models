@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Run arc1d_v2_minimal_size (Experiment 1: minimal model size) across seeds 1-3.
-# 84 jobs: 2 sizes (dim6, dim4) x 14 tasks x 3 seeds (skips already-completed
-# runs). Same RC1 recipe (RoPE + Canon, flat n_loops=1, N_sup=1, Muon
+# Run arc1d_v2_minimal_size (Experiment 1: minimal model size) across seeds
+# 1-5 by default (override with SEEDS_OVERRIDE, e.g. SEEDS_OVERRIDE="4 5" to
+# backfill just the new seeds against an existing 3-seed run - already-done
+# jobs are skipped either way). 140 jobs: 2 sizes (dim6, dim4) x 14 tasks x 5
+# seeds. Same RC1 recipe (RoPE + Canon, flat n_loops=1, N_sup=1, Muon
 # muon_lr=0.005, muon_momentum=0.95) as arc1d_v2_backbone_capacity, with
 # hidden_dim swept below dim=10 and task_encoding.embedding_dim held fixed at
 # 10 - see docs/arc1d_story/06_phase1_findings.md.
@@ -47,7 +49,8 @@ LOG_DIR="logs/arc1d_v2_minimal_size"
 CFG_DIR="configs/experiments/arc1d_v2_minimal_size"
 mkdir -p "$LOG_DIR"
 
-SEEDS=(1 2 3)
+SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1 2 3 4 5}"
+read -ra SEEDS <<< "$SEEDS_OVERRIDE"
 
 JOBS=()
 SKIPPED=0

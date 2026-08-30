@@ -1,20 +1,41 @@
 #!/usr/bin/env bash
-# Run arc1d_v2_multitask (Experiment 2: multi-task capacity) across seeds
-# 1-5 by default (override with SEEDS_OVERRIDE, e.g. SEEDS_OVERRIDE="4 5" to
-# backfill just the new seeds against an existing 3-seed run). 4 configs
-# (notd, td at dim=10; notd_dim4, td_dim4 at dim=4) x 5 seeds = 20 jobs.
-# Each trains one RC1-architecture model jointly across all 14 task
-# categories - no per-task model. See docs/arc1d_story/06_phase1_findings.md.
+# Run all arc1d_v2_minimal_data_dim4 cells: 14 task categories x 5 data
+# levels (variants_per_base_task in {300, 100, 10, 5, 2}, stratified/nested
+# per base task) x 5 seeds each (350 jobs total). One DirectSupervisedLightning
+# model per (category, level, seed), trained on the dim=4 minimal
+# architecture from Experiment 1 (1,398 params) -- not RC1's dim=10, see
+# configs/experiments/arc1d_v2_minimal_data_dim4/base.yaml and
+# docs/arc1d_story/06_phase1_findings.md. Rerun of arc1d_v2_minimal_data at
+# the smaller size: does dim=4 need more augmented data to compensate for
+# its reduced capacity, given dim=10 never found a floor?
+#
+# Each job is tiny (hidden_dim=4, <=300 raw training pairs per base task)
+# and uses a single GPU (devices: 1 in base.yaml). Set GPUS to a
+# comma-separated list of GPU ids to run that many jobs in parallel, one per
+# GPU, each pinned via CUDA_VISIBLE_DEVICES (e.g. GPUS="0,1,2" runs 3 at a
+# time). Leave GPUS unset to run sequentially instead. Skips already-completed
+# runs (idempotent to rerun).
+#
+# To split this across multiple nodes without clashing, override CATEGORY_GLOB
+# and/or SEEDS_OVERRIDE to give each node a disjoint slice, e.g. split by seed:
+#   node A: SEEDS_OVERRIDE="1 2 3" bash scripts/run_minimal_data_dim4.sh
+#   node B: SEEDS_OVERRIDE="4 5"   bash scripts/run_minimal_data_dim4.sh
+# or by category:
+#   node A: CATEGORY_GLOB="1d_denoising_1c" bash scripts/run_minimal_data_dim4.sh
+#   node B: CATEGORY_GLOB="1d_fill"         bash scripts/run_minimal_data_dim4.sh
 #
 # Usage:
-#   bash scripts/run_arc1d_multitask.sh                  # sequential, 1 GPU
-#   GPUS="0,1,2" bash scripts/run_arc1d_multitask.sh      # 3-way parallel
+#   bash scripts/run_minimal_data_dim4.sh                  # sequential, 1 GPU
+#   GPUS="0,1,2" bash scripts/run_minimal_data_dim4.sh      # 3-way parallel
 
 set -uo pipefail
 
-PROJECT="arc1d_v2_multitask"
-LOG_DIR="logs/arc1d_v2_multitask"
-CFG_DIR="configs/experiments/arc1d_v2_multitask"
+PROJECT="arc1d_v2_minimal_data_dim4"
+LOG_DIR="logs/arc1d_v2_minimal_data_dim4"
+CFG_DIR="configs/experiments/arc1d_v2_minimal_data_dim4"
+CATEGORY_GLOB="${CATEGORY_GLOB:-*}"
+CELL_GLOB="${CELL_GLOB:-v*.yaml}"
+FREE_GPUS_FLAG="${FREE_GPUS_FLAG:-}"
 SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1 2 3 4 5}"
 GPUS="${GPUS:-}"
 mkdir -p "$LOG_DIR"
@@ -34,7 +55,7 @@ for SEED in "${SEEDS[@]}"; do
             continue
         fi
         JOBS+=("${cfg}|${SEED}")
-    done < <(find "$CFG_DIR" -maxdepth 1 -name "*.yaml" | sort)
+    done < <(find "$CFG_DIR" -mindepth 2 -maxdepth 2 -path "*/${CATEGORY_GLOB}/${CELL_GLOB}" | sort)
 done
 
 N_JOBS=${#JOBS[@]}
@@ -51,7 +72,7 @@ else
     echo "Running $N_JOBS jobs sequentially (each using 1 GPU)"
 fi
 echo "Already complete: $SKIPPED (skipped)"
-echo "Project: $PROJECT  |  Logs: $LOG_DIR/  |  SEEDS: ${SEEDS[*]}"
+echo "Project: $PROJECT  |  Logs: $LOG_DIR/  |  CATEGORY_GLOB: $CATEGORY_GLOB  |  CELL_GLOB: $CELL_GLOB  |  SEEDS: ${SEEDS[*]}"
 echo ""
 
 if [ "$N_JOBS" -eq 0 ]; then
@@ -69,7 +90,7 @@ run_job() {
     [ -n "$gpu_id" ] && gpu_tag="  (gpu ${gpu_id})"
 
     echo "START  ${PROJECT} / ${exp_name}${gpu_tag}"
-    if CUDA_VISIBLE_DEVICES="$gpu_id" .venv/bin/python train.py --config "$cfg" \
+    if CUDA_VISIBLE_DEVICES="$gpu_id" .venv/bin/python train.py --config "$cfg" $FREE_GPUS_FLAG \
         seed="$seed" \
         project_name="$PROJECT" \
         experiment_name="${exp_name}" \
