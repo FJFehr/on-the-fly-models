@@ -56,6 +56,24 @@ LABELS = {
 CSV_FIELDS = ["condition", "dim", "task", "seed", "val_exact_match"]
 
 
+def lighten(hex_color: str, amount: float = 0.75) -> str:
+    """Blend a hex color toward white -- used for bar fills, with the
+    original color kept as the outline (matplotlib legend patches pick up
+    both automatically)."""
+    r, g, b = (int(hex_color[i : i + 2], 16) for i in (1, 3, 5))
+    r, g, b = (round(c + (255 - c) * amount) for c in (r, g, b))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+FILL_COLORS = {cond: lighten(hex_) for cond, hex_ in COLORS.items()}
+
+
+def strip_pixel(label: str) -> str:
+    """Drop the word 'Pixel(s)' from a task display label -- redundant once
+    it's clear from context this is about sequence positions."""
+    return label.replace(" Pixels", "").replace(" Pixel", "")
+
+
 # ---------------------------------------------------------------------------
 # Extraction (outputs/ -> results_per_task.csv)
 # ---------------------------------------------------------------------------
@@ -182,7 +200,9 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
         }
     )
 
-    tasks = sorted(series["td"], key=lambda t: format_task_category(t))
+    # Increasing order on "Joint model with task ID" -- surfaces the
+    # failures on the left, the point of this chart.
+    tasks = sorted(series["td"], key=lambda t: series["td"][t]["mean"])
 
     n_tasks = len(tasks)
     conditions = ("individual", "td", "notd")
@@ -201,8 +221,8 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
         lower_err = means - np.clip(means - stds, 0, 1)
         upper_err = np.clip(means + stds, 0, 1) - means
         ax.bar(
-            x + offset, means, width=bar_w, color=COLORS[cond],
-            edgecolor="black", linewidth=0.8, label=LABELS[cond], zorder=3,
+            x + offset, means, width=bar_w, color=FILL_COLORS[cond],
+            edgecolor=COLORS[cond], linewidth=1.4, label=LABELS[cond], zorder=3,
         )
         ax.errorbar(
             x + offset, means, yerr=[lower_err, upper_err], fmt="o",
@@ -212,7 +232,7 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
 
     ax.set_xticks(x)
     ax.set_xticklabels(
-        [format_task_category(t) for t in tasks], rotation=40, ha="right",
+        [strip_pixel(format_task_category(t)) for t in tasks], rotation=40, ha="right",
     )
     ax.set_ylabel("Validation exact match accuracy")
     ax.set_ylim(0, 1.0)
