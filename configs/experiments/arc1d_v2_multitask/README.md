@@ -10,18 +10,25 @@ identity signal? Full background: `docs/arc1d_story/06_phase1_findings.md`.
 
 X-axis is total parameter count (the same RoPE+Canon architecture at three
 widths, `hidden_dim` 4/6/10, `embedding_dim` fixed at 10 throughout for
-comparability). Y-axis is test-split exact match. Solid lines are joint
-training (one shared model across all 14 categories); the dotted line is
-individual training (one model per task, no sharing). Colour separates the
-two joint arms: light purple has no task signal, dark purple has a per-task
-identity embedding.
+comparability), log scale. Y-axis is test-split exact match accuracy. Solid
+lines are joint training (one shared model across all 14 categories); the
+dotted line is individual training (one model per task, no sharing). Colour
+separates the two joint arms: light purple has no task signal, dark purple
+has a per-task identity embedding. Shaded bands are &plusmn;1 s.d. across
+seeds.
 
-Regenerate with:
+All raw per-seed results live in `results.csv` next to the plot script, so
+the plot can be rebuilt anywhere without needing a live `outputs/` directory
+(which is gitignored and normally only exists on whichever cluster node ran
+the jobs):
 
 ```bash
-uv run python scripts/plot_capacity_cliff.py \
-    --outputs-dir outputs \
-    --out-dir configs/experiments/arc1d_v2_multitask
+# rebuild the plot from the committed CSV (no outputs/ needed)
+uv run python configs/experiments/arc1d_v2_multitask/plot_capacity_cliff.py
+
+# refresh results.csv from a live outputs/ dir (run where it exists), then plot
+uv run python configs/experiments/arc1d_v2_multitask/plot_capacity_cliff.py \
+    --outputs-dir outputs
 ```
 
 ## The finding
