@@ -199,13 +199,14 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
         {
             "font.serif": ["Nimbus Roman", "Times New Roman", "Liberation Serif", "DejaVu Serif"],
             "mathtext.fontset": "stix",
-            "axes.labelsize": 15,
-            "xtick.labelsize": 13,
-            "ytick.labelsize": 13,
-            "legend.fontsize": 13,
+            "axes.labelsize": 19,
+            "xtick.labelsize": 17,
+            "ytick.labelsize": 17,
+            "legend.fontsize": 16,
         }
     )
-    fig, ax = plt.subplots(figsize=(7.2, 5.0))
+    # Square, sized for a single-column paper figure.
+    fig, ax = plt.subplots(figsize=(5.8, 5.8))
 
     dims_sorted = sorted(DIM_PARAMS, key=lambda d: DIM_PARAMS[d])
 

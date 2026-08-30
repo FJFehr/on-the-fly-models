@@ -212,10 +212,10 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
         {
             "font.serif": ["Nimbus Roman", "Times New Roman", "Liberation Serif", "DejaVu Serif"],
             "mathtext.fontset": "stix",
-            "axes.labelsize": 15,
-            "xtick.labelsize": 11,
-            "ytick.labelsize": 13,
-            "legend.fontsize": 13,
+            "axes.labelsize": 19,
+            "xtick.labelsize": 15,
+            "ytick.labelsize": 17,
+            "legend.fontsize": 16,
         }
     )
 
@@ -230,7 +230,9 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
     bar_w = 0.8 / n_cond
     x = np.arange(n_tasks)
 
-    fig, ax = plt.subplots(figsize=(11.5, 5.2))
+    # Wider than tall -- single-column paper figure, but 14 task groups need
+    # the horizontal room.
+    fig, ax = plt.subplots(figsize=(14.0, 5.5))
 
     for i, cond in enumerate(conditions):
         offset = (i - (n_cond - 1) / 2) * bar_w
