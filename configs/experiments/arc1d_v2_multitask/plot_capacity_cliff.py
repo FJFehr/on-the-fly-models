@@ -190,7 +190,18 @@ def build_series(records: list[dict]) -> dict[str, dict[str, dict]]:
 
 def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
     apply_latex_style()
-    fig, ax = plt.subplots(figsize=(6.0, 4.2))
+    # Bump past the shared style's default sizes (tuned for dense multi-panel
+    # LaTeX figures) -- this is a single standalone chart, larger text reads
+    # better at its actual display size.
+    plt.rcParams.update(
+        {
+            "axes.labelsize": 15,
+            "xtick.labelsize": 13,
+            "ytick.labelsize": 13,
+            "legend.fontsize": 13,
+        }
+    )
+    fig, ax = plt.subplots(figsize=(7.2, 5.0))
 
     dims_sorted = sorted(DIM_PARAMS, key=lambda d: DIM_PARAMS[d])
 
@@ -224,8 +235,8 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
             zorder=3,
         )
         ax.plot(
-            x, means, "o", color=COLORS[cond], markersize=6,
-            markeredgecolor="white", markeredgewidth=0.8, zorder=4,
+            x, means, "o", color=COLORS[cond], markersize=10,
+            markeredgecolor="white", markeredgewidth=1.2, zorder=4,
         )
 
     ax.set_xscale("log")
