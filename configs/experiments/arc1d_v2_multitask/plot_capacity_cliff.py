@@ -59,9 +59,9 @@ COLORS = {
 }
 LINESTYLES = {"individual": ":", "notd": "-", "td": "-"}
 LABELS = {
-    "individual": "Individual (one model per task)",
-    "notd": "Joint, no task ID",
-    "td": "Joint + task-ID embedding",
+    "individual": "Individual models per task",
+    "td": "Joint model with task ID",
+    "notd": "Joint model without task ID",
 }
 CSV_FIELDS = ["condition", "dim", "params", "seed", "test_exact_match"]
 
@@ -194,7 +194,7 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
 
     dims_sorted = sorted(DIM_PARAMS, key=lambda d: DIM_PARAMS[d])
 
-    for cond in ("individual", "notd", "td"):
+    for cond in ("individual", "td", "notd"):
         dims_present = [d for d in dims_sorted if d in series[cond]]
         if len(dims_present) < 2:
             continue
@@ -230,9 +230,9 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
 
     ax.set_xscale("log")
     ax.xaxis.set_minor_locator(plt.NullLocator())
-    tick_values = [1000, 2000, 5000]
+    tick_values = [DIM_PARAMS[d] for d in dims_sorted]
     ax.set_xticks(tick_values)
-    ax.set_xticklabels(["1K", "2K", "5K"])
+    ax.set_xticklabels([f"{v / 1000:.1f}K" for v in tick_values])
     ax.set_xlabel("Model parameters")
     ax.set_ylabel("Test exact match accuracy")
     ax.set_ylim(0, 1.05)
