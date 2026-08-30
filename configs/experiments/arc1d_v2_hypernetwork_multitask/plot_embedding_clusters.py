@@ -59,10 +59,10 @@ from visualisation.style import apply_latex_style, format_task_category
 
 HERE = Path(__file__).parent
 CONDITIONS = {
-    "notd": "embeddings_dim6_notd.npz",
     "frozentd": "embeddings_dim6_frozentd.npz",
+    "notd": "embeddings_dim6_notd.npz",
 }
-CONDITION_LABELS = {"notd": "No task ID", "frozentd": "Frozen task ID"}
+CONDITION_LABELS = {"notd": "No task ID", "frozentd": "Task ID"}
 
 # PAPER_COLORS/PAPER_FILL_COLORS are keyed 0-9 for ARC cell values (0 = null/
 # background, not a real category colour) -- reused here as an 18-slot
