@@ -53,6 +53,33 @@ them *together*, even when told which task it's looking at.
 This motivates the hypernetwork: a mechanism that generates per-task
 weights, rather than sharing one fixed set across tasks.
 
+## Which tasks actually fail
+
+![Per-task breakdown at dim=6](per_task_dim6.png)
+
+The aggregate 74.0% (joint + task ID, dim=6) hides a sharp split: most
+tasks are fully recovered, but a few collapse completely. `Flip` is the
+starkest case -- 100% individually, **4%** in both joint arms, task ID or
+not. `Mirror` (88% -> 20%) and `Move Dynamic` (88% -> 28%) show task ID
+recovering *some* signal but nowhere near the individual ceiling. Most
+other tasks (`Denoise`, `Pattern Copy`, `Move 1 Pixel`, ...) are at or near
+100% in every condition -- the joint-training penalty is concentrated in a
+handful of tasks, not spread evenly across all 14.
+
+Only the validation split has a per-task breakdown (`on_validation_epoch_end`
+accumulates `val_query_exact_match_by_task_<category>`; there's no test-time
+equivalent), so this chart uses validation exact match throughout, for all
+three conditions -- internally consistent, but not directly comparable
+split-wise to the capacity-cliff plot above (which uses test). Currently
+covers dim=6 only; dim=4 and dim=10 follow with `--dim 4` / `--dim 10` once
+run.
+
+```bash
+uv run python configs/experiments/arc1d_v2_multitask/plot_per_task.py --dim 6
+uv run python configs/experiments/arc1d_v2_multitask/plot_per_task.py \
+    --outputs-dir outputs --dim 6   # refresh results_per_task.csv first
+```
+
 ## Method
 
 - **Individual**: one model per task category, no cross-task sharing (the
