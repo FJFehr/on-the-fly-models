@@ -86,10 +86,11 @@ def lighten(hex_color: str, amount: float = 0.45) -> str:
 FILL_COLORS = {cond: lighten(hex_) for cond, hex_ in COLORS.items()}
 
 
-def strip_pixel(label: str) -> str:
-    """Drop the word 'Pixel(s)' from a task display label -- redundant once
-    it's clear from context this is about sequence positions."""
-    return label.replace(" Pixels", "").replace(" Pixel", "")
+def shorten_label(label: str) -> str:
+    """Drop the word 'Pixel(s)' and abbreviate 'Multicolor' to 'MC' in a
+    task display label -- redundant/verbose once it's clear from context."""
+    label = label.replace(" Pixels", "").replace(" Pixel", "")
+    return label.replace("Multicolor", "MC")
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +252,7 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
 
     ax.set_xticks(x)
     ax.set_xticklabels(
-        [strip_pixel(format_task_category(t)) for t in tasks], rotation=40, ha="right",
+        [shorten_label(format_task_category(t)) for t in tasks], rotation=40, ha="right",
     )
     ax.set_ylabel("Validation exact match accuracy")
     ax.set_ylim(0, 1.0)
