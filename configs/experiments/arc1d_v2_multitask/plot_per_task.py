@@ -257,7 +257,7 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
         [shorten_label(format_task_category(t)) for t in tasks], rotation=40, ha="right",
     )
     ax.set_ylabel("Validation exact match accuracy")
-    ax.set_ylim(0, 1.0)
+    ax.set_ylim(0, 1.04)
     ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
     ax.grid(axis="y", alpha=0.3, linewidth=0.6, zorder=0)
     ax.spines[["top", "right"]].set_visible(False)
