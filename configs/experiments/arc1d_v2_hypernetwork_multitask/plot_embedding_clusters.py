@@ -70,10 +70,10 @@ def apply_theme() -> None:
         {
             "font.serif": ["Nimbus Roman", "Times New Roman", "Liberation Serif", "DejaVu Serif"],
             "mathtext.fontset": "stix",
-            "axes.labelsize": 17,
-            "xtick.labelsize": 14,
-            "ytick.labelsize": 14,
-            "legend.fontsize": 16,
+            "axes.labelsize": 21,
+            "xtick.labelsize": 17,
+            "ytick.labelsize": 17,
+            "legend.fontsize": 19,
             "pdf.fonttype": 42,
         }
     )
@@ -104,12 +104,20 @@ def render_themed_panel(
     project: square, no title, top/right spines stripped, large legend
     wrapped across the bottom."""
     group_values = ["__all__"] * len(display_categories)
+    # _draw_scatter_panel's default marker style ({"s": 18, "alpha": 0.75}) is
+    # only reachable through its group-style override path -- groups_enabled
+    # is set True here purely to reuse that path for a single pseudo-group,
+    # not because these points actually belong to different groups (the
+    # legend still only ever uses handles_by_category, never handles_by_group).
+    # matplotlib's "s" is marker *area*, so a 3x visual/diameter increase
+    # needs s scaled by 3**2, not 3 -- 18*9 = 162.
+    marker_style = {"__all__": {"s": 18 * 9, "alpha": 0.8}}
 
     fig, ax = plt.subplots(figsize=(6.5, 6.5))
     handles_by_category: dict[str, object] = {}
     _draw_scatter_panel(
         ax, coords, display_categories, group_values, unique_categories, ["__all__"],
-        color_by_category, {}, False, handles_by_category, {},
+        color_by_category, marker_style, True, handles_by_category, {},
     )
     ax.grid(alpha=0.25, linewidth=0.6)
     ax.spines[["top", "right"]].set_visible(False)
@@ -118,7 +126,7 @@ def render_themed_panel(
     fig.legend(
         handles_by_category.values(), handles_by_category.keys(),
         loc="upper center", bbox_to_anchor=(0.5, 0.02), ncol=ncol, frameon=False,
-        markerscale=1.8,
+        markerscale=0.8,
     )
     fig.tight_layout()
     return fig
