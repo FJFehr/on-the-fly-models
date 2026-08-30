@@ -53,7 +53,7 @@ PLOT_PATH = HERE / "capacity_cliff.png"
 DIM_PARAMS = {"4": 1398, "6": 2444, "10": 5400}
 
 COLORS = {
-    "individual": "#2ECC71",  # green
+    "individual": "#1E8449",  # green (darker)
     "notd": "#B276B2",  # light purple -- joint, no task ID
     "td": "#5B2C82",  # dark purple  -- joint, with task ID
 }
@@ -233,7 +233,7 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
     tick_values = [DIM_PARAMS[d] for d in dims_sorted]
     ax.set_xticks(tick_values)
     ax.set_xticklabels([f"{v / 1000:.1f}K" for v in tick_values])
-    ax.set_xlabel("Model parameters")
+    ax.set_xlabel("Model parameters (log scale)")
     ax.set_ylabel("Test exact match accuracy")
     ax.set_ylim(0, 1.05)
     ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
