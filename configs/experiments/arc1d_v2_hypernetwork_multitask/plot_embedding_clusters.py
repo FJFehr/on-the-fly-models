@@ -111,7 +111,7 @@ def render_themed_panel(
     # legend still only ever uses handles_by_category, never handles_by_group).
     # matplotlib's "s" is marker *area*, so a 3x visual/diameter increase
     # needs s scaled by 3**2, not 3 -- 18*9 = 162.
-    marker_style = {"__all__": {"s": 18 * 9, "alpha": 0.8}}
+    marker_style = {"__all__": {"s": 18 * 9, "alpha": 0.7}}
 
     fig, ax = plt.subplots(figsize=(6.5, 6.5))
     handles_by_category: dict[str, object] = {}
