@@ -56,7 +56,7 @@ LABELS = {
 CSV_FIELDS = ["condition", "dim", "task", "seed", "val_exact_match"]
 
 
-def lighten(hex_color: str, amount: float = 0.75) -> str:
+def lighten(hex_color: str, amount: float = 0.45) -> str:
     """Blend a hex color toward white -- used for bar fills, with the
     original color kept as the outline (matplotlib legend patches pick up
     both automatically)."""
