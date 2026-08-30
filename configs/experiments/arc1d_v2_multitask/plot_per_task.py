@@ -55,6 +55,24 @@ LABELS = {
 }
 CSV_FIELDS = ["condition", "dim", "task", "seed", "val_exact_match"]
 
+# Manual nudges on top of the increasing-by-td sort: keep related tasks
+# together even when their scores don't happen to land next to each other.
+# Each entry moves `task` to sit immediately after `anchor`.
+ORDER_OVERRIDES = [
+    ("1d_move_1p", "1d_move_2p"),  # Move 1 -> next to Move 2 (moves together)
+    ("1d_pcopy_mc", "1d_pcopy_1c"),  # Pattern Copy Multicolor -> next to Pattern Copy
+]
+
+
+def apply_order_overrides(tasks: list[str], overrides: list[tuple[str, str]]) -> list[str]:
+    tasks = list(tasks)
+    for task, anchor in overrides:
+        if task not in tasks or anchor not in tasks:
+            continue
+        tasks.remove(task)
+        tasks.insert(tasks.index(anchor) + 1, task)
+    return tasks
+
 
 def lighten(hex_color: str, amount: float = 0.45) -> str:
     """Blend a hex color toward white -- used for bar fills, with the
@@ -203,6 +221,7 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
     # Increasing order on "Joint model with task ID" -- surfaces the
     # failures on the left, the point of this chart.
     tasks = sorted(series["td"], key=lambda t: series["td"][t]["mean"])
+    tasks = apply_order_overrides(tasks, ORDER_OVERRIDES)
 
     n_tasks = len(tasks)
     conditions = ("individual", "td", "notd")
