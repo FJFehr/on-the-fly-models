@@ -6,7 +6,9 @@ Loads a trained hypernetwork checkpoint and runs the same
 end-of-run cluster-map PNG -- except here the raw vectors are saved to a
 .npz instead of (only) being rendered into a figure. Once dumped, cluster
 maps can be re-plotted in any style, split any way, as many times as
-needed, without retraining or even reloading the checkpoint again.
+needed, without retraining or even reloading the checkpoint again -- pair
+two dumps with visualisation/plot_embedding_clusters.py, the default tool
+for this (see its docstring), for the usual "compare two runs" figure.
 
 Requires `save_checkpoints: true` for the run being loaded (the default in
 most of this repo's configs is false -- see the leaf config actually used,
