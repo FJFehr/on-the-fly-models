@@ -182,9 +182,7 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
         }
     )
 
-    # Order tasks worst-to-best on "Joint model with task ID" -- surfaces the
-    # failures immediately on the left, which is the point of this chart.
-    tasks = sorted(series["td"], key=lambda t: series["td"][t]["mean"])
+    tasks = sorted(series["td"], key=lambda t: format_task_category(t))
 
     n_tasks = len(tasks)
     conditions = ("individual", "td", "notd")
@@ -198,12 +196,17 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
         offset = (i - (n_cond - 1) / 2) * bar_w
         means = np.array([series[cond].get(t, {"mean": 0})["mean"] for t in tasks])
         stds = np.array([series[cond].get(t, {"std": 0})["std"] for t in tasks])
+        # Clip whiskers to [0, 1] rather than letting them overshoot the
+        # axis bounds (asymmetric once a bar sits close to 0% or 100%).
+        lower_err = means - np.clip(means - stds, 0, 1)
+        upper_err = np.clip(means + stds, 0, 1) - means
         ax.bar(
-            x + offset, means, width=bar_w * 0.92, color=COLORS[cond],
-            label=LABELS[cond], zorder=3,
+            x + offset, means, width=bar_w, color=COLORS[cond],
+            edgecolor="black", linewidth=0.8, label=LABELS[cond], zorder=3,
         )
         ax.errorbar(
-            x + offset, means, yerr=stds, fmt="none", ecolor="0.25",
+            x + offset, means, yerr=[lower_err, upper_err], fmt="o",
+            color="black", markersize=3.5, ecolor="0.25",
             elinewidth=1.0, capsize=2.5, capthick=1.0, zorder=4,
         )
 
@@ -212,11 +215,13 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
         [format_task_category(t) for t in tasks], rotation=40, ha="right",
     )
     ax.set_ylabel("Validation exact match accuracy")
-    ax.set_ylim(0, 1.08)
+    ax.set_ylim(0, 1.0)
     ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
     ax.grid(axis="y", alpha=0.3, linewidth=0.6, zorder=0)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(loc="upper left", frameon=False)
+    ax.legend(
+        loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=3, frameon=False,
+    )
 
     fig.tight_layout()
     fig.savefig(out_path)
