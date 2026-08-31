@@ -61,8 +61,8 @@ DIM_PARAMS = {"4": 1398, "6": 2444, "10": 5400}
 # also used for ARC cell values 0-9), not picked ad hoc.
 COLORS = {
     "individual": PAPER_COLORS[0],  # khaki/tan -- baseline
-    "notd": PAPER_COLORS[8],  # purple -- joint, no task ID
-    "td": PAPER_COLORS[6],  # slate blue -- joint, with task ID
+    "notd": PAPER_COLORS[6],  # slate blue -- joint, no task ID
+    "td": PAPER_COLORS[8],  # purple -- joint, with task ID
 }
 LINESTYLES = {"individual": ":", "notd": "-", "td": "-"}
 LABELS = {

@@ -52,8 +52,8 @@ DIMS = ("4", "6", "10")
 # also used for ARC cell values 0-9), not picked ad hoc.
 COLORS = {
     "individual": PAPER_COLORS[0],  # khaki/tan -- baseline
-    "td": PAPER_COLORS[6],  # slate blue -- joint, with task ID
-    "notd": PAPER_COLORS[8],  # purple -- joint, no task ID
+    "td": PAPER_COLORS[8],  # purple -- joint, with task ID
+    "notd": PAPER_COLORS[6],  # slate blue -- joint, no task ID
 }
 LABELS = {
     "individual": "Individual models per task",
@@ -87,8 +87,8 @@ def apply_order_overrides(tasks: list[str], overrides: list[tuple[str, str]]) ->
 # built from this palette exactly, not just approximately.
 FILL_COLORS = {
     "individual": PAPER_FILL_COLORS[0],
-    "td": PAPER_FILL_COLORS[6],
-    "notd": PAPER_FILL_COLORS[8],
+    "td": PAPER_FILL_COLORS[8],
+    "notd": PAPER_FILL_COLORS[6],
 }
 
 
