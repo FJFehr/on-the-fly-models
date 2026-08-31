@@ -83,7 +83,7 @@ def apply_theme() -> None:
             "axes.titlesize": 25,
             "xtick.labelsize": 17,
             "ytick.labelsize": 17,
-            "legend.fontsize": 22,
+            "legend.fontsize": 14,
             "pdf.fonttype": 42,
         }
     )
@@ -143,11 +143,11 @@ def render_paired_panel(
         ax.grid(alpha=0.25, linewidth=0.6)
         ax.spines[["top", "right"]].set_visible(False)
 
-    ncol = min(len(unique_categories), 4)
+    ncol = min(len(unique_categories), 7)
     fig.legend(
         handles_by_category.values(), handles_by_category.keys(),
         loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=ncol, frameon=False,
-        markerscale=0.8,
+        markerscale=0.5, handletextpad=0.4, columnspacing=1.0,
     )
     fig.tight_layout(pad=0.6)
     return fig
