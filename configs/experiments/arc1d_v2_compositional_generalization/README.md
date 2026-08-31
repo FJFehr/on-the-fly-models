@@ -88,6 +88,50 @@ per category) or whether that's scale-independent.
 
 ## Status
 
-Not yet run. Configs and launcher script verified structurally (config loading, a short smoke
-run confirming forward/backward + checkpoint save + the held-out eval path all work end to end) --
-no full-budget training has happened yet.
+Run and evaluated (seed 42, both arms). See Findings below.
+
+## Findings (seed 42)
+
+In-distribution (val/test, all 15 training categories) -- at this much smaller (10,156-param)
+architecture, `frozen_td` is well below the original bigger-recipe experiment's near-ceiling
+result (84.0% val / 82.7% test exact match here vs. 98.75% / 97.5% there), and `notd` is roughly
+comparable (57.3% val / 49.3% test here vs. 48.8% / 46.3% there):
+
+| | `notd` val EM | `notd` test EM | `frozen_td` val EM | `frozen_td` test EM |
+|---|---:|---:|---:|---:|
+| in-distribution | 57.3% | 49.3% | 84.0% | 82.7% |
+
+So the matched-scale recipe trades away a meaningful chunk of in-distribution accuracy relative
+to the original bigger recipe -- expected, since this architecture is ~150x smaller by parameter
+count, and `arc1d_v2_hypernetwork_multitask`'s own sizing sweep was run on 14 (not 15) categories
+without this experiment's extra `1d_recolor_cmp` task.
+
+Zero-shot on the 10 held-out composite categories (`scripts/eval_compositional_holdout.py`,
+`n=40` per category):
+
+| category | `notd` exact_match | `notd` seq_accuracy | `frozen_td` exact_match | `frozen_td` seq_accuracy |
+|---|---:|---:|---:|---:|
+| `denoise1c_shift3` | 0.000 | 0.750 | 0.000 | 0.806 |
+| `denoisemc_copy` | 0.050 | 0.688 | 0.000 | 0.708 |
+| `denoisemc_denoise1c` | 0.000 | 0.675 | 0.000 | 0.646 |
+| `denoisemc_mirror` | 0.250 | 0.885 | 0.000 | 0.697 |
+| `fill_mirror` | 0.000 | 0.523 | 0.000 | 0.719 |
+| `fill_movedynamic` | 0.000 | 0.620 | 0.000 | 0.611 |
+| `fill_shift3` | 0.000 | 0.742 | 0.000 | 0.147 |
+| `hollow_shift3` | 0.000 | 0.853 | 0.000 | 0.816 |
+| `movedynamic_hollow` | 0.000 | 0.786 | 0.000 | 0.724 |
+| `shift3_copy` | 0.000 | 0.620 | 0.000 | 0.626 |
+| **overall** | **0.030** | – | **0.000** | – |
+
+**The exact-match-vs-token-accuracy pattern from the original (bigger-recipe) experiment holds
+at this much smaller scale too -- it isn't an artifact of that architecture.** Exact match is
+essentially 0 for both arms on every composite category (one 5% and one 25% partial exception
+for `notd`), while token accuracy sits at 52-89% per category (one outlier: `frozen_td` on
+`fill_shift3` collapsed to 14.7%, worth a look at the qualitative renderings for that category
+specifically). As in the original experiment, `frozen_td` does not clearly beat `notd` here
+despite dominating it in-distribution -- if anything `notd` looks marginally better on average,
+consistent with the original run's finding that the task-identity signal's in-distribution
+advantage doesn't carry over to zero-shot composition.
+
+**Caveats**: single seed (42) only, same as the original experiment -- no variance estimate on
+either the in-distribution or holdout numbers.

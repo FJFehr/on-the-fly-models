@@ -266,5 +266,6 @@ with only 40 examples/category and a single seed this isn't a strong claim.
 
 **Caveats**: single seed (42) only — no variance estimate. See
 `arc1d_v2_compositional_generalization/README.md` for a rerun of this same question at the
-minimal "matched-scale" architecture the rest of the v2 story now uses, to check whether this
-pattern is scale-independent or specific to this experiment's larger recipe.
+minimal "matched-scale" architecture (10,156 params, ~150x smaller) the rest of the v2 story now
+uses — same near-zero-exact-match/50-90%-token-accuracy pattern holds there too, so this isn't an
+artifact of this experiment's particular (much bigger) recipe.
