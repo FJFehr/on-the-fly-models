@@ -83,7 +83,7 @@ def apply_theme() -> None:
             "axes.titlesize": 25,
             "xtick.labelsize": 17,
             "ytick.labelsize": 17,
-            "legend.fontsize": 17,
+            "legend.fontsize": 20,
             "pdf.fonttype": 42,
         }
     )
