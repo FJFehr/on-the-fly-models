@@ -40,6 +40,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.interpolate import PchipInterpolator
 
+from visualisation.arc_paper import PAPER_COLORS
 from visualisation.style import apply_latex_style
 
 HERE = Path(__file__).parent
@@ -52,10 +53,16 @@ PLOT_PATH = HERE / "capacity_cliff.png"
 # x-axis since the swept quantity is backbone width, not that fixed addition).
 DIM_PARAMS = {"4": 1398, "6": 2444, "10": 5400}
 
+# Same palette as the hypernetwork multitask comparison
+# (configs/experiments/arc1d_v2_hypernetwork_multitask/per_task_dim4_combined.png)
+# so a reader sees one consistent colour language across both experiments:
+# baseline/individual = khaki-brown, joint+task-ID = slate blue, joint-no-ID
+# = purple. From visualisation.arc_paper's PAPER_COLORS (the muted rainbow
+# also used for ARC cell values 0-9), not picked ad hoc.
 COLORS = {
-    "individual": "#1E8449",  # green (darker)
-    "notd": "#B276B2",  # light purple -- joint, no task ID
-    "td": "#5B2C82",  # dark purple  -- joint, with task ID
+    "individual": PAPER_COLORS[0],  # khaki/tan -- baseline
+    "notd": PAPER_COLORS[8],  # purple -- joint, no task ID
+    "td": PAPER_COLORS[6],  # slate blue -- joint, with task ID
 }
 LINESTYLES = {"individual": ":", "notd": "-", "td": "-"}
 LABELS = {
@@ -203,6 +210,7 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
             "xtick.labelsize": 17,
             "ytick.labelsize": 17,
             "legend.fontsize": 16,
+            "pdf.fonttype": 42,  # embed as TrueType, not the default Type 3
         }
     )
     # Square, sized for a single-column paper figure.
@@ -258,8 +266,11 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
     ax.legend(loc="lower right", frameon=False)
 
     fig.tight_layout()
+    # PDF (vector, for the paper) alongside PNG (for quick preview / the README).
     fig.savefig(out_path)
-    print(f"Saved {out_path}")
+    pdf_path = out_path.with_suffix(".pdf")
+    fig.savefig(pdf_path)
+    print(f"Saved {out_path} and {pdf_path}")
 
 
 def parse_args() -> argparse.Namespace:

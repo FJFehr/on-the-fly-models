@@ -37,16 +37,23 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 
+from visualisation.arc_paper import PAPER_COLORS, PAPER_FILL_COLORS
 from visualisation.style import apply_latex_style, format_task_category
 
 HERE = Path(__file__).parent
 CSV_PATH = HERE / "results_per_task.csv"
 
 DIMS = ("4", "6", "10")
+# Same palette as the hypernetwork multitask comparison
+# (configs/experiments/arc1d_v2_hypernetwork_multitask/per_task_dim4_combined.png)
+# so a reader sees one consistent colour language across both experiments:
+# baseline/individual = khaki-brown, joint+task-ID = slate blue, joint-no-ID
+# = purple. From visualisation.arc_paper's PAPER_COLORS (the muted rainbow
+# also used for ARC cell values 0-9), not picked ad hoc.
 COLORS = {
-    "individual": "#1E8449",  # dark green
-    "td": "#5B2C82",  # dark purple  -- joint, with task ID
-    "notd": "#B276B2",  # light purple -- joint, no task ID
+    "individual": PAPER_COLORS[0],  # khaki/tan -- baseline
+    "td": PAPER_COLORS[6],  # slate blue -- joint, with task ID
+    "notd": PAPER_COLORS[8],  # purple -- joint, no task ID
 }
 LABELS = {
     "individual": "Individual models per task",
@@ -74,16 +81,15 @@ def apply_order_overrides(tasks: list[str], overrides: list[tuple[str, str]]) ->
     return tasks
 
 
-def lighten(hex_color: str, amount: float = 0.45) -> str:
-    """Blend a hex color toward white -- used for bar fills, with the
-    original color kept as the outline (matplotlib legend patches pick up
-    both automatically)."""
-    r, g, b = (int(hex_color[i : i + 2], 16) for i in (1, 3, 5))
-    r, g, b = (round(c + (255 - c) * amount) for c in (r, g, b))
-    return f"#{r:02x}{g:02x}{b:02x}"
-
-
-FILL_COLORS = {cond: lighten(hex_) for cond, hex_ in COLORS.items()}
+# PAPER_FILL_COLORS is arc_paper's own precomputed lighten(..., 0.45) of
+# PAPER_COLORS -- reused directly (same indices as COLORS above) rather than
+# recomputing it here, so the fill shade matches every other paper figure
+# built from this palette exactly, not just approximately.
+FILL_COLORS = {
+    "individual": PAPER_FILL_COLORS[0],
+    "td": PAPER_FILL_COLORS[6],
+    "notd": PAPER_FILL_COLORS[8],
+}
 
 
 def shorten_label(label: str) -> str:
@@ -216,6 +222,7 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
             "xtick.labelsize": 15,
             "ytick.labelsize": 17,
             "legend.fontsize": 16,
+            "pdf.fonttype": 42,  # embed as TrueType, not the default Type 3
         }
     )
 
@@ -266,8 +273,11 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
     )
 
     fig.tight_layout()
+    # PDF (vector, for the paper) alongside PNG (for quick preview / the README).
     fig.savefig(out_path)
-    print(f"Saved {out_path}")
+    pdf_path = out_path.with_suffix(".pdf")
+    fig.savefig(pdf_path)
+    print(f"Saved {out_path} and {pdf_path}")
 
 
 def parse_args() -> argparse.Namespace:
