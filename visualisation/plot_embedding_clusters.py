@@ -80,10 +80,10 @@ def apply_theme() -> None:
             "font.serif": ["Nimbus Roman", "Times New Roman", "Liberation Serif", "DejaVu Serif"],
             "mathtext.fontset": "stix",
             "axes.labelsize": 21,
-            "axes.titlesize": 21,
+            "axes.titlesize": 25,
             "xtick.labelsize": 17,
             "ytick.labelsize": 17,
-            "legend.fontsize": 19,
+            "legend.fontsize": 22,
             "pdf.fonttype": 42,
         }
     )
@@ -126,7 +126,11 @@ def render_paired_panel(
     # legend still only ever uses handles_by_category, never handles_by_group).
     marker_style = {"__all__": MARKER_STYLE}
 
-    fig, axes = plt.subplots(1, 2, figsize=(13.0, 6.5))
+    # Shorter than wide -- fits a single-column paper figure better than the
+    # squarer per-panel proportions used elsewhere; margins trimmed below
+    # (tight_layout's own pad, plus the legend sitting close under the axes)
+    # keep it from reading as mostly whitespace once compressed this much.
+    fig, axes = plt.subplots(1, 2, figsize=(13.0, 4.6))
     handles_by_category: dict[str, object] = {}
     panels = ((axes[0], left_coords, left_label), (axes[1], right_coords, right_label))
     for ax, coords, label in panels:
@@ -135,17 +139,17 @@ def render_paired_panel(
             unique_categories, ["__all__"], color_by_category, marker_style, True,
             handles_by_category, {},
         )
-        ax.set_title(label, pad=10)
+        ax.set_title(label, pad=6)
         ax.grid(alpha=0.25, linewidth=0.6)
         ax.spines[["top", "right"]].set_visible(False)
 
     ncol = min(len(unique_categories), 4)
     fig.legend(
         handles_by_category.values(), handles_by_category.keys(),
-        loc="upper center", bbox_to_anchor=(0.5, 0.02), ncol=ncol, frameon=False,
+        loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=ncol, frameon=False,
         markerscale=0.8,
     )
-    fig.tight_layout()
+    fig.tight_layout(pad=0.6)
     return fig
 
 
