@@ -261,8 +261,15 @@ is doing something far from random on the way there.** Exact match is essentiall
 while token-level accuracy sits at 46-92% per category — the model reliably gets most of the
 sequence right without ever landing the fully-composed answer. Unlike the in-distribution and
 leave-one-out-category results, `frozen_td` does not clearly beat `notd` here; if anything `notd`
-looks marginally better on several categories (e.g. `denoisemc_mirror`: 86.0% vs 46.6%), though
-with only 40 examples/category and a single seed this isn't a strong claim.
+looks marginally better on several categories (e.g. `denoisemc_mirror`: 86.0% vs 46.6%) — `notd`
+wins the token-accuracy comparison on 9/10 categories, mean 0.782 vs. 0.707. This isn't just this
+run's noise: the same direction (`notd` > `frozen_td`, 6/10 categories, mean 0.714 vs. 0.650)
+shows up again in `arc1d_v2_compositional_generalization`'s independent rerun at a completely
+different (much smaller) architecture — see that README's Findings section for the combined
+comparison, outlier caveat, and a candidate mechanism (a task-identity anchor, even a frozen
+one, may help when the true answer is a known category but work against blending two rules when
+it isn't — the opposite regime from leave-one-out generalization, where freezing that anchor
+helped).
 
 **Caveats**: single seed (42) only — no variance estimate. See
 `arc1d_v2_compositional_generalization/README.md` for a rerun of this same question at the

@@ -128,10 +128,36 @@ at this much smaller scale too -- it isn't an artifact of that architecture.** E
 essentially 0 for both arms on every composite category (one 5% and one 25% partial exception
 for `notd`), while token accuracy sits at 52-89% per category (one outlier: `frozen_td` on
 `fill_shift3` collapsed to 14.7%, worth a look at the qualitative renderings for that category
-specifically). As in the original experiment, `frozen_td` does not clearly beat `notd` here
-despite dominating it in-distribution -- if anything `notd` looks marginally better on average,
-consistent with the original run's finding that the task-identity signal's in-distribution
-advantage doesn't carry over to zero-shot composition.
+specifically).
+
+**`notd` beats `frozen_td` on token accuracy in both experiments, despite `frozen_td` dominating
+it in-distribution** -- and the direction is the *opposite* of the leave-one-out generalization
+experiment's finding, not just a repeat of it:
+
+| | mean `notd` seq_accuracy | mean `frozen_td` seq_accuracy | diff | categories where `notd` wins |
+|---|---:|---:|---:|---:|
+| original (big recipe) | 0.782 | 0.707 | +0.076 | 9/10 |
+| this experiment (v2) | 0.714 | 0.650 | +0.064 | 6/10 |
+| combined (20 category-runs) | | | | 15/20 |
+
+A crude sign test on the pooled 20 category-level comparisons gives p ~= 0.04 -- treat that as
+illustrative, not rigorous: each experiment is a single seed, so its 10 categories aren't
+independent draws (they share one trained checkpoint), and the two experiments differ in
+architecture, not just a repeated trial. The v2 gap is also partly carried by one outlier
+(`frozen_td`'s `fill_shift3` collapse alone accounts for over half of it -- excluding that
+category, v2's gap nearly vanishes: 0.711 vs. 0.706). The original experiment's gap isn't
+outlier-driven the same way (9/10 categories, no single category dominating it), so it's the
+sturdier half of this finding.
+
+Why this might make sense: leave-one-out generalization found freezing the task-identity
+projection *helps* (recovers or beats `notd`) when the true answer is a category the model
+already knows individually, just never in this exact training run. Compositional generalization
+is a different regime -- the true answer *isn't* any single known category. A task-identity
+signal, even an untrained/frozen one, may give the model something to anchor to ("this looks
+most like known task X"), which helps when the anchor is right and actively works against
+blending two rules together when it isn't. `notd` has no such anchor, so there's less pulling it
+away from combining what the support examples actually show.
 
 **Caveats**: single seed (42) only, same as the original experiment -- no variance estimate on
-either the in-distribution or holdout numbers.
+either the in-distribution or holdout numbers, and see the sign-test caveat above before treating
+the notd-vs-frozen_td gap as more than a suggestive pattern.
