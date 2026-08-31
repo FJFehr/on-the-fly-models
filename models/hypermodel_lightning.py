@@ -751,6 +751,60 @@ class HyperModelLightning(pl.LightningModule):
                 merged_counts[cat] = merged_counts.get(cat, 0) + int(v)
         return merged_totals, merged_counts
 
+    def _accumulate_query_accuracy_by_task_category(
+        self,
+        batch: dict,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+    ) -> None:
+        """Accumulate validation query token-accuracy totals grouped by task category.
+
+        Companion to `_accumulate_query_exact_match_by_task_category`: same masked
+        prediction/target setup, but averages correctness over token positions instead of
+        requiring every position to match, so a category can show partial credit even when
+        its exact-match rate is 0.
+        """
+        predictions = self.decode_logits(logits)
+        targets_long = targets.long()
+        if self.padding_idx is not None:
+            valid_mask = targets_long != self.padding_idx
+            correct = (predictions == targets_long) | ~valid_mask
+        else:
+            correct = predictions == targets_long
+        query_accuracy = correct[:, NUM_SUPPORT_EXAMPLES].float().mean(dim=1)
+        for task_category, val in zip(
+            batch["task_category"],
+            query_accuracy.detach().cpu().tolist(),
+            strict=True,
+        ):
+            self._val_query_accuracy_totals_by_task[task_category] = (
+                self._val_query_accuracy_totals_by_task.get(task_category, 0.0) + float(val)
+            )
+            self._val_query_accuracy_counts_by_task[task_category] = (
+                self._val_query_accuracy_counts_by_task.get(task_category, 0) + 1
+            )
+
+    def _gather_query_accuracy_by_task_category(
+        self,
+    ) -> tuple[dict[str, float], dict[str, int]]:
+        """Gather per-task-category query token-accuracy totals across distributed ranks."""
+        totals = dict(self._val_query_accuracy_totals_by_task)
+        counts = dict(self._val_query_accuracy_counts_by_task)
+        if not torch.distributed.is_available() or not torch.distributed.is_initialized():
+            return totals, counts
+        gathered: list[dict | None] = [None] * torch.distributed.get_world_size()
+        torch.distributed.all_gather_object(gathered, {"totals": totals, "counts": counts})
+        merged_totals: dict[str, float] = {}
+        merged_counts: dict[str, int] = {}
+        for payload in gathered:
+            if payload is None:
+                continue
+            for cat, v in payload["totals"].items():
+                merged_totals[cat] = merged_totals.get(cat, 0.0) + float(v)
+            for cat, v in payload["counts"].items():
+                merged_counts[cat] = merged_counts.get(cat, 0) + int(v)
+        return merged_totals, merged_counts
+
     def _actual_seq_len(self, sequence: torch.Tensor | list[int]) -> int:
         """Return the unpadded length of one serialized sequence."""
         if isinstance(sequence, torch.Tensor):
@@ -813,6 +867,7 @@ class HyperModelLightning(pl.LightningModule):
             self._accumulate_epoch_metric_totals(prefix, metric_sums)
             if prefix == "val":
                 self._accumulate_query_exact_match_by_task_category(batch, logits, targets)
+                self._accumulate_query_accuracy_by_task_category(batch, logits, targets)
         return loss
 
     def _current_kl_beta(self) -> float:
@@ -987,6 +1042,8 @@ class HyperModelLightning(pl.LightningModule):
         self._reset_epoch_metric_totals("val")
         self._val_query_exact_match_totals_by_task = {}
         self._val_query_exact_match_counts_by_task = {}
+        self._val_query_accuracy_totals_by_task = {}
+        self._val_query_accuracy_counts_by_task = {}
 
     def on_validation_epoch_end(self) -> None:
         sync_dist = torch.distributed.is_available() and torch.distributed.is_initialized()
@@ -998,6 +1055,19 @@ class HyperModelLightning(pl.LightningModule):
             self.log(
                 f"val_query_exact_match_by_task_{_task_category_metric_suffix(task_category)}",
                 category_totals[task_category] / count,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=False,
+                batch_size=count,
+                sync_dist=sync_dist,
+            )
+        accuracy_totals, accuracy_counts = self._gather_query_accuracy_by_task_category()
+        for task_category, count in accuracy_counts.items():
+            if count < 1:
+                continue
+            self.log(
+                f"val_query_accuracy_by_task_{_task_category_metric_suffix(task_category)}",
+                accuracy_totals[task_category] / count,
                 on_step=False,
                 on_epoch=True,
                 prog_bar=False,

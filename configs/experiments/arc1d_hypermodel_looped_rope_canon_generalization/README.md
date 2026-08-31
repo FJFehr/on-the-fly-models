@@ -91,7 +91,13 @@ Split across nodes via `SEEDS_OVERRIDE` and/or `CELL_GLOB` (see script header fo
 
 For each held-out category, pull `val_query_exact_match_by_task_<category>` out of
 `results.txt` (mean +/- std across 3 seeds) for `notd`/`td`/`frozentd`, and compare against
-the in-distribution ceiling from the reused `lr_sweep` zhu_all data. Key questions:
+the in-distribution ceiling from the reused `lr_sweep` zhu_all data. As of the full rerun below,
+`results.txt` also carries `val_query_accuracy_by_task_<category>` (per-category token accuracy,
+mirroring `val_query_exact_match_by_task_<category>` -- see
+`models/hypermodel_lightning.py`'s `_accumulate_query_accuracy_by_task_category`), added because
+the seed-1 findings below flagged one anecdotal case of high partial-credit accuracy despite 0
+exact match; this metric lets that be checked systematically across every held-out category
+rather than from one logged hard example. Key questions:
 - Does `td` score meaningfully lower than `notd` on the held-out category specifically (while
   scoring similarly or better on the 14 in-distribution categories)? That's the direct
   evidence that the task descriptor holds back generalization.
@@ -103,6 +109,11 @@ the in-distribution ceiling from the reused `lr_sweep` zhu_all data. Key questio
   either alone.
 
 ## Findings (seed 1, all 15 arms)
+
+**Superseded by a full rerun in progress** (all 45 jobs, all 3 seeds, now also logging
+`val_query_accuracy_by_task_<category>` -- see Reading results above). The seed-1-only numbers
+below predate that metric and are exact-match only; kept here for the move2p partial-credit
+anecdote that motivated adding it, not as the final read.
 
 Held-out-category exact match (`val_query_exact_match_by_task_<held_out_category>`, pulled
 from wandb after the disk-space incident wiped local `results.txt`/checkpoints for these runs,

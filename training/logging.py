@@ -5,6 +5,7 @@ training run — writing to disk, logging to W&B, or printing to stdout.
 """
 
 import os
+from pathlib import Path
 
 import lightning as pl
 import torch
@@ -12,8 +13,10 @@ from lightning.pytorch.loggers import WandbLogger
 
 from visualisation import figure_to_wandb_image, render_val_example_figure
 from visualisation.embedding_clusters import (
+    DEFAULT_GROUP_STYLES,
     compute_linear_probe_accuracy,
     render_embedding_cluster_figure,
+    render_single_projection_figures,
 )
 
 
@@ -620,15 +623,41 @@ def log_final_task_visualizations(model, datamodule, output_path: str, wandb_log
 # ---------------------------------------------------------------------------
 
 
-def log_embedding_cluster_plots(model, datamodule, output_path: str, wandb_logger=None) -> None:
+def log_embedding_cluster_plots(
+    model,
+    datamodule,
+    output_path: str,
+    wandb_logger=None,
+    *,
+    holdout_dataloader=None,
+    holdout_label: str = "held-out",
+) -> None:
     """Emit a PCA/t-SNE/UMAP cluster map of the pooled task latent, colored by task category.
 
     Validation-only, end-of-run diagnostic for whether the hypernetwork's pooled task
     representation is disentangled across task categories. Only runs for models exposing
     `supports_embedding_visualization` (the hypermodel path) with `log_embedding_clusters`
     explicitly opted in.
+
+    Pass `holdout_dataloader` (e.g. a zero-shot compositional-generalisation eval set) to
+    additionally overlay those embeddings on the same projection: reference validation points
+    render fully opaque, drawn last (on top); holdout points render behind them at a
+    higher-than-normal alpha (translucent but still legible), so it's visually clear where the
+    model places examples it never trained on relative to the solid validation clusters (see
+    visualisation.embedding_clusters.render_embedding_cluster_figure's `groups` argument).
+    Omit it (default) for the original single-group behaviour, used by every other experiment.
+
+    Logs the combined multi-panel (PCA + t-SNE + UMAP) figure to disk and to W&B as before,
+    plus each available projection a second time as its own separate W&B image -- easier to
+    inspect one projection at a time than a single wide combined panel.
     """
-    trainer = getattr(model, "trainer", None)
+    try:
+        trainer = model.trainer
+    except RuntimeError:
+        # LightningModule.trainer raises (not AttributeError) when unattached, so plain
+        # getattr(..., None) doesn't catch it -- this path is hit by standalone eval scripts
+        # (e.g. scripts/eval_compositional_holdout.py) that never call Trainer.fit().
+        trainer = None
     if trainer is not None and not trainer.is_global_zero:
         return
 
@@ -642,25 +671,46 @@ def log_embedding_cluster_plots(model, datamodule, output_path: str, wandb_logge
     if not records:
         return
 
+    groups: list[str] | None = None
+    if holdout_dataloader is not None:
+        holdout_records = model.collect_embedding_records_from_dataloader(holdout_dataloader)
+        groups = ["reference"] * len(records) + [holdout_label] * len(holdout_records)
+        records = records + holdout_records
+
     vectors = torch.stack([record["pooled_embedding"] for record in records]).numpy()
     task_categories = [record["task_category"] for record in records]
 
     cluster_dir = os.path.join(output_path, "embedding_clusters")
     os.makedirs(cluster_dir, exist_ok=True)
 
+    title = "Pooled task latent (validation)"
+    filename = "pooled_task_latent.png"
+    group_styles = None
+    if groups is not None:
+        title = f"Pooled task latent (validation + {holdout_label})"
+        filename = f"pooled_task_latent_with_{holdout_label.replace(' ', '_')}.png"
+        group_styles = {"reference": DEFAULT_GROUP_STYLES["reference"], holdout_label: DEFAULT_GROUP_STYLES["new"]}
+
     figure = render_embedding_cluster_figure(
         vectors,
         task_categories,
-        title="Pooled task latent (validation)",
+        title=title,
+        groups=groups,
+        group_styles=group_styles,
     )
-    filename = "pooled_task_latent.png"
     figure.savefig(os.path.join(cluster_dir, filename), dpi=150, bbox_inches="tight")
 
-    wandb_payload = {
-        "embedding_clusters/pooled_task_latent": figure_to_wandb_image(
-            figure, caption="Pooled task latent (validation)"
+    key_stem = Path(filename).stem
+    wandb_payload = {f"embedding_clusters/{key_stem}": figure_to_wandb_image(figure, caption=title)}
+
+    single_projection_figures = render_single_projection_figures(
+        vectors, task_categories, groups=groups, group_styles=group_styles
+    )
+    for projection_name, single_figure in single_projection_figures.items():
+        projection_key = projection_name.lower().replace("-", "")  # "t-SNE" -> "tsne"
+        wandb_payload[f"embedding_clusters/{key_stem}_{projection_key}"] = figure_to_wandb_image(
+            single_figure, caption=f"{title} — {projection_name}"
         )
-    }
 
     probe_message = ""
     try:

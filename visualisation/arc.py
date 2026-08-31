@@ -1,9 +1,12 @@
 """Shared ARC visualisation helpers for scripts and W&B logging."""
 
+import io
+
 import matplotlib
 import numpy as np
 from matplotlib import colors as mcolors
 from matplotlib.patches import Rectangle
+from PIL import Image
 
 import wandb
 
@@ -216,6 +219,15 @@ def render_task_prediction_figure(
 
 
 def figure_to_wandb_image(fig: plt.Figure, caption: str | None = None) -> wandb.Image:
-    image = wandb.Image(fig, caption=caption)
+    """Render fig to a PNG buffer ourselves (bbox_inches="tight") before handing it to
+    wandb.Image, rather than passing the raw figure -- wandb's own internal savefig call
+    doesn't crop to a tight bbox, which cuts off legends/titles that extend past the axes
+    (e.g. a multi-row category legend below the plot) in the uploaded image even when the
+    locally-saved PNG (which does pass bbox_inches="tight") looks fine.
+    """
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", bbox_inches="tight", dpi=150)
+    buffer.seek(0)
+    image = wandb.Image(Image.open(buffer), caption=caption)
     plt.close(fig)
     return image
