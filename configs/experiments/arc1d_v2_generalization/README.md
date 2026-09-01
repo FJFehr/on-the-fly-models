@@ -143,3 +143,27 @@ costs nothing to add at large capacity becomes a source of instability rather th
 once the model itself is small enough that every parameter's role is load-bearing -- most visibly
 in `frozen_td`'s wild seed-to-seed swings here (up to sd=0.398) vs. `notd`'s tight, consistent
 scores (sd ~0.02-0.04) on the same categories.
+
+### Token accuracy across all 14 classes -- which variant is actually better?
+
+The tables above only cover the *held-out* category per config. Pooling
+`val_query_accuracy_by_task_<category>` across all 14 categories, all 5 configs, and all 3 seeds
+(each category is held-out in exactly 1 of the 5 configs and in-distribution in the other 4)
+splits into two very different answers depending on what "better" means:
+
+| | `notd` | `frozentd` | Winner |
+|---|---:|---:|---|
+| In-distribution (13 categories/config, trained on) | 0.972 | **0.999** | `frozentd`, decisively -- near-perfect |
+| Held-out (1 category/config, zero-shot) | **0.813** | 0.691 | `notd`, decisively (see table above) |
+| Overall aggregate (`val_query_accuracy`, whole val set) | 0.945 | **0.967** | `frozentd` -- dominated by the ~13:1 in-distribution:held-out example ratio |
+
+**So "which is better" flips depending on the question.** Averaged over everything a run is
+evaluated on, `frozen_td` wins (0.967 vs. 0.945) simply because in-distribution examples
+outnumber held-out ones roughly 13 to 1 per config, and `frozen_td` is almost perfect
+in-distribution (0.999). But that aggregate number is the wrong one to look at if the question is
+generalization specifically: restricted to the one category each config never trained on,
+`notd` wins clearly (0.813 vs. 0.691) -- and that gap is exactly what's being erased when you
+average it into the other 13 in-distribution categories. Per-category, `frozen_td` wins 11/14
+categories (usually the in-distribution ones, several at a clean 1.000) while `notd` wins on
+`1d_denoising_mc` and `1d_pcopy_mc` specifically -- the two categories that also show `notd`'s
+biggest held-out advantage, i.e. the same effect showing up from two directions.
