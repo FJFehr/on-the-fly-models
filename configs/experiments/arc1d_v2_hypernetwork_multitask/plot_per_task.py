@@ -9,8 +9,9 @@ Reuses the finalized colour/label scheme from plot_per_task_combined.py
 (beige/teal/gold, "no task ID" left of "task ID") rather than a separate
 palette, so every per-task figure in this experiment reads consistently.
 
-Move family (1p/2p/3p/2p_dp/dp) pinned as a contiguous block on the left,
-ascending by hyper_notd within each block -- that's where the notd failures
+Tasks ordered by TASK_ORDER (Moves -> Transformations -> Denoise/Copy),
+matching the appendix's task-example figure groupings -- not sorted by
+score. The move family (1p/2p/3p/2p_dp/dp) is where the notd failures
 concentrate, the reason this plot exists.
 
 Data: results_per_task_dim4_combined.csv (same source as the 5-condition
@@ -28,7 +29,7 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 
-from plot_per_task_combined import COLORS, LABELS, MOVE_TASKS
+from plot_per_task_combined import COLORS, LABELS
 from visualisation.style import apply_latex_style, format_task_category
 
 HERE = Path(__file__).parent
@@ -85,10 +86,7 @@ def build_series(records: list[dict]) -> dict[str, dict[str, dict]]:
 # paper. Kept in sync by hand with the identically-named constant in
 # arc1d_v2_multitask/plot_per_task.py. Replaces the old
 # increasing-by-hyper_notd-score sort, which put the two figures and the
-# appendix in three different orders. The move-family divider line below
-# still uses MOVE_TASKS (5 tasks, excludes Scaling) -- that boundary marks
-# where the notd failures concentrate, a narrower and different grouping
-# from the appendix's "movement and scaling" family (6 tasks).
+# appendix in three different orders.
 TASK_ORDER = [
     "1d_move_1p", "1d_move_2p", "1d_move_2p_dp", "1d_move_3p", "1d_move_dp", "1d_scale_dp",
     "1d_fill", "1d_hollow", "1d_flip", "1d_mirror",
@@ -137,9 +135,6 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
             color="black", markersize=3.5, ecolor="0.25",
             elinewidth=1.0, capsize=2.5, capthick=1.0, zorder=4,
         )
-
-    n_move = sum(1 for t in tasks if t in MOVE_TASKS)
-    ax.axvline(n_move - 0.5, color="0.6", linewidth=1.0, linestyle="--", zorder=2)
 
     ax.set_xticks(x)
     ax.set_xticklabels(
