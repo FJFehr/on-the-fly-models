@@ -1,4 +1,4 @@
-"""Preset: dim6 Task ID vs No task ID paired cluster maps (Experiment 4).
+"""Preset: dim6 Task ID vs w/o Task ID paired cluster maps (Experiment 4).
 
 Thin wrapper around visualisation.plot_embedding_clusters -- the actual
 rendering logic (theme, palette, pairing layout) lives there and is shared
@@ -41,7 +41,7 @@ def main() -> None:
         left_npz=HERE / "embeddings_dim6_frozentd.npz",
         left_label="Task ID",
         right_npz=HERE / "embeddings_dim6_notd.npz",
-        right_label="No task ID",
+        right_label="w/o Task ID",
         out_dir=HERE,
         out_prefix="cluster_dim6_paired",
         projections=args.projections,

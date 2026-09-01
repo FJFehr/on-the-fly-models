@@ -1,4 +1,4 @@
-"""Preset: dim4 Task ID vs No task ID paired cluster maps (Experiment 4).
+"""Preset: dim4 Task ID vs w/o Task ID paired cluster maps (Experiment 4).
 
 Same pattern as plot_embedding_clusters.py (the dim6 preset) -- thin
 wrapper around visualisation.plot_embedding_clusters's general tool, just
@@ -45,7 +45,7 @@ def main() -> None:
         left_npz=HERE / "embeddings_dim4_frozentd.npz",
         left_label="Task ID",
         right_npz=HERE / "embeddings_dim4_notd.npz",
-        right_label="No task ID",
+        right_label="w/o Task ID",
         out_dir=HERE,
         out_prefix="cluster_dim4_paired",
         projections=args.projections,
