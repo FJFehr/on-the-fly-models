@@ -96,7 +96,50 @@ identical architecture.
 
 ## Status
 
-Not yet run at this design (14 categories, `notd`/`frozentd` only, 3 seeds). A previous run at a
-different design (15 categories, all 3 variants, 1 seed, larger ~200K-param encoder) happened
-under this experiment's old name, `arc1d_v2_looped_generalization` -- superseded, see Naming note
-above.
+Run and complete: 14 categories, `notd`/`frozentd`, 3 seeds (30/30 jobs). See Findings below. A
+previous run at a different design (15 categories, all 3 variants, 1 seed, larger ~200K-param
+encoder) happened under this experiment's old name, `arc1d_v2_looped_generalization` --
+superseded, not carried over.
+
+## Findings (3 seeds, 30 jobs)
+
+Held-out-category exact match and token accuracy, mean +/- sd across the 3 seeds:
+
+| Held out | `notd` EM | `notd` Acc (mean, sd) | `frozentd` EM | `frozentd` Acc (mean, sd) | Acc diff (notd - frozentd) |
+|---|---:|---|---:|---|---:|
+| `1d_denoising_mc` | 0.0 | 0.766, 0.023 | 0.0 | 0.469, 0.398 | **+0.297** |
+| `1d_flip` | 0.0 | 0.818, 0.030 | 0.0 | 0.725, 0.159 | +0.093 |
+| `1d_hollow` | 0.0 | 0.711, 0.033 | 0.0 | 0.721, 0.182 | -0.010 |
+| `1d_move_2p` | 0.0 | 0.927, 0.032 | 0.0 | 0.822, 0.044 | +0.105 |
+| `1d_pcopy_mc` | 0.0 | 0.840, 0.043 | 0.0 | 0.715, 0.064 | +0.125 |
+| **mean** | **0.0** | **0.813** | **0.0** | **0.691** | **+0.122** |
+
+**Exact match is a perfectly uniform null result: all 30 cells (5 categories x 2 variants x 3
+seeds) score exactly 0.** Unlike the original bigger-recipe experiment (where `1d_denoising_mc`
+and `1d_move_2p` showed real, if seed-noisy, partial exact-match success), this much smaller
+architecture never lands a bit-perfect held-out answer under any condition. Consistent with
+`arc1d_v2_compositional_generalization`'s own zero-shot results (also essentially 0 exact match
+on every held-out composite category) -- at this scale, exact match on anything outside the exact
+training configuration looks like a genuinely closed door, not a rare/lucky event.
+
+**Token accuracy tells a decisive, low-noise story: `notd` beats `frozentd` on every single
+held-out category (5/5), not just on average.** Mean accuracy 0.813 vs. 0.691 (+0.122), and
+`notd`'s per-category standard deviation across seeds is small and consistent (0.023-0.043)
+while `frozentd`'s is much larger and erratic (0.044-0.398) -- most strikingly on
+`1d_denoising_mc`, where `frozentd` swings from 0.109 to 0.897 across the 3 seeds (the exact
+category where the original bigger-recipe experiment's `frozen_td` had its cleanest apparent
+win). At this scale, `frozen_td` isn't just weaker on average -- it's unreliable in a way `notd`
+isn't.
+
+This is a stronger, cleaner version of the same direction found in
+`arc1d_v2_compositional_generalization` (`notd` > `frozen_td` on token accuracy, 6/10
+categories, mean +0.064). It's a genuinely different picture from the original
+`arc1d_hypermodel_looped_rope_canon_generalization`, though: at that bigger scale `notd` and
+`frozen_td` are essentially tied (0.850 vs. 0.855 -- `frozen_td` marginally *ahead*, not behind).
+So the direction isn't just "the `notd` advantage shrinks with more capacity" -- it looks like it
+flips: roughly neutral (slightly favoring `frozen_td`) at the ~1.58M-param scale, clearly and
+consistently favoring `notd` at the ~10K-param matched scale. A frozen task-identity anchor that
+costs nothing to add at large capacity becomes a source of instability rather than a free win
+once the model itself is small enough that every parameter's role is load-bearing -- most visibly
+in `frozen_td`'s wild seed-to-seed swings here (up to sd=0.398) vs. `notd`'s tight, consistent
+scores (sd ~0.02-0.04) on the same categories.
