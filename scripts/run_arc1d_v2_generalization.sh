@@ -1,27 +1,28 @@
 #!/usr/bin/env bash
-# Run all 15 arc1d_v2_looped_generalization arms (5 held-out task categories x td/notd/frozentd)
-# -- the v2-scale (dim=4 target, ~200K-param hypernetwork) rerun of
-# arc1d_hypermodel_looped_rope_canon_generalization. See README.md for the grid and how to read
+# Run all 15 arc1d_v2_generalization arms (5 held-out task categories x td/notd/frozentd)
+# -- the v2-scale (dim=4 target, 10,156-param matched-scale hypernetwork) rerun of
+# arc1d_hypermodel_looped_rope_canon_generalization. Same architecture as
+# arc1d_v2_compositional_generalization. See README.md for the grid and how to read
 # results.txt's per-category breakdown.
 #
 # Each run claims 1 GPU (devices: 1 in base.yaml, not auto). Set FREE_GPUS_FLAG="--free-gpus" to
 # restrict to a free GPU index on a shared node instead of whatever the accelerator resolves to:
-#   FREE_GPUS_FLAG="--free-gpus" bash scripts/run_arc1d_v2_looped_generalization.sh
+#   FREE_GPUS_FLAG="--free-gpus" bash scripts/run_arc1d_v2_generalization.sh
 #
 # To split this across multiple nodes without clashing, override CELL_GLOB and/or SEEDS_OVERRIDE
 # to give each node a disjoint slice, same convention as
 # scripts/run_hypermodel_looped_rope_canon_generalization.sh:
-#   node A: SEEDS_OVERRIDE="1 2" bash scripts/run_arc1d_v2_looped_generalization.sh
-#   node B: SEEDS_OVERRIDE="3"   bash scripts/run_arc1d_v2_looped_generalization.sh
+#   node A: SEEDS_OVERRIDE="1 2" bash scripts/run_arc1d_v2_generalization.sh
+#   node B: SEEDS_OVERRIDE="3"   bash scripts/run_arc1d_v2_generalization.sh
 #
 # Usage:
-#   bash scripts/run_arc1d_v2_looped_generalization.sh
+#   bash scripts/run_arc1d_v2_generalization.sh
 
 set -uo pipefail
 
-PROJECT="arc1d_v2_looped_generalization"
-LOG_DIR="logs/arc1d_v2_looped_generalization"
-CFG_DIR="configs/experiments/arc1d_v2_looped_generalization"
+PROJECT="arc1d_v2_generalization"
+LOG_DIR="logs/arc1d_v2_generalization"
+CFG_DIR="configs/experiments/arc1d_v2_generalization"
 CELL_GLOB="${CELL_GLOB:-arm_*.yaml}"
 FREE_GPUS_FLAG="${FREE_GPUS_FLAG:-}"
 SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1}"

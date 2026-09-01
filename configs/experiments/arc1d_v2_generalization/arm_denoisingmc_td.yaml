@@ -1,7 +1,7 @@
 # Held out: 1d_denoising_mc (sibling(s) remaining in training: 1d_denoising_1c)
 # Variant: td -- Learned one-hot task-identity embedding on. The held-out category's embedding column never receives a gradient (never appears in training batches), so this arm tests generalization with an untrained/random column at that one position.
-_base_: configs/experiments/arc1d_v2_looped_generalization/base.yaml
-experiment_name: v2_looped_generalization_denoisingmc_td
+_base_: configs/experiments/arc1d_v2_generalization/base.yaml
+experiment_name: v2_generalization_denoisingmc_td
 
 task_categories:
   - 1d_denoising_1c

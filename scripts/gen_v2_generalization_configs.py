@@ -1,18 +1,19 @@
-"""Generate the 15 arc1d_v2_looped_generalization leaf configs (5 held-out categories x
-{notd, td, frozentd}) -- the v2-scale (dim=4, ~200K-param hypernetwork) rerun of
+"""Generate the 15 arc1d_v2_generalization leaf configs (5 held-out categories x
+{notd, td, frozentd}) -- the v2-scale (dim=4, 10,156-param matched-scale hypernetwork) rerun of
 arc1d_hypermodel_looped_rope_canon_generalization's leave-one-task-out grid. Same held-out
 categories, siblings, and task_categories/val_task_categories mechanism as that experiment;
-only the architecture (this directory's base.yaml) differs. See that experiment's README.md for
-the full held-out-category rationale, and arc1d_v2_hypernetwork_multitask/dim4_notd.yaml /
-dim4_frozentd.yaml for the architecture this reuses.
+only the architecture (this directory's base.yaml) differs -- the same matched-scale recipe as
+arc1d_v2_compositional_generalization, not the dim=4 main-grid config's larger encoder. See that
+experiment's README.md for the full held-out-category rationale, and
+arc1d_v2_hypernetwork_multitask/shrink_matched_dim4.yaml for the architecture this reuses.
 
 Usage:
-    uv run python scripts/gen_v2_looped_generalization_configs.py
+    uv run python scripts/gen_v2_generalization_configs.py
 """
 
 from pathlib import Path
 
-OUT_DIR = Path("configs/experiments/arc1d_v2_looped_generalization")
+OUT_DIR = Path("configs/experiments/arc1d_v2_generalization")
 
 ALL_CATEGORIES = [
     "1d_denoising_1c",
@@ -73,8 +74,8 @@ def main() -> None:
             path = OUT_DIR / f"arm_{short}_{variant}.yaml"
             content = f"""# Held out: {held_out} (sibling(s) remaining in training: {siblings})
 # Variant: {variant} -- {cfg["desc"]}
-_base_: configs/experiments/arc1d_v2_looped_generalization/base.yaml
-experiment_name: v2_looped_generalization_{short}_{variant}
+_base_: configs/experiments/arc1d_v2_generalization/base.yaml
+experiment_name: v2_generalization_{short}_{variant}
 
 task_categories:
 {yaml_list(train_categories)}

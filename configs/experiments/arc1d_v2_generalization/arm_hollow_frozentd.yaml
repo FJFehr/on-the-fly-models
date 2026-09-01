@@ -1,7 +1,7 @@
 # Held out: 1d_hollow (sibling(s) remaining in training: 1d_fill)
 # Variant: frozentd -- One-hot task-identity embedding present but frozen at random init for every category, trained or not, so the held-out category's column is drawn from the same distribution the rest of the network learned to interpret, not the one column that never moved while its 17 siblings did.
-_base_: configs/experiments/arc1d_v2_looped_generalization/base.yaml
-experiment_name: v2_looped_generalization_hollow_frozentd
+_base_: configs/experiments/arc1d_v2_generalization/base.yaml
+experiment_name: v2_generalization_hollow_frozentd
 
 task_categories:
   - 1d_denoising_1c

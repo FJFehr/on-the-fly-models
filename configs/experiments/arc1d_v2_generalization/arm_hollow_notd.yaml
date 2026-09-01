@@ -1,7 +1,7 @@
 # Held out: 1d_hollow (sibling(s) remaining in training: 1d_fill)
 # Variant: notd -- No task-identity signal at all -- the model must infer the task purely from the 3-shot support examples.
-_base_: configs/experiments/arc1d_v2_looped_generalization/base.yaml
-experiment_name: v2_looped_generalization_hollow_notd
+_base_: configs/experiments/arc1d_v2_generalization/base.yaml
+experiment_name: v2_generalization_hollow_notd
 
 task_categories:
   - 1d_denoising_1c
