@@ -66,9 +66,9 @@ COLORS = {
 }
 LINESTYLES = {"individual": ":", "notd": "-", "td": "-"}
 LABELS = {
-    "individual": "Individual models per task",
-    "td": "Joint model with task ID",
-    "notd": "Joint model w/o task ID",
+    "individual": "Individual models",
+    "td": "Joint model, Task ID",
+    "notd": "Joint model, w/o Task ID",
 }
 CSV_FIELDS = ["condition", "dim", "params", "seed", "test_exact_match"]
 
@@ -209,7 +209,7 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
             "axes.labelsize": 23,
             "xtick.labelsize": 20,
             "ytick.labelsize": 20,
-            "legend.fontsize": 19,
+            "legend.fontsize": 16,
             "pdf.fonttype": 42,  # embed as TrueType, not the default Type 3
         }
     )
