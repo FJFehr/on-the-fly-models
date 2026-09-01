@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Run all 15 arc1d_v2_generalization arms (5 held-out task categories x td/notd/frozentd)
-# -- the v2-scale (dim=4 target, 10,156-param matched-scale hypernetwork) rerun of
-# arc1d_hypermodel_looped_rope_canon_generalization. Same architecture as
+# Run all 10 arc1d_v2_generalization arms (5 held-out task categories x notd/frozentd), 3 seeds
+# by default (30 jobs) -- the v2-scale (dim=4 target, 10,156-param matched-scale hypernetwork)
+# rerun of arc1d_hypermodel_looped_rope_canon_generalization. Same architecture as
 # arc1d_v2_compositional_generalization. See README.md for the grid and how to read
 # results.txt's per-category breakdown.
 #
@@ -25,7 +25,7 @@ LOG_DIR="logs/arc1d_v2_generalization"
 CFG_DIR="configs/experiments/arc1d_v2_generalization"
 CELL_GLOB="${CELL_GLOB:-arm_*.yaml}"
 FREE_GPUS_FLAG="${FREE_GPUS_FLAG:-}"
-SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1}"
+SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1 2 3}"
 mkdir -p "$LOG_DIR"
 
 read -ra SEEDS <<< "$SEEDS_OVERRIDE"

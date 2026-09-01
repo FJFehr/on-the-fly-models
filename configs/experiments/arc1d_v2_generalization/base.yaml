@@ -38,8 +38,9 @@ model: hyper_model
 primary_metric: val_loss
 num_workers: 0
 
-# Placeholders -- overridden per leaf (see arm_*.yaml), same 15-category set and per-held-out-
-# category mechanism as arc1d_hypermodel_looped_rope_canon_generalization.
+# Placeholders -- overridden per leaf (see arm_*.yaml). 14 categories (1d_recolor_cmp dropped,
+# matching the main v2 story's convention -- not the original experiment's 15), same
+# per-held-out-category mechanism as arc1d_hypermodel_looped_rope_canon_generalization.
 task_categories:
   - 1d_denoising_1c
   - 1d_denoising_mc
@@ -54,7 +55,6 @@ task_categories:
   - 1d_move_dp
   - 1d_pcopy_1c
   - 1d_pcopy_mc
-  - 1d_recolor_cmp
   - 1d_scale_dp
 task_ids: null
 val_task_categories:
@@ -71,7 +71,6 @@ val_task_categories:
   - 1d_move_dp
   - 1d_pcopy_1c
   - 1d_pcopy_mc
-  - 1d_recolor_cmp
   - 1d_scale_dp
 train_split: train
 val_split: val

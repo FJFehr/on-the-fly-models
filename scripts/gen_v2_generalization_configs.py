@@ -1,10 +1,12 @@
-"""Generate the 15 arc1d_v2_generalization leaf configs (5 held-out categories x
-{notd, td, frozentd}) -- the v2-scale (dim=4, 10,156-param matched-scale hypernetwork) rerun of
+"""Generate the 10 arc1d_v2_generalization leaf configs (5 held-out categories x
+{notd, frozentd}) -- the v2-scale (dim=4, 10,156-param matched-scale hypernetwork) rerun of
 arc1d_hypermodel_looped_rope_canon_generalization's leave-one-task-out grid. Same held-out
-categories, siblings, and task_categories/val_task_categories mechanism as that experiment;
-only the architecture (this directory's base.yaml) differs -- the same matched-scale recipe as
-arc1d_v2_compositional_generalization, not the dim=4 main-grid config's larger encoder. See that
-experiment's README.md for the full held-out-category rationale, and
+categories and siblings as that experiment; task_categories/val_task_categories mechanism the
+same but trimmed to 14 categories (1d_recolor_cmp dropped, matching the main v2 story's
+convention). Only `notd`/`frozentd` built -- plain `td` dropped per project precedent
+(historically bimodal/unstable, see arc1d_v2_hypernetwork_multitask's README). Architecture is
+the same matched-scale recipe as arc1d_v2_compositional_generalization. See that experiment's
+README.md for the full held-out-category rationale, and
 arc1d_v2_hypernetwork_multitask/shrink_matched_dim4.yaml for the architecture this reuses.
 
 Usage:
@@ -29,7 +31,6 @@ ALL_CATEGORIES = [
     "1d_move_dp",
     "1d_pcopy_1c",
     "1d_pcopy_mc",
-    "1d_recolor_cmp",
     "1d_scale_dp",
 ]
 
@@ -48,11 +49,6 @@ VARIANTS = {
         "num_tasks": "null",
         "freeze_task_indicator": "false",
         "desc": "No task-identity signal at all -- the model must infer the task purely from the 3-shot support examples.",
-    },
-    "td": {
-        "num_tasks": "18",
-        "freeze_task_indicator": "false",
-        "desc": "Learned one-hot task-identity embedding on. The held-out category's embedding column never receives a gradient (never appears in training batches), so this arm tests generalization with an untrained/random column at that one position.",
     },
     "frozentd": {
         "num_tasks": "18",
