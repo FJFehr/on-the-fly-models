@@ -108,12 +108,68 @@ rather than from one logged hard example. Key questions:
   (weaker sibling pairing)? A consistent pattern across both would be stronger evidence than
   either alone.
 
-## Findings (seed 1, all 15 arms)
+## Findings (full rerun, 3 seeds, all 45 jobs)
 
-**Superseded by a full rerun in progress** (all 45 jobs, all 3 seeds, now also logging
-`val_query_accuracy_by_task_<category>` -- see Reading results above). The seed-1-only numbers
-below predate that metric and are exact-match only; kept here for the move2p partial-credit
-anecdote that motivated adding it, not as the final read.
+**Supersedes the earlier seed-1-only table below.** The full 3-seed grid changes the read on
+`1d_denoising_mc` and `1d_move_2p` substantially -- what looked like a clean `frozen_td`-specific
+win in seed 1 turns out to be seed noise once seeds 2 and 3 are in.
+
+Held-out-category exact match (`val_query_exact_match_by_task_<category>`, one value per seed,
+mean across the 3):
+
+| Held out | `td` (seeds) | `td` mean | `notd` (seeds) | `notd` mean | `frozentd` (seeds) | `frozentd` mean |
+|---|---|---:|---|---:|---|---:|
+| `1d_denoising_mc` | 0.4, 1.0, 0.0 | 0.467 | 0.0, 1.0, 0.8 | 0.600 | 0.0, 1.0, 0.8 | 0.600 |
+| `1d_flip` | 0.0, 0.0, 0.0 | 0.000 | 0.0, 0.0, 0.0 | 0.000 | 0.0, 0.0, 0.0 | 0.000 |
+| `1d_hollow` | 0.0, 0.0, 0.0 | 0.000 | 0.0, 0.0, 0.0 | 0.000 | 0.0, 0.0, 0.0 | 0.000 |
+| `1d_move_2p` | 0.8, 0.0, 0.0 | 0.267 | 0.0, 0.0, 0.4 | 0.133 | 0.6, 0.0, 0.0 | 0.200 |
+| `1d_pcopy_mc` | 0.0, 0.0, 0.0 | 0.000 | 0.0, 0.0, 0.0 | 0.000 | 0.0, 0.0, 0.0 | 0.000 |
+
+**Headline, revised: 3 of 5 held-out categories (`1d_flip`, `1d_hollow`, `1d_pcopy_mc`) are a
+robust, seed-independent null result** -- exact match is 0 for every seed and every
+task-identity variant, 9/9 cells each. The model genuinely does not generalize to these unseen
+categories, and that conclusion is now solid, not a seed-1 artifact.
+
+**The other 2 categories (`1d_denoising_mc`, `1d_move_2p`) do show real, non-trivial partial
+exact-match success -- but it's noisy and not cleanly attributable to any one task-identity
+condition.** Seed 1's original finding (`frozen_td` hits a clean 1.0 on `denoising_mc`, `td`
+never does) does not hold up: `td` scores 1.0 on *seed 2*, and all three variants land somewhere
+between 0.0 and 1.0 across the three seeds, with no consistent ranking. Same story for
+`move_2p`: exact match is nonzero for at least one seed under every variant (`td`: seed 1;
+`notd`: seed 3; `frozentd`: seed 1), never more than one seed per variant, and never the same
+seed across variants. Read this as: these two categories (each with the closest sibling pairing
+in the grid) are *sometimes* within reach of the model, regardless of task-identity condition,
+but whether a given run actually lands it looks like it depends on something seed-level
+(initialization, training dynamics) rather than a property of `td`/`notd`/`frozen_td` as such.
+The original "`frozen_td` uniquely cracks `denoising_mc`" story was real for seed 1, but isn't
+the general pattern.
+
+**Token accuracy tells a calmer, more consistent story than exact match, and (at this
+architecture scale) doesn't show a strong `notd` advantage the way the smaller v2-scale
+experiments do.** Mean held-out-category accuracy, averaged over categories (note: several
+`results.txt` files predate the accuracy-by-category metric and were correctly left alone by the
+launcher's skip-logic rather than re-run, so accuracy coverage is 2/3 or 1/3 seeds for a few
+cells -- see each category's own seed list above for exactly which):
+
+| Variant | Mean held-out accuracy (avg of per-category means) |
+|---|---:|
+| `td` | 0.864 |
+| `notd` | 0.850 |
+| `frozentd` | 0.855 |
+
+All three are within 1.4 points of each other -- essentially tied, unlike `arc1d_v2_generalization`
+(same question, ~150x smaller matched-scale architecture) where `notd` clearly wins (0.841 vs.
+0.740/0.736). Whatever is driving `notd`'s accuracy advantage at the smaller scale isn't showing
+up here at this architecture's much larger capacity.
+
+**Caveats**: accuracy figures above mix seed counts per cell (see the per-category tables in the
+raw `results.txt` files for exact coverage) since re-running already-complete jobs purely to
+backfill a metric wasn't done this pass -- worth a full clean rerun if the accuracy comparison at
+this scale needs to be load-bearing for a paper claim, rather than a directional read.
+
+## Findings (seed 1 only, historical -- superseded above)
+
+Kept for provenance; the 3-seed table above is the current read.
 
 Held-out-category exact match (`val_query_exact_match_by_task_<held_out_category>`, pulled
 from wandb after the disk-space incident wiped local `results.txt`/checkpoints for these runs,
@@ -127,30 +183,9 @@ see below):
 | `1d_move_2p` | 0.0 | 0.0 | 0.0 |
 | `1d_pcopy_mc` | 0.0 | 0.0 | 0.0 |
 
-**Headline: the model does not generalize to an unseen task category.** For 4 of 5 held-out
-categories, exact match is exactly 0 under every task-identity variant, `td`, `notd`, and
-`frozentd` alike. Whatever these models are doing on a category they were never trained on,
-it is essentially never landing the literal right answer. On casual inspection of the logged
-task-example images, the default failure mode looks like copying the input through largely
-unchanged rather than attempting the held-out transformation, i.e. falling back to the
-closest thing to a safe default rather than synthesizing a genuinely new rule.
-
-`1d_denoising_mc` is the one exception, and it's the least surprising one: its sibling
-`1d_denoising_1c` differs only in single- vs multi-colour noise, the closest sibling pairing
-in this whole grid. `frozentd` hit a clean 1.0, `notd` 0.80, `td` 0.0. Consistent with the
-core hypothesis: the learned one-hot embedding (`td`) actively harms the one case where
-generalization was otherwise achievable, while freezing it (`frozentd`) removes that harm
-entirely.
-
-`1d_move_2p` is the interesting near-miss. Exact match is 0 across the board, but
-`frozentd`'s per-example token accuracy on the held-out examples was high on some
-(`val_hard_final_task | 1d_move_2p:47 | query_acc=0.90`) rather than uniformly near-chance.
-That's not "got it right," but it is meaningfully different from random or pure-copy output:
-it suggests `frozentd` placed the never-seen `1d_move_2p` somewhere sensible in the
-hypernetwork's latent task space, close to its trained siblings (`1d_move_1p`, `1d_move_3p`,
-`1d_move_dp`, `1d_move_2p_dp`) rather than nowhere at all, even though it didn't cross the
-line into a bit-perfect answer. Whether that's a robust effect or one lucky example needs more
-seeds to tell apart, since only seed 1 has been analysed at the time of writing.
+`1d_move_2p`'s `frozentd` run showed high per-example token accuracy on some held-out examples
+despite 0 exact match (`val_hard_final_task | 1d_move_2p:47 | query_acc=0.90`) -- the anecdote
+that originally motivated adding the systematic `val_query_accuracy_by_task_<category>` metric.
 
 **Caveat on this data**: after this experiment's first pass finished (44 of 45 jobs done, one
 NCCL-timeout failure), a manual `rm -r outputs/*` on torrnode12 -- an attempt to fix what
