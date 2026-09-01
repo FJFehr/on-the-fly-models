@@ -56,9 +56,9 @@ COLORS = {
     "notd": PAPER_COLORS[6],  # slate blue -- joint, no task ID
 }
 LABELS = {
-    "individual": "Individual models per task",
-    "td": "Joint model with task ID",
-    "notd": "Joint model w/o task ID",
+    "individual": "Individual models",
+    "td": "Joint model, Task ID",
+    "notd": "Joint model, w/o Task ID",
 }
 CSV_FIELDS = ["condition", "dim", "task", "seed", "val_exact_match"]
 

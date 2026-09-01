@@ -56,11 +56,11 @@ COLORS = {
     "hyper_notd": PAPER_COLORS[5],  # teal -- no task ID
 }
 LABELS = {
-    "individual": "Individual model per task",
+    "individual": "Individual model",
     "joint_td": "Joint direct, task ID",
     "joint_notd": "Joint direct, w/o task ID",
-    "hyper_td": "Hypernetwork, task ID",
-    "hyper_notd": "Hypernetwork, w/o task ID",
+    "hyper_td": "Hypernetwork, Task ID",
+    "hyper_notd": "Hypernetwork, w/o Task ID",
 }
 # Task-ID always to the left of its no-task-ID counterpart within each pair.
 CONDITIONS = ("individual", "joint_td", "joint_notd", "hyper_td", "hyper_notd")
