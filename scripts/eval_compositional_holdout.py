@@ -18,6 +18,13 @@ Usage:
     uv run python scripts/eval_compositional_holdout.py \
         --config configs/experiments/arc1d_hypermodel_compositional_generalization/notd.yaml \
         --checkpoint last --num-qualitative 5
+
+    # Point at a specific seed's checkpoint/output dir via OmegaConf dotlist overrides
+    # (same mechanism as train.py), e.g. for a multi-seed rerun:
+    uv run python scripts/eval_compositional_holdout.py \
+        --config configs/experiments/arc1d_v2_compositional_generalization/notd.yaml \
+        seed=2 experiment_name=v2_compositional_generalization_notd_seed2 \
+        output_path=outputs/arc1d_v2_compositional_generalization/v2_compositional_generalization_notd_seed2
 """
 
 import argparse
@@ -60,6 +67,14 @@ def parse_args() -> argparse.Namespace:
         help="Path to the trained notd.yaml or frozen_td.yaml (not td.yaml -- see module docstring).",
     )
     parser.add_argument(
+        "overrides",
+        nargs="*",
+        help="Optional OmegaConf dotlist overrides such as seed=2 experiment_name=foo_seed2 "
+        "output_path=outputs/proj/foo_seed2 -- same mechanism as train.py, needed to point this "
+        "script at a specific seed's checkpoint/output dir without a separate physical config "
+        "file per seed.",
+    )
+    parser.add_argument(
         "--checkpoint",
         default="best",
         help="'best', 'last', 'auto', or an explicit checkpoint path (default: best).",
@@ -93,7 +108,7 @@ def build_holdout_dataloader(data_dir: str, split: str, batch_size: int, padding
 
 def main() -> None:
     args = parse_args()
-    cfg = load_config(args.config)
+    cfg = load_config(args.config, args.overrides)
     runtime_cfg = build_runtime_config_dict(cfg)
 
     num_tasks = cfg.hyper_head.get("num_tasks")

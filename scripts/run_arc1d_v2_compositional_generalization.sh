@@ -6,15 +6,24 @@
 # (data/arc_1d_compositional_holdout, built once and shared with the original bigger-recipe
 # experiment -- no regeneration needed).
 #
-# Mirrors scripts/run_hypermodel_compositional_generalization.sh's structure: single seed (per
-# base.yaml's seed: 42, not swept), each run claims the whole node (devices: 1 here, not auto --
-# set --free-gpus to restrict to a free GPU index instead of assuming exclusive node access).
+# 3 seeds by default (SEEDS_OVERRIDE="1 2 3"), same convention as
+# scripts/run_arc1d_v2_generalization.sh: each seed's run gets seed=/experiment_name=/
+# output_path= overrides appended to both train.py and scripts/eval_compositional_holdout.py
+# (the latter needed its own dotlist-override support added for this -- see that script's
+# docstring). Each run claims the whole node (devices: 1 here, not auto -- set --free-gpus to
+# restrict to a free GPU index instead of assuming exclusive node access).
+#
 # Skips already-completed training runs (results.txt exists) and already-completed eval runs
-# (eval output dir's results.txt exists).
+# (eval output dir's results.txt exists), per seed.
 #
 # Set FREE_GPUS_FLAG="--free-gpus" to restrict to a free GPU instead of relying on `devices: 1`
 # picking whichever the accelerator resolves to -- recommended when the node is shared:
 #   FREE_GPUS_FLAG="--free-gpus" bash scripts/run_arc1d_v2_compositional_generalization.sh
+#
+# To split across nodes, override SEEDS_OVERRIDE per node, same convention as the other v2
+# launcher scripts:
+#   node A: SEEDS_OVERRIDE="1 2" bash scripts/run_arc1d_v2_compositional_generalization.sh
+#   node B: SEEDS_OVERRIDE="3"   bash scripts/run_arc1d_v2_compositional_generalization.sh
 #
 # Usage:
 #   bash scripts/run_arc1d_v2_compositional_generalization.sh
@@ -25,7 +34,10 @@ PROJECT="arc1d_v2_compositional_generalization"
 LOG_DIR="logs/arc1d_v2_compositional_generalization"
 CFG_DIR="configs/experiments/arc1d_v2_compositional_generalization"
 FREE_GPUS_FLAG="${FREE_GPUS_FLAG:-}"
+SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1 2 3}"
 mkdir -p "$LOG_DIR"
+
+read -ra SEEDS <<< "$SEEDS_OVERRIDE"
 
 ARMS=(notd frozen_td)
 EVAL_ARMS=(notd frozen_td)
@@ -37,44 +49,58 @@ if [ ! -d "data/arc_1d_compositional_holdout" ]; then
     PYTHONPATH=. .venv/bin/python scripts/build_arc1d_compositional.py
 fi
 
-for ARM in "${ARMS[@]}"; do
-    cfg="${CFG_DIR}/${ARM}.yaml"
-    exp_name=$(grep '^experiment_name:' "$cfg" | awk '{print $2}')
-    results_file="outputs/${PROJECT}/${exp_name}/results.txt"
-    log="${LOG_DIR}/${exp_name}.log"
+for SEED in "${SEEDS[@]}"; do
+    for ARM in "${ARMS[@]}"; do
+        cfg="${CFG_DIR}/${ARM}.yaml"
+        base_exp_name=$(grep '^experiment_name:' "$cfg" | awk '{print $2}')
+        exp_name="${base_exp_name}_seed${SEED}"
+        results_file="outputs/${PROJECT}/${exp_name}/results.txt"
+        log="${LOG_DIR}/${exp_name}.log"
 
-    if [ -f "$results_file" ]; then
-        echo "SKIP   ${PROJECT} / ${exp_name} (already trained)"
-        continue
-    fi
+        if [ -f "$results_file" ]; then
+            echo "SKIP   ${PROJECT} / ${exp_name} (already trained)"
+            continue
+        fi
 
-    echo "TRAIN  ${PROJECT} / ${exp_name}"
-    if .venv/bin/python train.py --config "$cfg" $FREE_GPUS_FLAG > "$log" 2>&1; then
-        echo "DONE   ${PROJECT} / ${exp_name}"
-    else
-        echo "FAILED ${PROJECT} / ${exp_name}  (see $log)"
-    fi
+        echo "TRAIN  ${PROJECT} / ${exp_name}"
+        if .venv/bin/python train.py --config "$cfg" $FREE_GPUS_FLAG \
+            seed="$SEED" \
+            experiment_name="$exp_name" \
+            output_path="outputs/${PROJECT}/${exp_name}" \
+            > "$log" 2>&1; then
+            echo "DONE   ${PROJECT} / ${exp_name}"
+        else
+            echo "FAILED ${PROJECT} / ${exp_name}  (see $log)"
+        fi
+    done
 done
 
-for ARM in "${EVAL_ARMS[@]}"; do
-    cfg="${CFG_DIR}/${ARM}.yaml"
-    exp_name=$(grep '^experiment_name:' "$cfg" | awk '{print $2}')
-    eval_dir="outputs/${PROJECT}/${exp_name}/compositional_holdout_eval"
-    log="${LOG_DIR}/${exp_name}_holdout_eval.log"
+for SEED in "${SEEDS[@]}"; do
+    for ARM in "${EVAL_ARMS[@]}"; do
+        cfg="${CFG_DIR}/${ARM}.yaml"
+        base_exp_name=$(grep '^experiment_name:' "$cfg" | awk '{print $2}')
+        exp_name="${base_exp_name}_seed${SEED}"
+        eval_dir="outputs/${PROJECT}/${exp_name}/compositional_holdout_eval"
+        log="${LOG_DIR}/${exp_name}_holdout_eval.log"
 
-    if [ -f "${eval_dir}/results.txt" ]; then
-        echo "SKIP   held-out eval / ${exp_name} (already evaluated)"
-        continue
-    fi
+        if [ -f "${eval_dir}/results.txt" ]; then
+            echo "SKIP   held-out eval / ${exp_name} (already evaluated)"
+            continue
+        fi
 
-    echo "EVAL   held-out compositional set / ${exp_name}"
-    if PYTHONPATH=. .venv/bin/python scripts/eval_compositional_holdout.py --config "$cfg" > "$log" 2>&1; then
-        echo "DONE   held-out eval / ${exp_name}"
-    else
-        echo "FAILED held-out eval / ${exp_name}  (see $log)"
-    fi
+        echo "EVAL   held-out compositional set / ${exp_name}"
+        if PYTHONPATH=. .venv/bin/python scripts/eval_compositional_holdout.py --config "$cfg" \
+            seed="$SEED" \
+            experiment_name="$exp_name" \
+            output_path="outputs/${PROJECT}/${exp_name}" \
+            > "$log" 2>&1; then
+            echo "DONE   held-out eval / ${exp_name}"
+        else
+            echo "FAILED held-out eval / ${exp_name}  (see $log)"
+        fi
+    done
 done
 
 echo ""
-echo "Both arms finished. Logs in ${LOG_DIR}/, held-out eval results under each arm's"
-echo "outputs/${PROJECT}/<experiment_name>/compositional_holdout_eval/results.txt"
+echo "All seeds/arms finished. Logs in ${LOG_DIR}/, held-out eval results under each arm's"
+echo "outputs/${PROJECT}/<experiment_name>_seed<N>/compositional_holdout_eval/results.txt"
