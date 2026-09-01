@@ -68,7 +68,7 @@ LINESTYLES = {"individual": ":", "notd": "-", "td": "-"}
 LABELS = {
     "individual": "Individual models per task",
     "td": "Joint model with task ID",
-    "notd": "Joint model without task ID",
+    "notd": "Joint model w/o task ID",
 }
 CSV_FIELDS = ["condition", "dim", "params", "seed", "test_exact_match"]
 
@@ -206,10 +206,10 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
         {
             "font.serif": ["Nimbus Roman", "Times New Roman", "Liberation Serif", "DejaVu Serif"],
             "mathtext.fontset": "stix",
-            "axes.labelsize": 19,
-            "xtick.labelsize": 17,
-            "ytick.labelsize": 17,
-            "legend.fontsize": 16,
+            "axes.labelsize": 23,
+            "xtick.labelsize": 20,
+            "ytick.labelsize": 20,
+            "legend.fontsize": 19,
             "pdf.fonttype": 42,  # embed as TrueType, not the default Type 3
         }
     )
