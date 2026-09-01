@@ -147,7 +147,7 @@ def render_paired_panel(
     fig.legend(
         handles_by_category.values(), handles_by_category.keys(),
         loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=ncol, frameon=False,
-        markerscale=0.5, handletextpad=0.4, columnspacing=1.0,
+        markerscale=1.0, handletextpad=0.4, columnspacing=1.0,
     )
     fig.tight_layout(pad=0.6)
     return fig
