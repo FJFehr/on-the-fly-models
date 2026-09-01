@@ -74,4 +74,58 @@ Same as the original experiment: pull `val_query_exact_match_by_task_<held_out_c
 
 ## Status
 
-Not yet run.
+Run (seed 1, all 15 arms). See Findings below.
+
+## Findings (seed 1)
+
+Held-out-category zero-shot score, exact match (EM) and token accuracy (Acc), pulled from each
+arm's own `results.txt`:
+
+| Held out | `td` EM | `td` Acc | `notd` EM | `notd` Acc | `frozentd` EM | `frozentd` Acc |
+|---|---:|---:|---:|---:|---:|---:|
+| `1d_denoising_mc` | 0.0 | 0.752 | 0.0 | 0.848 | 0.200 | 0.655 |
+| `1d_flip` | 0.0 | 0.855 | 0.0 | 0.885 | 0.0 | 0.915 |
+| `1d_hollow` | 0.0 | 0.588 | 0.0 | 0.600 | 0.0 | 0.606 |
+| `1d_move_2p` | 0.0 | 0.733 | 0.0 | 0.939 | 0.0 | 0.709 |
+| `1d_pcopy_mc` | 0.0 | 0.770 | 0.200 | 0.933 | 0.0 | 0.794 |
+| **mean** | | **0.740** | | **0.841** | | **0.736** |
+
+**The headline finding survives the ~8x size cut (1,398-param target, ~200K-param hypernetwork,
+vs. the original's ~1.58M-param recipe): exact match is essentially 0 for 4/5 held-out
+categories under every variant.** `1d_flip`, `1d_hollow`, and `1d_move_2p` never land a single
+exact match regardless of `td`/`notd`/`frozentd`, same as the original experiment.
+
+**But the *specific* partial-credit exception moved, and weakened.** In the original experiment,
+`1d_denoising_mc` was the one category any variant could crack, and `frozen_td` cracked it
+completely (1.0 exact match, vs. `notd`'s 0.80 and `td`'s 0.0). At this smaller scale,
+`frozen_td` only reaches 0.200 on `1d_denoising_mc` -- and a *different*, smaller partial
+exception shows up instead: `notd` gets 0.200 on `1d_pcopy_mc` (0.0 there in the original
+experiment). So "which category becomes crackable, and by which variant" isn't a stable,
+scale-independent property -- it looks like it depends on exactly how much spare capacity the
+specific run has, not a clean mechanistic story tied to `frozen_td` specifically.
+
+**On token accuracy, `notd` clearly wins here -- beating both `td` and `frozen_td`, not just
+`frozen_td` like in the compositional-generalization experiments.** Mean held-out accuracy:
+`notd` 0.841, `td` 0.740, `frozen_td` 0.736. `notd` has the highest accuracy on 3/5 categories
+(`1d_denoising_mc`, `1d_move_2p`, `1d_pcopy_mc`), by a wide margin on two of them (`1d_move_2p`:
+0.939 vs. ~0.72 for the other two; `1d_pcopy_mc`: 0.933 vs. ~0.78). `frozen_td` narrowly wins the
+other 2/5 (`1d_flip`, `1d_hollow`), but by a much smaller margin, and both are close to
+three-way ties. **`td` never has the highest accuracy on any of the 5 held-out categories** --
+consistent with the original experiment's hypothesis that a *learned* one-hot embedding actively
+hurts generalization (an untrained/random column for the held-out category), whereas here even
+`frozen_td`'s advantage over `notd` largely evaporates once you look past exact match.
+
+This extends the pattern found in `arc1d_v2_compositional_generalization` and
+`arc1d_hypermodel_compositional_generalization` (`notd` beats `frozen_td` on token accuracy for
+zero-shot *compositions*) to leave-one-category-out generalization too, and sharpens it: here
+`notd` beats *both* task-identity variants, not just the frozen one. Taken together across all
+three generalization experiments, the pattern is that **no task-identity signal at all is the
+most robust choice whenever the model has to handle something outside its exact training
+configuration** -- whether that's a held-out category or a held-out composition -- even though
+`td`/`frozen_td` clearly dominate in-distribution.
+
+**Caveats**: single seed (1) only, same depth as the original experiment's per-seed analysis --
+no variance estimate. The in-distribution (non-held-out) per-category scores are uniformly at or
+near 1.0 for every variant here (not tabulated above), so this smaller architecture still solves
+the 14 in-distribution tasks essentially perfectly -- the size cut costs nothing in-distribution,
+only (mildly) on the shape of zero-shot transfer.
