@@ -78,11 +78,26 @@ def build_series(records: list[dict]) -> dict[str, dict[str, dict]]:
     return series
 
 
+# Fixed family order (Moves -> Transformations -> Denoise/Copy), matching
+# the task-example figures in the appendix (arc1d-movement-scale /
+# arc1d-object-transformations / arc1d-denoising-pcopy) so the same task
+# always sits in the same relative position across every figure in the
+# paper. Kept in sync by hand with the identically-named constant in
+# arc1d_v2_multitask/plot_per_task.py. Replaces the old
+# increasing-by-hyper_notd-score sort, which put the two figures and the
+# appendix in three different orders. The move-family divider line below
+# still uses MOVE_TASKS (5 tasks, excludes Scaling) -- that boundary marks
+# where the notd failures concentrate, a narrower and different grouping
+# from the appendix's "movement and scaling" family (6 tasks).
+TASK_ORDER = [
+    "1d_move_1p", "1d_move_2p", "1d_move_2p_dp", "1d_move_3p", "1d_move_dp", "1d_scale_dp",
+    "1d_fill", "1d_hollow", "1d_flip", "1d_mirror",
+    "1d_denoising_1c", "1d_denoising_mc", "1d_pcopy_1c", "1d_pcopy_mc",
+]
+
+
 def ordered_tasks(series: dict[str, dict[str, dict]]) -> list[str]:
-    all_tasks = sorted(series["hyper_notd"], key=lambda t: series["hyper_notd"][t]["mean"])
-    move = [t for t in all_tasks if t in MOVE_TASKS]
-    other = [t for t in all_tasks if t not in MOVE_TASKS]
-    return move + other
+    return [t for t in TASK_ORDER if t in series["hyper_notd"]]
 
 
 def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:

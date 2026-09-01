@@ -62,23 +62,18 @@ LABELS = {
 }
 CSV_FIELDS = ["condition", "dim", "task", "seed", "val_exact_match"]
 
-# Manual nudges on top of the increasing-by-td sort: keep related tasks
-# together even when their scores don't happen to land next to each other.
-# Each entry moves `task` to sit immediately after `anchor`.
-ORDER_OVERRIDES = [
-    ("1d_move_1p", "1d_move_2p"),  # Move 1 -> next to Move 2 (moves together)
-    ("1d_pcopy_mc", "1d_pcopy_1c"),  # Pattern Copy Multicolor -> next to Pattern Copy
+# Fixed family order (Moves -> Transformations -> Denoise/Copy), matching
+# the task-example figures in the appendix (arc1d-movement-scale /
+# arc1d-object-transformations / arc1d-denoising-pcopy) so the same task
+# always sits in the same relative position across every figure in the
+# paper -- replaces the old increasing-by-score sort (+ manual nudges to
+# keep related tasks adjacent), which put the two figures and the appendix
+# in three different orders.
+TASK_ORDER = [
+    "1d_move_1p", "1d_move_2p", "1d_move_2p_dp", "1d_move_3p", "1d_move_dp", "1d_scale_dp",
+    "1d_fill", "1d_hollow", "1d_flip", "1d_mirror",
+    "1d_denoising_1c", "1d_denoising_mc", "1d_pcopy_1c", "1d_pcopy_mc",
 ]
-
-
-def apply_order_overrides(tasks: list[str], overrides: list[tuple[str, str]]) -> list[str]:
-    tasks = list(tasks)
-    for task, anchor in overrides:
-        if task not in tasks or anchor not in tasks:
-            continue
-        tasks.remove(task)
-        tasks.insert(tasks.index(anchor) + 1, task)
-    return tasks
 
 
 # PAPER_FILL_COLORS is arc_paper's own precomputed lighten(..., 0.45) of
@@ -226,10 +221,7 @@ def plot(series: dict[str, dict[str, dict]], dim: str, out_path: Path) -> None:
         }
     )
 
-    # Increasing order on "Joint model with task ID" -- surfaces the
-    # failures on the left, the point of this chart.
-    tasks = sorted(series["td"], key=lambda t: series["td"][t]["mean"])
-    tasks = apply_order_overrides(tasks, ORDER_OVERRIDES)
+    tasks = [t for t in TASK_ORDER if t in series["td"]]
 
     n_tasks = len(tasks)
     conditions = ("individual", "td", "notd")
