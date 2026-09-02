@@ -88,7 +88,8 @@ per category) or whether that's scale-independent.
 
 ## Status
 
-Run and evaluated (seed 42, both arms). See Findings below.
+Run and evaluated at seed 42 and, since, at 3 seeds (1, 2, 3). See Findings below -- the 3-seed
+results supersede the seed-42-only pass.
 
 ## Findings (seed 42)
 
@@ -158,6 +159,49 @@ most like known task X"), which helps when the anchor is right and actively work
 blending two rules together when it isn't. `notd` has no such anchor, so there's less pulling it
 away from combining what the support examples actually show.
 
-**Caveats**: single seed (42) only, same as the original experiment -- no variance estimate on
-either the in-distribution or holdout numbers, and see the sign-test caveat above before treating
-the notd-vs-frozen_td gap as more than a suggestive pattern.
+**Caveats (seed-42 pass)**: single seed only, same as the original experiment -- no variance
+estimate on either the in-distribution or holdout numbers, and see the sign-test caveat above
+before treating the notd-vs-frozen_td gap as more than a suggestive pattern. **Superseded by the
+3-seed rerun below**, which shows this single-seed pass actually *understated* the effect.
+
+## Findings (3 seeds: 1, 2, 3)
+
+Per-composition exact match and token accuracy, mean across the 3 seeds (`notd`/`frozen_td`,
+`n=40` per seed per composition, 120 total per cell):
+
+| Composition | `notd` EM | `notd` Acc | `frozen_td` EM | `frozen_td` Acc | Acc diff |
+|---|---:|---:|---:|---:|---:|
+| `denoise1c_shift3` | 0.000 | 0.721 | 0.000 | 0.582 | +0.139 |
+| `denoisemc_copy` | 0.050 | 0.715 | 0.000 | 0.366 | **+0.349** |
+| `denoisemc_denoise1c` | 0.075 | 0.772 | 0.000 | 0.598 | +0.174 |
+| `denoisemc_mirror` | 0.133 | 0.833 | 0.000 | 0.325 | **+0.508** |
+| `fill_mirror` | 0.000 | 0.730 | 0.000 | 0.549 | +0.181 |
+| `fill_movedynamic` | 0.000 | 0.680 | 0.000 | 0.479 | +0.201 |
+| `fill_shift3` | 0.000 | 0.753 | 0.000 | 0.528 | +0.225 |
+| `hollow_shift3` | 0.000 | 0.855 | 0.000 | 0.751 | +0.104 |
+| `movedynamic_hollow` | 0.000 | 0.815 | 0.000 | 0.700 | +0.115 |
+| `shift3_copy` | 0.000 | 0.634 | 0.000 | 0.602 | +0.032 |
+| **mean** | **0.026** | **0.751** | **0.000** | **0.548** | **+0.203** |
+
+**With 3 seeds, `notd` beats `frozen_td` on token accuracy on all 10/10 compositions -- not the
+noisy 6/10 the single seed suggested -- and the gap is 3x bigger (+0.203 vs. +0.064).** The
+seed-42 pass wasn't wrong about direction, but it substantially undersold the effect: `frozen_td`
+turns out to be markedly less stable across seeds than the single run implied, with several
+compositions showing the same kind of wide seed-to-seed swings seen in `arc1d_v2_generalization`
+(e.g. `denoisemc_mirror`: `frozen_td` accuracy is 0.440, 0.513, then collapses to 0.023 on seed 3
+-- `notd` stays tight at 0.846/0.823/0.831 on the same composition). `notd` also picks up real,
+repeatable partial exact-match credit on 3 categories now (`denoisemc_mirror`: 13.3% mean, hit in
+all 3 seeds; `denoisemc_copy` and `denoisemc_denoise1c`: smaller but nonzero and multi-seed too)
+-- not a one-off. `frozen_td` stays at a clean 0.0 exact match everywhere, every seed, every
+composition.
+
+This closes the loop on the question that motivated the rerun: is the compositional-generalization
+`notd` advantage as robust as the category-generalization one (`arc1d_v2_generalization`, `notd`
+wins 5/5 categories, +0.122)? **Yes -- more so, in fact.** Once both experiments are run at 3
+seeds, `notd`'s token-accuracy advantage over `frozen_td` on out-of-training-configuration
+examples is a clean sweep in both regimes, and the compositional gap (+0.203) is now the *larger*
+of the two.
+
+**Caveats (3-seed pass)**: 3 seeds is still fewer than the 5 used in some published compositional-
+generalization tables; the qualitative pattern (clean sweep, large frozen_td variance) looks
+settled, but exact effect sizes could still move somewhat with more seeds.
