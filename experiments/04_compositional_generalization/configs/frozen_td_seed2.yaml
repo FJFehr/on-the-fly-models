@@ -1,0 +1,6 @@
+_base_: experiments/04_compositional_generalization/configs/base.yaml
+experiment_name: v2_compositional_generalization_14task_frozen_td_seed2
+seed: 2
+hyper_head:
+  num_tasks: 28
+  freeze_task_indicator: true

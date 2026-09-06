@@ -15,7 +15,7 @@ from visualisation.arc_paper import render_task_figure_paper
 from visualisation.plot_tasks import filter_tasks, is_task_dataset, load_task_data, select_dataset
 from visualisation.style import apply_latex_style
 
-# Matches configs/experiments/arc1d_v2_multitask/plot_per_task.py's font
+# Matches experiments/01_multitask_capacity/plot_per_task.py's font
 # override, so task-example figures and per-task result figures set the same
 # type in the paper.
 PAPER_RC_PARAMS = {
@@ -24,7 +24,7 @@ PAPER_RC_PARAMS = {
     "pdf.fonttype": 42,  # embed as TrueType, not the default Type 3
 }
 
-# The multitask experiment (configs/experiments/arc1d_v2_multitask) only
+# The multitask experiment (experiments/01_multitask_capacity) only
 # trains/evaluates on these 14 categories -- 1d_padded_fill and the three
 # 1d_recolor_* variants exist in data/arc_1d but aren't part of that story,
 # so --first-per-category skips them rather than rendering paper figures
@@ -35,16 +35,41 @@ PAPER_TASK_CATEGORIES = {
     "1d_move_dp", "1d_pcopy_1c", "1d_pcopy_mc", "1d_scale_dp",
 }
 
+# The 10 chained-skill categories built by data_modules/arc1d_compositional.py
+# and saved as data/arc_1d_compositional_holdout's only split, holdout_test
+# (experiments/04_compositional_generalization). Each name maps
+# to a display title with a "$\circ$" composition mark (visualisation/style.py's
+# TASK_CATEGORY_DISPLAY_NAMES), which render_task_figure_paper renders via the
+# multi-artist path in visualisation/arc_paper.py -- no special-casing needed
+# here beyond pointing at the right dataset/split and category set.
+COMPOSITIONAL_DATA_DIR = "data/arc_1d_compositional_holdout"
+COMPOSITIONAL_SPLIT = "holdout_test"
+COMPOSITIONAL_TASK_CATEGORIES = {
+    "1d_comp_denoise1c_shift3", "1d_comp_denoisemc_copy", "1d_comp_denoisemc_denoise1c",
+    "1d_comp_denoisemc_mirror", "1d_comp_fill_mirror", "1d_comp_fill_movedynamic",
+    "1d_comp_fill_shift3", "1d_comp_hollow_shift3", "1d_comp_movedynamic_hollow",
+    "1d_comp_shift3_copy",
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", default="data/arc_1d")
     parser.add_argument("--split", default="train")
-    parser.add_argument("--output-dir", type=Path, default=Path("data/paper_task_visualisations"))
+    parser.add_argument("--output-dir", type=Path, default=Path("outputs/figures/00_task_examples"))
     parser.add_argument("--task-category", default=None)
     parser.add_argument("--task-id", type=int, default=None)
     parser.add_argument("--max-tasks", type=int, default=None)
     parser.add_argument("--first-per-category", action="store_true")
+    parser.add_argument(
+        "--compositional",
+        action="store_true",
+        help=(
+            "Render the 10 compositional-generalisation categories instead of the "
+            f"14 base ones, from {COMPOSITIONAL_DATA_DIR} (split {COMPOSITIONAL_SPLIT}). "
+            "Overrides --data-dir/--split."
+        ),
+    )
     parser.add_argument(
         "--num-support",
         type=int,
@@ -85,8 +110,10 @@ def main() -> None:
     # back to the literal figsize.
     plt.rcParams["savefig.bbox"] = None
     args = parse_args()
-    data: Dataset | DatasetDict = load_task_data(args.data_dir)
-    ds = select_dataset(data, args.split)
+    data_dir = COMPOSITIONAL_DATA_DIR if args.compositional else args.data_dir
+    split = COMPOSITIONAL_SPLIT if args.compositional else args.split
+    data: Dataset | DatasetDict = load_task_data(data_dir)
+    ds = select_dataset(data, split)
 
     if not is_task_dataset(ds):
         msg = "This script expects the task-level dataset produced by build_arc_1d.py."
@@ -101,9 +128,10 @@ def main() -> None:
     )
     # An explicit --task-category always renders whatever was asked for;
     # only the "give me one of everything" mode restricts to the categories
-    # the paper actually uses.
+    # the paper actually uses (base 14, or the 10 compositional ones).
     if args.task_category is None:
-        selected_tasks = [t for t in selected_tasks if t["task_category"] in PAPER_TASK_CATEGORIES]
+        allowed = COMPOSITIONAL_TASK_CATEGORIES if args.compositional else PAPER_TASK_CATEGORIES
+        selected_tasks = [t for t in selected_tasks if t["task_category"] in allowed]
     if not selected_tasks:
         msg = "No tasks matched the requested filters."
         raise ValueError(msg)

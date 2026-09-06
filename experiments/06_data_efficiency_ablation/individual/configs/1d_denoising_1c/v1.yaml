@@ -1,0 +1,7 @@
+_base_: experiments/06_data_efficiency_ablation/individual/configs/base.yaml
+experiment_name: lowdata_baseline_1d_denoising_1c_v1
+task_categories:
+- 1d_denoising_1c
+val_task_categories:
+- 1d_denoising_1c
+variants_per_base_task: 1

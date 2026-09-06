@@ -1,0 +1,13 @@
+_base_: legacy/configs/experiments/arc1d_capacity_augmented_large/base_augmented_large.yaml
+experiment_name: aug_large_1d_pcopy_1c_cnn
+task_categories:
+  - 1d_pcopy_1c
+backbone_model:
+  name: cnn
+  params:
+    hidden_dim: 76
+    num_layers: 4
+    kernel_size: 5
+    activation: silu
+    dropout: 0.1
+    use_residual: true

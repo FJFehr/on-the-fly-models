@@ -3,7 +3,7 @@ DatasetDict, mirroring scripts/build_arc_1d.py's CLI conventions.
 
 Unlike build_arc_1d.py, there's no external benchmark to download here -- the data comes from
 data_modules/arc1d_compositional.py's generators (see that module's docstring, and
-configs/experiments/arc1d_hypermodel_compositional_generalization/README.md, for why this
+legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/README.md, for why this
 generator exists and what real-benchmark conventions it matches). The output is a single
 `holdout_test` split, since this dataset is purely a zero-shot generalisation eval set --
 these 10 categories are never trained on.

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 import lightning as pl
+import numpy as np
 import torch
 from lightning.pytorch.loggers import WandbLogger
 
@@ -671,6 +672,21 @@ def log_embedding_cluster_plots(
     if not records:
         return
 
+    cluster_dir = os.path.join(output_path, "embedding_clusters")
+    os.makedirs(cluster_dir, exist_ok=True)
+
+    # Dump the raw (reference-only, no holdout) vectors alongside the figure -- this run's own
+    # embeddings.npz, saved naturally as part of the run that computed them, no separate
+    # checkpoint-reload step needed. Same schema scripts/dump_embedding_clusters.py (the
+    # now-legacy path, still useful for a run that predates this) produces, so every consumer
+    # (visualisation.plot_embedding_clusters et al.) reads either the same way.
+    np.savez_compressed(
+        os.path.join(cluster_dir, "embeddings.npz"),
+        vectors=torch.stack([record["pooled_embedding"] for record in records]).numpy(),
+        task_categories=np.array([record["task_category"] for record in records]),
+        task_ids=np.array([record["task_id"] for record in records]),
+    )
+
     groups: list[str] | None = None
     if holdout_dataloader is not None:
         holdout_records = model.collect_embedding_records_from_dataloader(holdout_dataloader)
@@ -679,9 +695,6 @@ def log_embedding_cluster_plots(
 
     vectors = torch.stack([record["pooled_embedding"] for record in records]).numpy()
     task_categories = [record["task_category"] for record in records]
-
-    cluster_dir = os.path.join(output_path, "embedding_clusters")
-    os.makedirs(cluster_dir, exist_ok=True)
 
     title = "Pooled task latent (validation)"
     filename = "pooled_task_latent.png"

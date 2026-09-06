@@ -1,0 +1,28 @@
+_base_: legacy/configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
+# Overfit sanity check: train and validate on the same single batch.
+# Stops as soon as val_query_exact_match = 1.0 (train and val are the same split).
+experiment_name: ablation_overfit_A_transformer
+task_categories:
+  - 1d_denoising_1c
+  - 1d_scale_dp
+  - 1d_fill
+val_split: train
+model: direct_supervised
+gradient_clip_val: 1.0
+overfit_single_batch: true
+stop_on_perfect_val_exact_match: true
+batch_size: 1
+max_steps: 2000
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: 2000
+    eta_min: 0.0001
+backbone_model:
+  name: transformer
+  params:
+    hidden_dim: 20
+    num_layers: 1
+    num_heads: 4
+    dropout: 0.1
+    activation: silu

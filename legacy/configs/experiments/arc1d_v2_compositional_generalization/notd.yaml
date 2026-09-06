@@ -1,0 +1,9 @@
+# No task-identity signal at all. Included alongside frozen_td for parity with
+# arc1d_v2_hypernetwork_multitask's own notd/frozen_td comparison -- notd is one of the two
+# conditions evaluated on the held-out compositional set (see README.md).
+_base_: legacy/configs/experiments/arc1d_v2_compositional_generalization/base.yaml
+experiment_name: v2_compositional_generalization_notd
+
+hyper_head:
+  num_tasks: null
+  freeze_task_indicator: false

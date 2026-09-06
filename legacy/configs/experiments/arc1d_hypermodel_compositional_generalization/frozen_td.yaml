@@ -1,0 +1,18 @@
+# Frozen (untrained, random-init) task-identity descriptor. num_tasks=28, not the usual 18
+# (models/hypermodel_lightning.py's TASK_CATEGORY_INDEX size) -- reserves 10 extra indices
+# (18..27) for the held-out compositional categories, assigned by
+# scripts/eval_compositional_holdout.py at eval time. Indices 18-27 are never sampled during
+# this training run (only the 15 in-distribution categories in task_categories/
+# val_task_categories are), so this is safe: the frozen projection matrix's extra rows are
+# simply additional random-but-fixed directions the model never had a reason to rely on,
+# exactly like the 15 in-distribution rows it also never learns (freeze_task_indicator: true
+# keeps the whole projection at its random init throughout training). This is the design
+# decision from the compositional-generalization plan: only notd and frozen_td are evaluated
+# zero-shot on the held-out set, since frozen_td's untrained projection is well-defined for an
+# index it never saw, unlike a learned (td) one-hot embedding. See README.md.
+_base_: legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/base.yaml
+experiment_name: looped_hyper_rope_canon_compositional_generalization_frozentd
+
+hyper_head:
+  num_tasks: 28
+  freeze_task_indicator: true

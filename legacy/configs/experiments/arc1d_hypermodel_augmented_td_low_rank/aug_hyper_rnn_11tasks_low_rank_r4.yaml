@@ -1,0 +1,50 @@
+_base_: legacy/configs/experiments/arc1d_hypermodel_augmented_td_low_rank/base.yaml
+experiment_name: aug_hyper_rnn_11tasks_low_rank_r4
+hyper_head:
+  num_tasks: 18
+  low_rank_output: true
+  low_rank_rank: 4
+
+batch_size: 512
+learning_rate: 0.001
+max_steps: 5000
+
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  # - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  # - 1d_move_2p
+  - 1d_move_2p_dp
+  # - 1d_move_3p
+  - 1d_move_dp
+  # - 1d_padded_fill
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  # - 1d_recolor_cmp
+  # - 1d_recolor_cnt
+  # - 1d_recolor_oe
+  - 1d_scale_dp
+task_ids: null
+val_task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  # - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  # - 1d_move_2p
+  - 1d_move_2p_dp
+  # - 1d_move_3p
+  - 1d_move_dp
+  # - 1d_padded_fill
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  # - 1d_recolor_cmp
+  # - 1d_recolor_cnt
+  # - 1d_recolor_oe
+  - 1d_scale_dp

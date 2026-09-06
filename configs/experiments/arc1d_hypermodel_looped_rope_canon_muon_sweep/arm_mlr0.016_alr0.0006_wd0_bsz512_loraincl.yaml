@@ -1,7 +1,0 @@
-_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_muon_sweep/base.yaml
-experiment_name: arm_mlr0.016_alr0.0006_wd0_bsz512_loraincl
-muon_lr: 0.016
-learning_rate: 0.0006
-weight_decay: 0.0
-batch_size: 512
-muon_exclude_lora_heads: false

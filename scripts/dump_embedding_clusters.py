@@ -1,20 +1,24 @@
 """Dump the pooled task-latent embeddings from a trained checkpoint to disk.
 
+**Superseded for new runs**: `training.logging.log_embedding_cluster_plots`
+now saves this same .npz itself, as a natural end-of-run artifact, at
+`outputs/<project>/<run>/embedding_clusters/embeddings.npz` -- no
+`save_checkpoints`, no separate dump step. This script is now only for
+*existing* runs from before that change, where the .npz doesn't already
+exist and a checkpoint is the only way back to it.
+
 Loads a trained hypernetwork checkpoint and runs the same
 `collect_embedding_records_from_dataloader` pass that
-`training.logging.log_embedding_cluster_plots` uses internally to build its
-end-of-run cluster-map PNG -- except here the raw vectors are saved to a
-.npz instead of (only) being rendered into a figure. Once dumped, cluster
-maps can be re-plotted in any style, split any way, as many times as
-needed, without retraining or even reloading the checkpoint again -- pair
-two dumps with visualisation/plot_embedding_clusters.py, the default tool
-for this (see its docstring), for the usual "compare two runs" figure.
+`training.logging.log_embedding_cluster_plots` uses internally, except here
+the raw vectors are saved to a .npz on their own. Pair two dumps with
+visualisation/plot_embedding_clusters.py, the default tool for this (see
+its docstring), for the usual "compare two runs" figure.
 
 Requires `save_checkpoints: true` for the run being loaded (the default in
-most of this repo's configs is false -- see the leaf config actually used,
-e.g. configs/experiments/arc1d_v2_hypernetwork_multitask/dim6_notd.yaml via
-its base.yaml, was rerun with `save_checkpoints=true` specifically to make
-this possible).
+most of this repo's configs is false) -- if you're setting up a new run
+just to get its embeddings, prefer enabling `log_embedding_clusters: true`
+and reading the run's own `embedding_clusters/embeddings.npz` afterwards
+instead of reaching for this script.
 
 Usage
 -----
@@ -23,9 +27,9 @@ that leaves the repo root off sys.path and data_modules/models fail to
 import; same pre-existing quirk affects scripts/eval_compositional_holdout.py):
 
     uv run python -m scripts.dump_embedding_clusters \\
-        --config configs/experiments/arc1d_v2_hypernetwork_multitask/dim6_notd.yaml \\
+        --config experiments/02_hypernetwork_multitask/configs/dim6_notd.yaml \\
         --experiment-name v2_hyper_multitask_dim6_notd_ckpt_seed1 \\
-        --out configs/experiments/arc1d_v2_hypernetwork_multitask/embeddings_dim6_notd.npz
+        --out outputs/results/02_hypernetwork_multitask/embeddings_dim6_notd.npz
 """
 
 import argparse

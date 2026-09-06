@@ -1,0 +1,10 @@
+_base_: legacy/configs/experiments/arc1d_capacity_small/base_small.yaml
+experiment_name: var_mc_small_1d_flip_rnn
+task_categories:
+  - 1d_flip
+backbone_model:
+  name: rnn
+  params:
+    hidden_dim: 32
+    num_layers: 1
+    bidirectional: true

@@ -9,7 +9,7 @@ The detail behind every line here lives in the three companion documents:
 - [`02_architecture.md`](02_architecture.md) - the converged model
   architecture(s), including two unresolved inconsistencies
 - [`03_experiments.md`](03_experiments.md) - the full experiment catalog,
-  one entry per `configs/experiments/` directory, with real hyperparameters
+  one entry per `legacy/configs/experiments/` directory, with real hyperparameters
   and numbers pulled from source files and wandb
 
 This round produced no new training runs. Every number below is either from
@@ -28,7 +28,7 @@ and the honest picture is genuinely partial success, reported as such.
 
 ## 1. Smallest model that solves individual tasks
 
-**Status: Provisional.** `configs/experiments/arc1d_uniform_ablation` is the
+**Status: Provisional.** `legacy/configs/experiments/arc1d_uniform_ablation` is the
 ancestor of every target-model architecture in this story. It ran a
 7-step ablation (T1-T7) plus a 6-cell loop-count diagnostic (L1-L6), at two
 widths, 17 tasks x 5 seeds, and the story is a genuine progression, not a

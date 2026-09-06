@@ -1,0 +1,12 @@
+_base_: legacy/configs/experiments/arc1d_capacity_augmented_small/base_augmented_small.yaml
+experiment_name: aug_small_1d_move_2p_dp_transformer
+task_categories:
+  - 1d_move_2p_dp
+backbone_model:
+  name: transformer
+  params:
+    hidden_dim: 20
+    num_layers: 1
+    num_heads: 4
+    dropout: 0.1
+    activation: silu

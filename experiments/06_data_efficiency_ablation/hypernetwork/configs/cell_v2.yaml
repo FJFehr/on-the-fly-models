@@ -1,0 +1,3 @@
+_base_: experiments/06_data_efficiency_ablation/hypernetwork/configs/base.yaml
+experiment_name: lowdata_v2
+variants_per_base_task: 2

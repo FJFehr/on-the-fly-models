@@ -1,0 +1,7 @@
+_base_: experiments/06_data_efficiency_ablation/individual/configs/base.yaml
+experiment_name: lowdata_baseline_1d_mirror_v3
+task_categories:
+- 1d_mirror
+val_task_categories:
+- 1d_mirror
+variants_per_base_task: 3

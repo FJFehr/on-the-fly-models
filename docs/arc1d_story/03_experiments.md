@@ -2,7 +2,7 @@
 
 This is a full experiment catalog for the ARC-1D hypernetwork research line, feeding a paper
 write-up. Every number below is pulled from the experiment's own `README.md` and YAML configs
-under `configs/experiments/<dir>/`, or (where noted explicitly) from wandb where it is more
+under `legacy/configs/experiments/<dir>/`, or (where noted explicitly) from wandb where it is more
 complete than the local `outputs/<experiment>/*/results.txt` files. Status is checked directly
 against `outputs/<experiment_name>/*/results.txt` on disk. A separate document independently
 checks cross-experiment consistency of architecture choices, so this document reports each
@@ -14,8 +14,8 @@ experiment's settings as its own config states them without reconciling them aga
 
 ### arc1d_uniform_ablation
 
-- **Directory**: `configs/experiments/arc1d_uniform_ablation/`
-- **README**: `configs/experiments/arc1d_uniform_ablation/README.md`
+- **Directory**: `legacy/configs/experiments/arc1d_uniform_ablation/`
+- **README**: `legacy/configs/experiments/arc1d_uniform_ablation/README.md`
 
 **Question.** Does a clean, parameter-matched, uniform-width looped Canon+RoPE transformer
 beat the earlier "sandwich" (narrow-outer/wide-inner) architecture and a non-looped baseline,
@@ -29,7 +29,7 @@ the hypernetwork target model (`RoPECanonLoopedTransformer`) is drawn from.
 `1d_recolor_oe`, `1d_scale_dp`.
 
 **Data.** `data/arc_1d_looped_augmented` (per-pair augmentation, ~1000 variants/base task; see
-`configs/experiments/arc1d_recursion_ablation/base_ablation.yaml`, which
+`legacy/configs/experiments/arc1d_recursion_ablation/base_ablation.yaml`, which
 `arc1d_uniform_ablation`'s configs inherit via `_base_`).
 
 **Architecture.** Two widths, dim=16 (2 heads) and dim=32 (4 heads), head_dim=8 convention.
@@ -39,7 +39,7 @@ with the RoPE-looped family at `n_loops=1`). T4-T7 and L1-L6 use
 canon_residual=True, canon_causal=False`) from T3 onward; RoPE from T4 onward. No hypernetwork
 in this project - every model is trained directly. No LoRA (not applicable).
 
-**Training recipe** (`configs/experiments/arc1d_recursion_ablation/base_ablation.yaml` +
+**Training recipe** (`legacy/configs/experiments/arc1d_recursion_ablation/base_ablation.yaml` +
 `scripts/gen_uniform_ablation_configs.py`): optimizer **RAdam**, `learning_rate=0.0005`
 (overridden from the base file's 0.001) throughout, `weight_decay=0.01`, `batch_size=256`,
 `warmup_steps=200`. `N_supervision=1` for T1 (`direct_supervised`, `gradient_clip_val=1.0`,
@@ -123,8 +123,8 @@ runs/cell, std omitted, see `scripts/plot_loop_diagnostics.py`):
 
 ### arc1d_hypermodel_looped
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped/`
-- **README**: `configs/experiments/arc1d_hypermodel_looped/README.md`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped/`
+- **README**: `legacy/configs/experiments/arc1d_hypermodel_looped/README.md`
 
 **Question.** Can a hypernetwork generate the weights of `RoPECanonLoopedTransformer` (the
 smallest looped backbone from `arc1d_uniform_ablation`'s L1 result) per task, one target model
@@ -146,7 +146,7 @@ block/loop skip. Model size (fixed regardless of `n_loops`): hypernetwork encode
 1,736,784 trainable params, target 11,920 params (11,760 backbone + 160 output head) -
 **1,748,704 total**.
 
-**Training recipe** (`configs/experiments/arc1d_hypermodel_looped/base_hypermodel_looped.yaml`):
+**Training recipe** (`legacy/configs/experiments/arc1d_hypermodel_looped/base_hypermodel_looped.yaml`):
 optimizer **RAdam**, `learning_rate=0.001`, `weight_decay=0.01`, `batch_size=512`,
 `N_supervision=2`, `max_steps=1000` (→ 2000 total optimizer updates), `warmup_steps=100`,
 no `gradient_clip_val` set. **3 seeds** (51 jobs = 17 tasks x 3 seeds).
@@ -176,8 +176,8 @@ directly motivating the follow-up sweep below.
 
 ### arc1d_hypermodel_looped_recolor
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_recolor/`
-- **README**: `configs/experiments/arc1d_hypermodel_looped_recolor/README.md`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_recolor/`
+- **README**: `legacy/configs/experiments/arc1d_hypermodel_looped_recolor/README.md`
 
 **Question.** For the four tasks that didn't reach ~100% in phase 1 (`1d_flip`,
 `1d_recolor_cmp/cnt/oe`), does more hypernetwork capacity (deeper internal loops, more external
@@ -227,8 +227,8 @@ optimizer updates). **1 seed** per cell (single seed, per README).
 
 ### arc1d_hypermodel_looped_mix11
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_mix11/`
-- **README**: `configs/experiments/arc1d_hypermodel_looped_mix11/README.md`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_mix11/`
+- **README**: `legacy/configs/experiments/arc1d_hypermodel_looped_mix11/README.md`
 
 **Question.** First multi-task hypernetwork experiment: can one hypernetwork be trained across
 11 task categories simultaneously (not per-task), with a one-hot task descriptor to disambiguate,
@@ -282,7 +282,7 @@ fixed default. All experiments in this chain target `rope_canon_looped_transform
 
 ### arc1d_hypermodel_looped_hypernet_rope_canon_ablation
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_hypernet_rope_canon_ablation/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_hypernet_rope_canon_ablation/`
 - **README**: same directory, `README.md`
 
 **Question.** Which architectural change to the hypernetwork **encoder** (not the fixed target)
@@ -320,7 +320,7 @@ uses ReLU, arms 2-4 (`CanonMLP`) hardcode GELU, so it isn't a pure RoPE/Canon-pr
 
 ### arc1d_hypermodel_looped_lora_adapter
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_lora_adapter/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_lora_adapter/`
 - **README**: same directory, `README.md`
 
 **Question.** Does a random-backbone + generated-LoRA-adapter weight-generation mode beat full
@@ -354,7 +354,7 @@ pretrained. The trainable/shared-backbone variant
 
 ### arc1d_hypermodel_looped_rope_canon_followup
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_followup/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_followup/`
 - **README**: same directory, `README.md`
 
 **Question.** With encoder fixed to RoPE+Canon (the combined arm from the prior ablation), does
@@ -399,7 +399,7 @@ Rank 8 is the clear winner, well above default rank 1 on both val and test; pool
 
 ### arc1d_hypermodel_looped_rope_canon_mechanism_ablation
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_mechanism_ablation/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_mechanism_ablation/`
 - **README**: same directory, `README.md`
 
 **Question.** `rank_sweep`'s rank=8 result was lower than `followup`'s, with two confounded
@@ -455,7 +455,7 @@ postdates the 2026-07-13 fix. No disk-wipe note.
 
 ### arc1d_hypermodel_looped_rope_canon_rank_sweep
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_rank_sweep/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_rank_sweep/`
 - **README**: same directory, `README.md`
 
 **Question.** Where between rank 1 and rank 8 does task-unlocking actually happen, and does
@@ -500,7 +500,7 @@ every arm - treat the above means as lower-n than the README's stated design.
 
 ### arc1d_hypermodel_looped_rope_canon_grid
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_grid/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_grid/`
 - **README**: same directory, `README.md`
 
 **Question.** Full `num_layers x gradient_clip_val` grid, crossed with task-descriptor
@@ -548,7 +548,7 @@ Best single cell: `layers=8, clip=10, td` (test mean 0.871). At `clip=10` with t
 
 ### arc1d_hypermodel_looped_rope_canon_capacity_baseline
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_capacity_baseline/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_capacity_baseline/`
 - **README**: same directory, `README.md`
 
 **Question.** Acting on the grid's finding (fix `clip=10`, drop the two structurally-dead
@@ -602,7 +602,7 @@ would be meaningless.
 
 ### arc1d_hypermodel_looped_rope_canon_optimizer
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_optimizer/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_optimizer/`
 - **README**: same directory, `README.md`
 
 **Question.** Does AdamW at a lower LR close more of the notd/td gap than the settings already
@@ -634,7 +634,7 @@ chain.
 
 ### arc1d_hypermodel_looped_rope_canon_zhu_block
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_zhu_block/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_zhu_block/`
 - **README**: same directory, `README.md`
 
 **Question.** Do three architecture tricks from the Canon-layers research lineage (RMSNorm,
@@ -680,7 +680,7 @@ interaction effect worth following up (as the README itself anticipates) - pursu
 
 ### arc1d_hypermodel_looped_rope_canon_lr_sweep
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_lr_sweep/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_lr_sweep/`
 - **README**: same directory, `README.md`
 
 **Question.** How low should the LR go under AdamW (established as the new default via
@@ -735,7 +735,7 @@ uniformly.
 
 ### arc1d_hypermodel_looped_rope_canon_muon
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/`
 - **README**: same directory, `README.md`
 
 **Question.** Does the Muon optimizer (Keller Jordan) have any value for this model, crossed
@@ -791,7 +791,7 @@ train on a diverged run - this is what caught the original `muon_lr=0.02` NaN di
 
 ### arc1d_hypermodel_looped_rope_canon_muon_sweep
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_muon_sweep/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_muon_sweep/`
 - **README**: same directory, `README.md`
 
 **Question.** Is there a better `muon_lr`/aux-`learning_rate`/`weight_decay`/`batch_size`
@@ -826,7 +826,7 @@ in retrospect (see next entry).
 
 ### arc1d_hypermodel_looped_rope_canon_muon_moveablation
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_muon_moveablation/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_muon_moveablation/`
 - **README**: same directory, `README.md`
 
 **Question.** Follow-up to the (cancelled) 216-cell sweep, locking in its two clearest findings
@@ -873,8 +873,8 @@ per run rather than seeing more raw data (vs. ~3.4x at the prior sweep's `bsz=51
 
 ### arc1d_hypermodel_disentanglement
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_disentanglement/`
-- **README**: `configs/experiments/arc1d_hypermodel_disentanglement/README.md`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_disentanglement/`
+- **README**: `legacy/configs/experiments/arc1d_hypermodel_disentanglement/README.md`
 
 **Question.** Can a hypermodel represent multiple distinct tasks simultaneously without
 conflating them through a shared bottleneck - and if not, is that a task-similarity problem or an
@@ -929,7 +929,7 @@ looped-hypernetwork line entirely. No disk-wipe note.
 
 ### arc1d_hypermodel_looped_rope_canon_vae_disentanglement
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement/`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement/`
 - **README**: same directory, `README.md`
 
 This experiment explored whether a beta-VAE bottleneck on the hypernetwork's pooled task
@@ -940,10 +940,10 @@ constant-beta sweep, a scaled/tuned-beta sweep, and a full-training KL-anneal sw
 direction, only the plain baseline reference numbers it starts from are extracted below.
 
 **Baseline reference numbers** (quoted verbatim from
-`configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement/README.md`, lines
+`legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement/README.md`, lines
 5-12, where the README states they come from **`arc1d_hypermodel_looped_rope_canon_muon_diag`'s
 notd/td/frozentd comparison** - seed=1, Muon, `lora_adapter_rank=4`, `max_steps=2000`, 15 tasks;
-note `muon_diag` has no corresponding `configs/experiments/` directory of its own, it is an
+note `muon_diag` has no corresponding `legacy/configs/experiments/` directory of its own, it is an
 earlier informal diagnostic run referenced only from this README):
 
 | Arm | Linear-probe accuracy | `val_query_exact_match` |
@@ -977,8 +977,8 @@ descriptor matters substantially for in-distribution multitask accuracy.
 
 ### arc1d_hypermodel_compositional_generalization
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_compositional_generalization/`
-- **README**: `configs/experiments/arc1d_hypermodel_compositional_generalization/README.md`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/`
+- **README**: `legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/README.md`
 
 **Question.** Having learned "denoise" and "shift" (etc.) as separate rules on 15 in-distribution
 categories, can the hypernetwork solve a never-seen task built by chaining two of those rules
@@ -1058,8 +1058,8 @@ fix. No disk-wipe note in this particular README.
 
 ### arc1d_hypermodel_looped_rope_canon_generalization
 
-- **Directory**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_generalization/`
-- **README**: `configs/experiments/arc1d_hypermodel_looped_rope_canon_generalization/README.md`
+- **Directory**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_generalization/`
+- **README**: `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_generalization/README.md`
 
 **Question.** Can the hypernetwork generalize to a task category it has never seen during
 training, inferring the task purely from 3-shot support examples at inference time - and does the
@@ -1149,8 +1149,8 @@ table could not show.
 
 ### arc1d_lowdata
 
-- **Directory**: `configs/experiments/arc1d_lowdata/`
-- **README**: `configs/experiments/arc1d_lowdata/README.md`
+- **Directory**: `experiments/06_data_efficiency_ablation/hypernetwork/`
+- **README**: `experiments/06_data_efficiency_ablation/hypernetwork/README.md`
 
 **Question.** Phase 1 of a 3-phase data-efficiency study. Does the hypernetwork need less
 training data per task than a model with no cross-task transfer, because it shares one backbone
@@ -1205,8 +1205,8 @@ Phase 2 (a no-hypernetwork per-task baseline - later built as `arc1d_lowdata_bas
 
 ### arc1d_lowdata_lowrank
 
-- **Directory**: `configs/experiments/arc1d_lowdata_lowrank/`
-- **README**: `configs/experiments/arc1d_lowdata_lowrank/README.md`
+- **Directory**: `experiments/06_data_efficiency_ablation/hypernetwork_lowrank/`
+- **README**: `experiments/06_data_efficiency_ablation/hypernetwork_lowrank/README.md`
 
 **Question.** Follow-on from `arc1d_lowdata`, which found `variants_per_base_task=2` already
 reaches full performance at the default LoRA rank=8. Does that conclusion hold at lower rank, and
@@ -1245,8 +1245,8 @@ regularizer at these data levels, consistent with r4 already being "enough."
 
 ### arc1d_lowdata_baseline
 
-- **Directory**: `configs/experiments/arc1d_lowdata_baseline/`
-- **README**: `configs/experiments/arc1d_lowdata_baseline/README.md`
+- **Directory**: `experiments/06_data_efficiency_ablation/individual/`
+- **README**: `experiments/06_data_efficiency_ablation/individual/README.md`
 
 **Question - the critical comparison experiment.** Companion to `arc1d_lowdata`, without the
 hypernetwork: does the hypernetwork's data efficiency come specifically from cross-task transfer,
@@ -1260,7 +1260,7 @@ extra categories there are excluded here too), one config per category, trained 
 **Data.** `data/arc_1d_looped_augmented`, same `data_seed=42` as `arc1d_lowdata` - **the two
 experiments train on identical underlying task-variant rows at a given level, not just a matched
 count.** `variants_per_base_task ∈ {1, 2, 3}` (README states this "≈40/80/120 examples/category,"
-confirmed by `configs/experiments/arc1d_lowdata_baseline/README.md`, "Levels this round" section
+confirmed by `experiments/06_data_efficiency_ablation/individual/README.md`, "Levels this round" section
 - matching `arc1d_lowdata`'s `cell_v1`/`cell_v2`/`cell_v3` exactly). Levels 4/5/20 are out of
 scope for this experiment.
 

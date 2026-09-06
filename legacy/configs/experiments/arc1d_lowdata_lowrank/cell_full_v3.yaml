@@ -1,0 +1,5 @@
+_base_: legacy/configs/experiments/arc1d_lowdata_lowrank/base.yaml
+experiment_name: lowdata_lowrank_full_v3
+variants_per_base_task: 3
+hyper_head:
+  lora_adapter: false

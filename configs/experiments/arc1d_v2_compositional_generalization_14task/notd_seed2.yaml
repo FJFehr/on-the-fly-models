@@ -1,6 +1,0 @@
-_base_: configs/experiments/arc1d_v2_compositional_generalization_14task/base.yaml
-experiment_name: v2_compositional_generalization_14task_notd_seed2
-seed: 2
-hyper_head:
-  num_tasks: null
-  freeze_task_indicator: false

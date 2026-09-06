@@ -1,3 +1,0 @@
-_base_: configs/experiments/arc1d_lowdata/base.yaml
-experiment_name: lowdata_v4
-variants_per_base_task: 4

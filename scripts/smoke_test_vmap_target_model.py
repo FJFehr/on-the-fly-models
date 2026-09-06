@@ -57,7 +57,7 @@ from torch.func import functional_call
 from models.rope_looped_transformer import RoPECanonLoopedTransformer
 
 # Exact target_model.params block from
-# configs/experiments/arc1d_hypermodel_looped_lora_adapter/base_n2_loop4_noskip.yaml --
+# legacy/configs/experiments/arc1d_hypermodel_looped_lora_adapter/base_n2_loop4_noskip.yaml --
 # the target model fixed across the hypernet_rope_canon_ablation experiment too.
 TARGET_MODEL_KWARGS = dict(
     input_dim=16,

@@ -1,7 +1,0 @@
-_base_: configs/experiments/arc1d_v2_minimal_data/base.yaml
-experiment_name: v2_minimal_data_1d_move_2p_dp_v300
-task_categories:
-- 1d_move_2p_dp
-val_task_categories:
-- 1d_move_2p_dp
-variants_per_base_task: 300

@@ -1,0 +1,23 @@
+_base_: legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_grid/base.yaml
+experiment_name: looped_hyper_rope_canon_grid_l2_clip10_notd
+gradient_clip_val: 10.0
+hyper_model:
+  name: rope_canon_transformer
+  params:
+    hidden_dim: 64
+    num_heads: 4
+    output_dim: 64
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    block_size: 2048
+    num_layers: 2
+hyper_head:
+  pooling: attention
+  bottleneck_dim: 128
+  num_tasks: null
+  lora_adapter: true
+  lora_adapter_rank: 8
+  lora_adapter_zero_backbone: false

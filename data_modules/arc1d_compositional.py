@@ -6,7 +6,7 @@ of chaining two rules together. This module builds new synthetic instances that 
 composite category applies a "stage 1" rule (constructs a fresh random object, plus whatever
 corruption/markers its own single-task rule needs) followed by a "stage 2" rule (further
 transforms, corrupts, hollows, or duplicates that object) to produce the final input/output
-pair. See configs/experiments/arc1d_hypermodel_compositional_generalization/README.md for the
+pair. See legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/README.md for the
 combo-selection rationale (why these 10, why this order, why others were excluded).
 
 Every task record uses the same schema as `scripts/build_arc_1d.py`'s output: task_category,

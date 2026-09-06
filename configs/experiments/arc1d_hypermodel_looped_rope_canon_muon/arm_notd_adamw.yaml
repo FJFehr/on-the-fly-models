@@ -1,8 +1,0 @@
-_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/base.yaml
-experiment_name: looped_hyper_rope_canon_muon_notd_adamw
-
-optimizer: AdamW
-
-hyper_head:
-  num_tasks: null
-  freeze_task_indicator: false

@@ -1,2 +1,0 @@
-_base_: configs/experiments/arc1d_hypermodel_augmented_td/base.yaml
-experiment_name: aug_hyper_all_rnn_td

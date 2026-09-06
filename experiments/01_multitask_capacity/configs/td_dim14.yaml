@@ -1,0 +1,52 @@
+# Experiment 2c at dim=14: joint 14-task training, WITH task embedding ("td").
+#
+# Same as td.yaml (use_task_embedding: true), but at the ~10K-param
+# scaffold size (9,508 params individually) flagged as a TODO in
+# experiments/README.md's rerun list -- not yet run. task_encoding.embedding_dim
+# stays fixed at 10, matching every other size in this sweep.
+_base_: experiments/01_multitask_capacity/configs/base.yaml
+experiment_name: v2_multitask_td_dim14
+project_name: arc1d_v2_multitask
+task_categories:
+- 1d_denoising_1c
+- 1d_denoising_mc
+- 1d_fill
+- 1d_flip
+- 1d_hollow
+- 1d_mirror
+- 1d_move_1p
+- 1d_move_2p
+- 1d_move_2p_dp
+- 1d_move_3p
+- 1d_move_dp
+- 1d_pcopy_1c
+- 1d_pcopy_mc
+- 1d_scale_dp
+save_checkpoints: false
+model: direct_supervised
+optimizer: Muon
+muon_lr: 0.005
+muon_momentum: 0.95
+learning_rate: 0.0005
+max_steps: 8000
+task_encoding:
+  embedding_dim: 10
+  value_vocab_size: 11
+  use_sinusoidal_pe: false
+  use_task_embedding: true
+backbone_model:
+  name: rope_canon_looped_transformer
+  params:
+    hidden_dim: 14
+    num_heads: 1
+    inner_dim: 14
+    inner_num_heads: 1
+    n_loops: 1
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_block_skip: false
+    use_loop_skip: false

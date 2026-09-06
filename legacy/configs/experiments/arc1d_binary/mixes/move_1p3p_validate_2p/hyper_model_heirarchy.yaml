@@ -1,0 +1,48 @@
+_base_: legacy/configs/experiments/arc1d_binary/base.yaml
+task: move_1p3p_validate_2p
+
+experiment_name: ${data}_${task}_${model}_hierarchical_pool_allmoves_learn_slower_dropout
+
+task_categories:
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_3p
+
+val_task_categories:
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_3p
+
+learning_rate: 0.001
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: ${max_steps}
+    eta_min: 0.00001
+
+devices: 3
+max_steps: 800
+log_task_examples_every_n_epochs: 100
+optimizer: RAdam
+gradient_clip_val: 1.0
+batch_size: 32
+
+hyper_model:
+  name: transformer
+  params:
+    hidden_dim: 32
+    num_heads: 1
+    num_layers: 2
+    output_dim: 32
+    dropout: 0.1
+
+target_model:
+  name: rnn
+  params:
+    hidden_dim: 32
+    bidirectional: true
+    num_layers: 1
+
+hyper_head:
+  pooling: hierarchical
+  bottleneck_dim: 8

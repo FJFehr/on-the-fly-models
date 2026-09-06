@@ -1,8 +1,8 @@
 """Measure the compute cost of "train once, generate many" (hypernetwork) vs.
 "train many small models" (arc1d_lowdata_baseline's per-task recipe).
 
-Background (see configs/experiments/arc1d_lowdata_baseline/README.md and
-configs/experiments/arc1d_hypermodel_compositional_generalization/README.md): both routes use
+Background (see experiments/06_data_efficiency_ablation/individual/README.md and
+legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/README.md): both routes use
 the IDENTICAL target architecture (rope_canon_looped_transformer) for actual per-query
 inference, so that cost cancels out of the "one model vs many" comparison. What's left is:
 
@@ -106,8 +106,8 @@ from training.config import build_runtime_config_dict, load_config
 from training.trainer import load_checkpoint_state, resolve_evaluation_checkpoint_path
 from visualisation.style import apply_latex_style
 
-DEFAULT_HYPER_CONFIG = "configs/experiments/arc1d_hypermodel_compositional_generalization/notd.yaml"
-DEFAULT_BASELINE_CONFIG = "configs/experiments/arc1d_lowdata_baseline/1d_fill/v3.yaml"
+DEFAULT_HYPER_CONFIG = "legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/notd.yaml"
+DEFAULT_BASELINE_CONFIG = "experiments/06_data_efficiency_ablation/individual/configs/1d_fill/v3.yaml"
 DEFAULT_OUTPUT_DIR = "outputs/compute_efficiency"
 
 # Real scale already run in this repo's experiments (see README context), used as vertical

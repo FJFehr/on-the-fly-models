@@ -74,7 +74,7 @@ here only for contrast - neither should be used for new hypernetwork work.
 | Variants/base task | 242 (22 × 11) | 1000 (200 × 5) |
 | Train rows (on disk) | 174,482 - 9,680/category (9,922 for `1d_scale_dp`) | 721,000 - 40,000/category (41,000 for `1d_scale_dp`) |
 | Dev/test | unaugmented, passed through (90 rows total = 5/category × 18) | unaugmented, passed through (90 rows total) |
-| Used by | the original augmented-capacity experiments (`README.md`'s Data Augmentation section) | `configs/experiments/arc1d_hypermodel_disentanglement` only |
+| Used by | the original augmented-capacity experiments (`README.md`'s Data Augmentation section) | `legacy/configs/experiments/arc1d_hypermodel_disentanglement` only |
 
 `data/arc_1d_augmented` is the project's original recipe (`README.md:68-141`): default script
 settings, global colour mode, a wider shift range. It predates the per-pair augmentation
@@ -82,7 +82,7 @@ mechanism entirely.
 
 `data/arc_1d_all_tasks_augmented` is historical and specific to the disentanglement
 experiment. Per its own README
-(`configs/experiments/arc1d_hypermodel_disentanglement/README.md:19-38`): "Each task in the
+(`legacy/configs/experiments/arc1d_hypermodel_disentanglement/README.md:19-38`): "Each task in the
 train split receives 1000 augmented variants via three transformations applied in order:
 colour permutation → shift → (no mirror)", built with per-pair colour augmentation (200
 variants) crossed with 5 shift positions, over all 18 task categories including
@@ -112,7 +112,7 @@ The full 18-category index, from `TASK_CATEGORY_INDEX` in `models/hypermodel_lig
 - **`1d_padded_fill`** - excluded from the hypernetwork multi-task work from the start of
   `arc1d_hypermodel_looped`'s phase-1 sweep (17 configs, "all `arc1d_recursion_ablation` task
   categories except `1d_padded_fill`"). Per that experiment's README
-  (`configs/experiments/arc1d_hypermodel_looped/README.md`): "`1d_padded_fill` is excluded —
+  (`legacy/configs/experiments/arc1d_hypermodel_looped/README.md`): "`1d_padded_fill` is excluded —
   it was never part of the per-task `arc1d_hypermodel_augmented` configs this phase mirrors
   (only the multi-task `mixes/`/`_td` configs include it), so it simply never enters the
   picture here." Not a data-quality finding, just scope inherited from an earlier
@@ -122,10 +122,10 @@ The full 18-category index, from `TASK_CATEGORY_INDEX` in `models/hypermodel_lig
   to 15). That README states: "`1d_recolor_cnt` and `1d_recolor_oe`: stuck at a literal
   `0.000` in every single run regardless of layers or clip. No signal at all, a qualitatively
   different (likely structural) failure, not a capacity question"
-  (`configs/experiments/arc1d_hypermodel_looped_rope_canon_capacity_baseline/README.md`). This
+  (`legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_capacity_baseline/README.md`). This
   is a purely empirical finding about model behaviour, not a support/query data bug: an
   earlier, explicit data-integrity check
-  (`configs/experiments/arc1d_hypermodel_looped_recolor/README.md`) had derived the true rule
+  (`legacy/configs/experiments/arc1d_hypermodel_looped_recolor/README.md`) had derived the true rule
   for all three recolor categories from the 3 support pairs alone (`recolor_oe`: run-length
   parity; `recolor_cnt`: exact run length; `recolor_cmp`: max-length tie-break) and verified it
   against the query's actual output across 200 real task instances per category (600 total, on
@@ -166,7 +166,7 @@ of in-context value binding, unlike a single fixed-weight small model.
 ```
 
 (matches `task_categories`/`val_task_categories` in e.g.
-`configs/experiments/arc1d_lowdata/base.yaml`.)
+`experiments/06_data_efficiency_ablation/hypernetwork/configs/base.yaml`.)
 
 **14-task set** (Phase 1 and any future individually-trained/direct experiment): the same list
 with `1d_recolor_cmp` removed.
@@ -228,7 +228,7 @@ generator explicitly calibrates several conventions (marker/pivot side, mirror p
 copy template centring) to match the real training data's own conventions "so a
 generalisation failure can't be blamed on ... a geometry the model never saw even in
 single-task training" (`data_modules/arc1d_compositional.py:1-40`,
-`configs/experiments/arc1d_hypermodel_compositional_generalization/README.md`). Recolor
+`legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/README.md`). Recolor
 categories are excluded from consideration entirely for this split, per the experiment's own
 scope decision.
 
@@ -238,7 +238,7 @@ Holdout size: `N_PER_CATEGORY = 40` in `scripts/build_arc1d_compositional.py`, 1
 
 ### Leave-one-category-out split
 
-Mechanism (`configs/experiments/arc1d_hypermodel_looped_rope_canon_generalization/README.md`):
+Mechanism (`legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_generalization/README.md`):
 no separate dataset is built for this - `task_categories` (train) and `val_task_categories`
 (eval) are simply set to different lists in the same config, which
 `Arc1dMetaMulticlassDataModule` already supports natively with no code changes. Each leaf
@@ -269,9 +269,9 @@ signal existed anywhere in training".
 
 Both `Arc1dMetaMulticlassDataModule` (`data_modules/arc1d_meta_multiclass.py`,
 `_stratified_variants_per_base_task`, used by the hypernetwork low-data track
-`configs/experiments/arc1d_lowdata/`) and `Arc1dDirectDataModule`
+`experiments/06_data_efficiency_ablation/hypernetwork/`) and `Arc1dDirectDataModule`
 (`data_modules/arc1d_direct.py`, `_stratified_variants_per_base_task`, ported verbatim, used
-by the no-hypernetwork per-task control `configs/experiments/arc1d_lowdata_baseline/`) expose
+by the no-hypernetwork per-task control `experiments/06_data_efficiency_ablation/individual/`) expose
 the same subsampling mechanism, applied **only** to the train split - `dev`/`test` are always
 built at full size regardless of the level, so every data level is evaluated on the same fixed
 eval set.
@@ -300,7 +300,7 @@ augmentation depth per task changes."
 
 ### Levels actually used
 
-`configs/experiments/arc1d_lowdata/base.yaml` sets `variants_per_base_task: null` as a
+`experiments/06_data_efficiency_ablation/hypernetwork/configs/base.yaml` sets `variants_per_base_task: null` as a
 placeholder overridden per leaf config; the level values are documented in that experiment's
 README:
 
@@ -313,7 +313,7 @@ README:
 | `cell_v5` | 5 | 200 | +4 |
 | `cell_v20` | 20 | 800 | larger jump, further up the curve |
 
-`configs/experiments/arc1d_lowdata_baseline/base.yaml` (also `variants_per_base_task: null`,
+`experiments/06_data_efficiency_ablation/individual/configs/base.yaml` (also `variants_per_base_task: null`,
 overridden per leaf) uses a narrower range per its README - `variants_per_base_task ∈ {1, 2,
 3}` (≈40/80/120 examples/category), "matching `arc1d_lowdata`'s `cell_v1`/`cell_v2`/
 `cell_v3`"; levels 4/5/20 are explicitly out of scope for that experiment. Both experiments

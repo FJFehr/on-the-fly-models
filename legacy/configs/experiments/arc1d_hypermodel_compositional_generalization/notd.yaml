@@ -1,0 +1,10 @@
+# No task-identity signal at all. Included alongside td/frozen_td for parity with the
+# original notd/td/frozentd comparison (arc1d_hypermodel_looped_rope_canon_muon) -- notd is
+# also one of the two conditions actually evaluated on the held-out compositional set (the
+# other being frozen_td; see README.md for why plain td is excluded from that eval).
+_base_: legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/base.yaml
+experiment_name: looped_hyper_rope_canon_compositional_generalization_notd
+
+hyper_head:
+  num_tasks: null
+  freeze_task_indicator: false

@@ -1,6 +1,0 @@
-_base_: configs/experiments/arc1d_v2_hypernetwork_multitask/base.yaml
-experiment_name: v2_hyper_multitask_dim6_frozentd
-
-hyper_head:
-  num_tasks: 18
-  freeze_task_indicator: true

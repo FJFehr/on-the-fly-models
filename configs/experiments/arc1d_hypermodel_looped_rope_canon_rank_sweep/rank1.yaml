@@ -1,5 +1,0 @@
-_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_rank_sweep/base.yaml
-experiment_name: looped_hyper_rope_canon_rank_sweep_r1
-
-hyper_head:
-  lora_adapter_rank: 1

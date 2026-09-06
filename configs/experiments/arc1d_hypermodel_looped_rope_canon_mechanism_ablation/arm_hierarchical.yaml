@@ -1,9 +1,0 @@
-# Re-isolates pooling: attention -> hierarchical at rank=8, single-axis flip from the
-# baseline. The original hierarchical-vs-attention comparison was done at rank=1, before
-# rank=8 was known to matter; re-testing here checks whether that "no difference" conclusion
-# still holds at the rank that's actually used. See base.yaml and README.md.
-_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_mechanism_ablation/base.yaml
-experiment_name: looped_hyper_rope_canon_mechanism_ablation_hierarchical
-
-hyper_head:
-  pooling: hierarchical

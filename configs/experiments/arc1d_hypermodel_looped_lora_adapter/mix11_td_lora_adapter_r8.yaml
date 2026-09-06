@@ -1,4 +1,0 @@
-_base_: configs/experiments/arc1d_hypermodel_looped_lora_adapter/base.yaml
-experiment_name: looped_hyper_lora_adapter_r8
-hyper_head:
-  lora_adapter_rank: 8

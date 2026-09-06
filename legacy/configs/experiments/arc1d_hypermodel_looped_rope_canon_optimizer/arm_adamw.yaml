@@ -1,0 +1,7 @@
+# AdamW at a lower LR, vs. the baseline RAdam at 0.001 (capacity_baseline's
+# arm_layers8_notd_long, reused not rerun as the reference point).
+_base_: legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_optimizer/base.yaml
+experiment_name: looped_hyper_rope_canon_optimizer_adamw
+
+optimizer: AdamW
+learning_rate: 0.0005

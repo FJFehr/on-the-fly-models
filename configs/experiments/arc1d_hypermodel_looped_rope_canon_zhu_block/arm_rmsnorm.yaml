@@ -1,7 +1,0 @@
-# RMSNorm only, isolating this one sub-trick from the other two.
-_base_: configs/experiments/arc1d_hypermodel_looped_rope_canon_zhu_block/base.yaml
-experiment_name: looped_hyper_rope_canon_zhu_block_rmsnorm
-
-hyper_model:
-  params:
-    use_rmsnorm: true

@@ -1,0 +1,13 @@
+_base_: legacy/configs/experiments/arc1d_capacity_augmented_small/base_augmented_small.yaml
+experiment_name: aug_small_1d_move_2p_rnn
+task_categories:
+  - 1d_move_2p
+backbone_model:
+  name: rnn
+  params:
+    hidden_dim: 32
+    num_layers: 1
+    bidirectional: true
+    activation: silu
+    dropout: 0.1
+    use_residual: true

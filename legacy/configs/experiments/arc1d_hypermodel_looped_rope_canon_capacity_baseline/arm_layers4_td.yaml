@@ -1,0 +1,4 @@
+# Matches base.yaml's defaults exactly (num_layers=4, num_tasks=18, max_steps=4000): the
+# layers=4, task-descriptor-on cell of the grid.
+_base_: legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_capacity_baseline/base.yaml
+experiment_name: looped_hyper_rope_canon_capacity_baseline_layers4_td

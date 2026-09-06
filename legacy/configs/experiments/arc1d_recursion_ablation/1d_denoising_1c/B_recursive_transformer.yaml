@@ -1,0 +1,17 @@
+_base_: legacy/configs/experiments/arc1d_recursion_ablation/base_ablation.yaml
+# Condition B: weight-shared transformer, 4 loops in forward pass, 1 optimizer step.
+# Same parameter count as A; 4x more compute per forward pass.
+experiment_name: ablation_B_denoising1c_recursive_transformer
+task_categories:
+  - 1d_denoising_1c
+model: direct_supervised
+gradient_clip_val: 1.0
+max_steps: 4000
+backbone_model:
+  name: recursive_transformer
+  params:
+    hidden_dim: 256
+    num_layers: 1
+    num_heads: 4
+    n_loops: 2
+    dropout: 0.1

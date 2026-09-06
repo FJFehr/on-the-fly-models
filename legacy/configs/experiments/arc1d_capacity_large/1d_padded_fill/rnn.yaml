@@ -1,0 +1,10 @@
+_base_: legacy/configs/experiments/arc1d_capacity_large/base_large.yaml
+experiment_name: var_mc_large_1d_padded_fill_rnn
+task_categories:
+  - 1d_padded_fill
+backbone_model:
+  name: rnn
+  params:
+    hidden_dim: 66
+    num_layers: 4
+    bidirectional: true

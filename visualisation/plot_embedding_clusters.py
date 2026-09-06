@@ -11,7 +11,7 @@ uniform with the rest of the paper's figures:
 - Nimbus Roman, larger labels, no chart title (each panel keeps a small
   label naming that run, since two panels side by side need that to stay
   legible, unlike single-panel plots), top/right spines stripped
-  (matching configs/experiments/arc1d_v2_multitask/plot_capacity_cliff.py
+  (matching experiments/01_multitask_capacity/plot_capacity_cliff.py
   and plot_per_task.py)
 - category colours drawn from visualisation.arc_paper's PAPER_COLORS /
   PAPER_FILL_COLORS -- the same muted rainbow used in the task-example
@@ -46,7 +46,7 @@ then:
 
 For a specific experiment's usual pair, prefer that experiment's own thin
 preset script if one exists, e.g.
-configs/experiments/arc1d_v2_hypernetwork_multitask/plot_embedding_clusters.py
+experiments/02_hypernetwork_multitask/plot_embedding_clusters.py
 -- same underlying code, just with that experiment's paths/labels filled in
 so it can be rerun with no arguments.
 """

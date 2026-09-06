@@ -2,7 +2,7 @@
 
 This note documents the model architecture(s) the ARC-1D hypernetwork story has converged
 on, as they actually exist in `models/` and in the committed experiment configs under
-`configs/experiments/`. Every number below is read directly from source code or a config
+`legacy/configs/experiments/`. Every number below is read directly from source code or a config
 YAML (or computed by instantiating the real classes) — none is recalled from memory or
 paraphrased from an earlier write-up. Two open inconsistencies are called out explicitly
 rather than resolved; see the closing section.
@@ -47,8 +47,8 @@ input_projection → pre_layer (1×) → middle_layer (n_loops×, weight-shared)
 
 ### Winning config
 
-Read directly from `configs/experiments/arc1d_hypermodel_looped_rope_canon_capacity_baseline/base.yaml`
-and `configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/base.yaml` (`target_model` block,
+Read directly from `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_capacity_baseline/base.yaml`
+and `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/base.yaml` (`target_model` block,
 identical in both, and reused unchanged across essentially every later hypernetwork experiment —
 see the n_loops table below for the one axis that does vary):
 
@@ -79,7 +79,7 @@ count doesn't depend on those). Instantiating the actual class with the config a
 extra 160 is the `output_head: Linear(16 → 10, bias=False)` (10 output classes for the
 multiclass ARC-1D prediction task), which the backbone-only 11,760 figure excludes. Verified
 directly: `HyperModel.__repr__()` on a live-instantiated model from
-`configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/arm_frozentd_muon.yaml` prints
+`legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/arm_frozentd_muon.yaml` prints
 `Target params: 11,920`.
 
 ## 2. Inconsistency: `n_loops`
@@ -145,7 +145,7 @@ flat parameter vector, and applied per-example. The target model's own parameter
 `RoPECanonZhuBlock` / `RoPECanonZhuSelfAttention`, registered as `rope_canon_zhu_transformer`
 in `HYPERNETWORK_REGISTRY` (`models/hypermodel_lightning.py:80-83`). "Zhu" refers to Zeyuan
 Allen-Zhu, author of the Canon Layers paper this repo's Canon mechanism is already based on
-(`configs/experiments/arc1d_hypermodel_looped_rope_canon_zhu_block/README.md`). Three
+(`legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_zhu_block/README.md`). Three
 independent boolean flags, all confirmed as real components in code, default `false` (in
 which case the class is byte-identical to the plain `RoPECanonTransformer`):
 
@@ -162,7 +162,7 @@ which case the class is byte-identical to the plain `RoPECanonTransformer`):
 
 ### Winning encoder config
 
-Read from `configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/base.yaml`'s
+Read from `legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/base.yaml`'s
 `hyper_model` block, which fixes the Zhu backbone with all three flags on across every arm
 ("the current leader in `arc1d_hypermodel_looped_rope_canon_lr_sweep`'s `zhu_all` arm, mean
 exact-match 0.8625 across 5 seeds"):
@@ -217,7 +217,7 @@ where "what won" and "what's actually configured downstream" agree:
 
 `hyper_head.lora_adapter: true` switches `HyperModel` to a third weight-generation mode
 (alongside full-MLP generation and the older `low_rank_output` path), documented in
-`configs/experiments/arc1d_hypermodel_looped_lora_adapter/README.md` and implemented in
+`legacy/configs/experiments/arc1d_hypermodel_looped_lora_adapter/README.md` and implemented in
 `models/hypermodel.py:337-384,485-520`:
 
 - The target model (`RoPECanonLoopedTransformer`) keeps its own ordinary random PyTorch init
@@ -322,7 +322,7 @@ the full category registry, not to 15 — the frozen/learned projection reserves
 
 ### `num_tasks=28` for compositional generalization
 
-`configs/experiments/arc1d_hypermodel_compositional_generalization/frozen_td.yaml` sets
+`legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/frozen_td.yaml` sets
 `hyper_head.num_tasks: 28` instead of the usual 18 — 10 extra indices (18..27) reserved for
 the held-out composite task categories assigned at eval time by
 `scripts/eval_compositional_holdout.py`. Per that config's own comment: since only 15
@@ -396,7 +396,7 @@ and `_muon_sweep` experiments.
 ## 7. A concrete instantiation
 
 Instantiating the full stack directly from a real committed config
-(`configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/arm_frozentd_muon.yaml`, via
+(`legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/arm_frozentd_muon.yaml`, via
 `training/config.load_config` + `models.MODEL_REGISTRY["hyper_model"]`) gives:
 
 ```

@@ -1,7 +1,7 @@
 """Zero-shot evaluation of a trained hypermodel checkpoint on the held-out compositional set.
 
 Loads a trained notd or frozen_td checkpoint (see
-configs/experiments/arc1d_hypermodel_compositional_generalization/) and runs it, unmodified and
+legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/) and runs it, unmodified and
 with no fine-tuning, on data/arc_1d_compositional_holdout -- 10 task categories built by chaining
 two base rules the model *was* trained on individually (see data_modules/arc1d_compositional.py
 and this experiment's README.md for what those categories are and why).
@@ -14,15 +14,15 @@ matrix already has those extra rows (num_tasks=28 in frozen_td.yaml), they just 
 
 Usage:
     uv run python scripts/eval_compositional_holdout.py \
-        --config configs/experiments/arc1d_hypermodel_compositional_generalization/frozen_td.yaml
+        --config legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/frozen_td.yaml
     uv run python scripts/eval_compositional_holdout.py \
-        --config configs/experiments/arc1d_hypermodel_compositional_generalization/notd.yaml \
+        --config legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/notd.yaml \
         --checkpoint last --num-qualitative 5
 
     # Point at a specific seed's checkpoint/output dir via OmegaConf dotlist overrides
     # (same mechanism as train.py), e.g. for a multi-seed rerun:
     uv run python scripts/eval_compositional_holdout.py \
-        --config configs/experiments/arc1d_v2_compositional_generalization/notd.yaml \
+        --config legacy/configs/experiments/arc1d_v2_compositional_generalization/notd.yaml \
         seed=2 experiment_name=v2_compositional_generalization_notd_seed2 \
         output_path=outputs/arc1d_v2_compositional_generalization/v2_compositional_generalization_notd_seed2
 """

@@ -21,7 +21,7 @@ def shorten_task_label(label: str) -> str:
     """Drop the word 'Pixel(s)' and abbreviate 'Multicolor' to 'MC'.
 
     Kept in sync by hand with the identically-named helper in
-    configs/experiments/arc1d_v2_multitask/plot_per_task.py so task titles
+    experiments/01_multitask_capacity/plot_per_task.py so task titles
     read the same way across the paper's figures.
     """
     label = label.replace(" Pixels", "").replace(" Pixel", "")
@@ -102,7 +102,7 @@ def lighten(hex_color: str, amount: float = 0.45) -> str:
     """Blend a hex color toward white.
 
     Kept in sync by hand with the identically-named helper in
-    configs/experiments/arc1d_v2_multitask/plot_per_task.py, which uses it
+    experiments/01_multitask_capacity/plot_per_task.py, which uses it
     for the same outline-colour / lighter-fill bar styling this module
     mirrors for pill cells.
     """

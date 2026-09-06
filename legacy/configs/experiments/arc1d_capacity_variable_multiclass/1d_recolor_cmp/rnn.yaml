@@ -1,0 +1,10 @@
+_base_: legacy/configs/experiments/arc1d_capacity_variable_multiclass/base_variable_multiclass.yaml
+experiment_name: var_mc_1d_recolor_cmp_rnn_1
+task_categories:
+  - 1d_recolor_cmp
+backbone_model:
+  name: rnn
+  params:
+    hidden_dim: 32
+    num_layers: 1
+    bidirectional: true

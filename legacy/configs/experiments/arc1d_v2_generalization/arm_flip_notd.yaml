@@ -1,0 +1,38 @@
+# Held out: 1d_flip (sibling(s) remaining in training: 1d_mirror (different mechanism -- weaker pairing))
+# Variant: notd -- No task-identity signal at all -- the model must infer the task purely from the 3-shot support examples.
+_base_: legacy/configs/experiments/arc1d_v2_generalization/base.yaml
+experiment_name: v2_generalization_flip_notd
+
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_scale_dp
+val_task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_scale_dp
+
+hyper_head:
+  num_tasks: null
+  freeze_task_indicator: false

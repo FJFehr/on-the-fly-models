@@ -1,0 +1,7 @@
+_base_: legacy/configs/experiments/arc1d_v2_minimal_data/base.yaml
+experiment_name: v2_minimal_data_1d_denoising_1c_v300
+task_categories:
+- 1d_denoising_1c
+val_task_categories:
+- 1d_denoising_1c
+variants_per_base_task: 300

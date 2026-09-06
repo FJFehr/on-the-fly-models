@@ -1,0 +1,46 @@
+# Sanity check for the new task-embedding path (Experiment 2b) before the
+# full 3-seed joint run: overfit a single batch across 3 categories with
+# use_task_embedding: true, confirm the embedding table wires in and the
+# model can still reach perfect exact match when data isn't the bottleneck.
+_base_: experiments/01_multitask_capacity/configs/base.yaml
+experiment_name: v2_multitask_overfit_td
+project_name: arc1d_v2_multitask
+task_categories:
+  - 1d_denoising_1c
+  - 1d_scale_dp
+  - 1d_fill
+val_split: train
+model: direct_supervised
+overfit_single_batch: true
+stop_on_perfect_val_exact_match: true
+batch_size: 1
+optimizer: Muon
+muon_lr: 0.005
+muon_momentum: 0.95
+max_steps: 500
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: 500
+    eta_min: 0.0001
+task_encoding:
+  embedding_dim: 10
+  value_vocab_size: 11
+  use_sinusoidal_pe: false
+  use_task_embedding: true
+backbone_model:
+  name: rope_canon_looped_transformer
+  params:
+    hidden_dim: 10
+    num_heads: 1
+    inner_dim: 10
+    inner_num_heads: 1
+    n_loops: 1
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_block_skip: false
+    use_loop_skip: false

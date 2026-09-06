@@ -160,10 +160,10 @@ as "frozen for Round 2."
 
 ## Phase 0.5 - Infra pilot (the one true prerequisite)
 
-**Directory**: `configs/experiments/arc1d_v2_pilot/`. Direct configs from
-`configs/experiments/arc1d_recursion_ablation/base_ablation.yaml`;
+**Directory**: `legacy/configs/experiments/arc1d_v2_pilot/`. Direct configs from
+`legacy/configs/experiments/arc1d_recursion_ablation/base_ablation.yaml`;
 hypernetwork configs from
-`configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/base.yaml`
+`legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_muon/base.yaml`
 (`lora_adapter: false`). 5 hand-written single-seed cells, run sequentially
 with `time` around each `train.py` call, at the now-fixed
 `n_loops=4`/`num_layers=8`:
@@ -186,8 +186,8 @@ phase every other phase actually depends on.
 
 ## Phase 1 - Backbone progression demo (direct training, Muon, n_loops fixed)
 
-**Directory**: `configs/experiments/arc1d_v2_backbone_capacity/`. Base:
-`configs/experiments/arc1d_recursion_ablation/base_ablation.yaml`, with
+**Directory**: `legacy/configs/experiments/arc1d_v2_backbone_capacity/`. Base:
+`legacy/configs/experiments/arc1d_recursion_ablation/base_ablation.yaml`, with
 `optimizer: Muon` plus Phase 0.5's validated `muon_lr`/`muon_momentum`
 replacing RAdam. Gen/run pattern: copy `scripts/gen_uniform_ablation_configs.py`
 and `scripts/run_ablation_arc1d_uniform_ablation.sh`, trimmed to T1-T7 only
@@ -339,7 +339,7 @@ remaining spread is 1-2 example flips out of 42, not a real effect.
 
 ## Phase 2 - Headline capability claim
 
-**Directory**: `configs/experiments/arc1d_v2_headline/`. Fixed architecture
+**Directory**: `legacy/configs/experiments/arc1d_v2_headline/`. Fixed architecture
 throughout (`n_loops=4, num_layers=8`, full generation), `frozen_td`, Muon,
 15-task set. One config, seed-swept only.
 
@@ -349,7 +349,7 @@ throughout (`n_loops=4, num_layers=8`, full generation), `frozen_td`, Muon,
 
 ## Phase 3 - Task descriptor mechanism study (frozen_td vs td vs notd)
 
-**Directory**: `configs/experiments/arc1d_v2_descriptor_mechanism/`, two
+**Directory**: `legacy/configs/experiments/arc1d_v2_descriptor_mechanism/`, two
 subgrids.
 
 ### 3a - in-distribution parity and disentanglement diagnostics
@@ -365,7 +365,7 @@ Base: Phase 2's `base.yaml`, varying only `hyper_head.num_tasks`/
 Base: same, existing leave-one-out mechanism
 (`Arc1dMetaMulticlassDataModule` already supports differing train/eval
 category lists). Gen/run: copy
-`configs/experiments/arc1d_hypermodel_looped_rope_canon_generalization/`'s
+`legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_generalization/`'s
 layout and run script.
 
 Held-out set, expanded from the historical 5 to 9, deliberately mixing
@@ -394,7 +394,7 @@ cell to 5 seeds, not as a result to over-interpret from 3 noisy points.
 
 ## Phase 4 - Compositional generalisation
 
-**Directory**: `configs/experiments/arc1d_v2_compositional/`. Base: Phase
+**Directory**: `legacy/configs/experiments/arc1d_v2_compositional/`. Base: Phase
 2's `base.yaml`, `notd`/`frozen_td` only. Data reused as-is
 (`data/arc_1d_compositional_holdout`). 2 hand-written leaf configs, each
 followed by the unmodified `scripts/eval_compositional_holdout.py`.
@@ -405,18 +405,18 @@ followed by the unmodified `scripts/eval_compositional_holdout.py`.
 
 ## Phase 5 - Low-data augmentation cuts
 
-**Directories**: `configs/experiments/arc1d_v2_lowdata/` (hypernetwork)
-plus `configs/experiments/arc1d_v2_lowdata_baseline/` (no-hypernetwork
+**Directories**: `legacy/configs/experiments/arc1d_v2_lowdata/` (hypernetwork)
+plus `legacy/configs/experiments/arc1d_v2_lowdata_baseline/` (no-hypernetwork
 control). Both at full generation, fixed architecture. No longer gated
 behind an architecture-lock phase, see "On the dependency graph" above.
 
-**Hypernetwork side**: base `configs/experiments/arc1d_lowdata/base.yaml`,
+**Hypernetwork side**: base `experiments/06_data_efficiency_ablation/hypernetwork/configs/base.yaml`,
 architecture params updated to the round's fixed `n_loops=4`/`num_layers=8`,
 `lora_adapter: false`. Existing `variants_per_base_task`/`data_seed`
 mechanism reused as-is. Levels `{1,2,3,4,5,20}`. **Jobs**: 6 x 3 = 18.
 
 **No-hypernetwork baseline**: base
-`configs/experiments/arc1d_lowdata_baseline/base.yaml`, `n_loops=4`
+`experiments/06_data_efficiency_ablation/individual/configs/base.yaml`, `n_loops=4`
 (already what it used historically, no change needed there). Reuse
 `scripts/gen_lowdata_baseline_configs.py` plus
 `scripts/run_lowdata_baseline.sh` directly. Levels `{1,2,3}`. **Jobs**: 15
@@ -428,7 +428,7 @@ x 3 x 3 = 135.
 
 ## Phase 6 - LoRA-adapter rank ablation
 
-**Directory**: `configs/experiments/arc1d_v2_rank_ablation/`. Base: Phase
+**Directory**: `legacy/configs/experiments/arc1d_v2_rank_ablation/`. Base: Phase
 2's `base.yaml` (full generation, `frozen_td`, fixed architecture), with
 `lora_adapter: true` and `lora_adapter_rank` swept,
 `muon_exclude_lora_heads=true` (now applicable). Standard full data recipe

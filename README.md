@@ -2,6 +2,13 @@
 
 Task-conditioned models that generate or adapt a small target model from a task's examples instead of training a separate model per task.
 
+**→ For the paper's experiments, start at [`experiments/README.md`](experiments/README.md).**
+It names the 6 experiments, their status, and the exact commands to reproduce
+each figure. Everything below this point describes the original 1D-ARC
+capacity/binary/multiclass track that predates that work — still functional,
+but superseded as the active story. Its configs and scripts now live under
+`legacy/` (see [`legacy/README.md`](legacy/README.md)).
+
 The current codebase is a config-driven 1D ARC experimentation repo with two active tracks: task-level hypermodel experiments and direct-supervised baselines. Shared registries and runtime utilities let the same training and evaluation entrypoints run both tracks from YAML configs.
 
 ## Overview
@@ -15,7 +22,7 @@ The current codebase is a config-driven 1D ARC experimentation repo with two act
 ```bash
 uv sync --python 3.12 --managed-python
 uv run python scripts/build_arc_1d.py --padded-multiclass
-uv run python train.py --config configs/experiments/arc1d_multiclass/move_1p/hyper_model.yaml
+uv run python train.py --config legacy/configs/experiments/arc1d_multiclass/move_1p/hyper_model.yaml
 uv run python validate.py --config outputs/<run_name>/config.yaml --checkpoint best --mode both
 ```
 
@@ -149,48 +156,48 @@ Training is config-driven. Each experiment YAML selects a registered model/data 
 Hypermodel example:
 
 ```bash
-uv run python train.py --config configs/experiments/arc1d_binary/overfit/hyper_model.yaml
+uv run python train.py --config legacy/configs/experiments/arc1d_binary/overfit/hyper_model.yaml
 ```
 
 Multiclass hypermodel example:
 
 ```bash
-uv run python train.py --config configs/experiments/arc1d_multiclass/move_1p/hyper_model.yaml
+uv run python train.py --config legacy/configs/experiments/arc1d_multiclass/move_1p/hyper_model.yaml
 ```
 
 Direct-supervised example:
 
 ```bash
-uv run python train.py --config configs/experiments/arc1d_capacity_binary/1d_move_1p/rnn.yaml
+uv run python train.py --config legacy/configs/experiments/arc1d_capacity_binary/1d_move_1p/rnn.yaml
 ```
 
 Supported model families are:
 
 - `binary_hyper_model` / `hyper_model` — both resolve to `HyperModelLightning`; hypernetwork and target template are selected via `hyper_model.name` and `target_model.name` in the experiment config
-- `direct_supervised` — resolves to `DirectSupervisedLightning`; trains a backbone (RNN, CNN, Transformer, MLP) directly on (input, output) pairs without a hypernetwork; see the capacity baselines under `configs/experiments/arc1d_capacity_*`
+- `direct_supervised` — resolves to `DirectSupervisedLightning`; trains a backbone (RNN, CNN, Transformer, MLP) directly on (input, output) pairs without a hypernetwork; see the capacity baselines under `legacy/configs/experiments/arc1d_capacity_*`
 
 ### Experiment 1: Target Model Capacity (direct supervised)
 
 Run one binary direct-supervised baseline config for `1d_move_1p`:
 
 ```bash
-uv run python train.py --config configs/experiments/arc1d_capacity_binary/1d_move_1p/rnn.yaml
-uv run python train.py --config configs/experiments/arc1d_capacity_binary/1d_move_1p/cnn.yaml
-uv run python train.py --config configs/experiments/arc1d_capacity_binary/1d_move_1p/transformer.yaml
-uv run python train.py --config configs/experiments/arc1d_capacity_binary/1d_move_1p/mlp.yaml
+uv run python train.py --config legacy/configs/experiments/arc1d_capacity_binary/1d_move_1p/rnn.yaml
+uv run python train.py --config legacy/configs/experiments/arc1d_capacity_binary/1d_move_1p/cnn.yaml
+uv run python train.py --config legacy/configs/experiments/arc1d_capacity_binary/1d_move_1p/transformer.yaml
+uv run python train.py --config legacy/configs/experiments/arc1d_capacity_binary/1d_move_1p/mlp.yaml
 ```
 
 Capacity sweeps can be launched across multiple single-GPU workers and multiple
 seeds with:
 
 ```bash
-uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_multiclass --gpus 0,1,2,3 --seeds 42,43,44
+uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_multiclass --gpus 0,1,2,3 --seeds 42,43,44
 ```
 
 Variable-length multiclass sweep (18 tasks × CNN/RNN/Transformer, 3 seeds, 8 GPUs):
 
 ```bash
-uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_variable_multiclass --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_variable_multiclass --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
 ```
 
 Scaling experiment — small/medium/large capacity tiers (run each size independently):
@@ -202,18 +209,18 @@ Scaling experiment — small/medium/large capacity tiers (run each size independ
 | large | ~100K / 100K / 95K | 10 000 | `arc1d_capacity_large` |
 
 ```bash
-uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_small --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
-uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_medium --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
-uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_large --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_small --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_medium --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_large --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
 ```
 
 Augmented capacity tiers mirror the small/medium/large model and training
 settings, but read train examples from `data/arc_1d_augmented`:
 
 ```bash
-uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_augmented_small --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
-uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_augmented_medium --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
-uv run python scripts/run_arc1d_capacity.py --config-dir configs/experiments/arc1d_capacity_augmented_large --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_augmented_small --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_augmented_medium --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
+uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_augmented_large --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
 ```
 
 The capacity plotter aggregates seeded runs under one output root:

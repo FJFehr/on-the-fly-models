@@ -1,0 +1,4 @@
+_base_: legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement/base.yaml
+experiment_name: looped_hyper_rope_canon_vae_disentanglement_beta0_01
+
+kl_beta: 0.01
