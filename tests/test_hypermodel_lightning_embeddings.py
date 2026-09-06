@@ -11,34 +11,6 @@ from models.transformer import Transformer
 from training.trainer import StopOnMetricThreshold, build_callbacks
 
 
-def build_model(
-    task_encoding: dict | None = None,
-    hyper_head: dict | None = None,
-) -> HyperModelLightning:
-    return HyperModelLightning(
-        hyper_model={
-            "name": "transformer",
-            "params": {
-                "hidden_dim": 16,
-                "num_layers": 1,
-                "num_heads": 1,
-                "output_dim": 8,
-            },
-        },
-        target_model={
-            "name": "rnn",
-            "params": {
-                "hidden_dim": 8,
-                "num_layers": 1,
-                "bidirectional": True,
-            },
-        },
-        hyper_head=hyper_head,
-        task_encoding=task_encoding,
-        input_dim=4,
-    )
-
-
 def build_multiclass_model() -> HyperModelLightning:
     return HyperModelLightning(
         hyper_model={
@@ -70,25 +42,10 @@ def logits_from_predictions(predictions: torch.Tensor, num_classes: int = 10) ->
     return F.one_hot(predictions, num_classes=num_classes).float()
 
 
-def make_batch() -> dict:
-    return {
-        "support_inputs": torch.tensor(
-            [[[0, 1, 0, 1], [1, 0, 1, 0], [0, 0, 1, 1]]],
-            dtype=torch.float32,
-        ),
-        "support_outputs": torch.tensor(
-            [[[1, 1, 0, 0], [0, 1, 1, 0], [1, 0, 0, 1]]],
-            dtype=torch.float32,
-        ),
-        "query_input": torch.tensor([[1, 0, 0, 1]], dtype=torch.float32),
-        "query_output": torch.tensor([[0, 1, 1, 0]], dtype=torch.float32),
-    }
-
-
-def test_task_context_token_ids_match_expected_metadata():
+def test_task_context_token_ids_match_expected_metadata(build_hypermodel, make_hypermodel_batch):
     """Hypernetwork sees 6 support segments with example and role ids; no query, no is_query."""
-    model = build_model({"embedding_dim": 8})
-    batch = make_batch()
+    model = build_hypermodel()
+    batch = make_hypermodel_batch()
 
     flat_values, position_ids, example_ids, role_ids = model.build_task_context_token_ids(
         batch["support_inputs"],
@@ -131,10 +88,10 @@ def test_hierarchical_pooling_reduces_serialized_support_tokens_to_one_task_vect
     assert parameter_vectors.shape == (2, hypermodel.total_target_params)
 
 
-def test_target_token_ids_are_value_and_position_only():
+def test_target_token_ids_are_value_and_position_only(build_hypermodel, make_hypermodel_batch):
     """Target model receives only value and position ids — no metadata."""
-    model = build_model({"embedding_dim": 8})
-    batch = make_batch()
+    model = build_hypermodel()
+    batch = make_hypermodel_batch()
 
     value_ids, position_ids = model.build_target_token_ids(
         batch["support_inputs"],
@@ -148,10 +105,10 @@ def test_target_token_ids_are_value_and_position_only():
     assert position_ids[0, 1].tolist() == [0, 1, 2, 3]
 
 
-def test_forward_runs_with_expected_shapes():
+def test_forward_runs_with_expected_shapes(build_hypermodel, make_hypermodel_batch):
     """Smoke-test the shared embedding path through the generic hypermodel."""
-    model = build_model({"embedding_dim": 8})
-    batch = make_batch()
+    model = build_hypermodel()
+    batch = make_hypermodel_batch()
 
     task_features, example_inputs, example_targets = model.prepare_inputs(batch)
     logits, targets = model(batch)
@@ -165,10 +122,12 @@ def test_forward_runs_with_expected_shapes():
     assert torch.equal(targets, example_targets)
 
 
-def test_transformer_hypernetwork_builds_and_runs_with_canonical_wrapper():
+def test_transformer_hypernetwork_builds_and_runs_with_canonical_wrapper(
+    build_hypermodel, make_hypermodel_batch
+):
     """The config-facing transformer hypernetwork should remain constructible end to end."""
-    model = build_model({"embedding_dim": 8})
-    batch = make_batch()
+    model = build_hypermodel()
+    batch = make_hypermodel_batch()
 
     assert isinstance(model.hypermodel.hypernetwork, Transformer)
 
@@ -178,18 +137,17 @@ def test_transformer_hypernetwork_builds_and_runs_with_canonical_wrapper():
     assert targets.shape == (1, 4, 4)
 
 
-def test_forward_runs_with_hierarchical_pooling():
+def test_forward_runs_with_hierarchical_pooling(build_hypermodel, make_hypermodel_batch):
     """Hierarchical pooling should preserve the end-to-end HyperModelLightning shapes."""
-    model = build_model(
-        {"embedding_dim": 8},
-        {
+    model = build_hypermodel(
+        hyper_head={
             "pooling": "hierarchical",
             "interaction_num_heads": 1,
             "segment_interaction_layers": 1,
             "example_interaction_layers": 1,
         },
     )
-    batch = make_batch()
+    batch = make_hypermodel_batch()
 
     task_features, example_inputs, example_targets = model.prepare_inputs(batch)
     logits, targets = model(batch)
@@ -201,10 +159,10 @@ def test_forward_runs_with_hierarchical_pooling():
     assert torch.equal(targets, example_targets)
 
 
-def test_attention_pooling_remains_the_default_hyper_head_behavior():
+def test_attention_pooling_remains_the_default_hyper_head_behavior(build_hypermodel):
     """Omitting pooling config should preserve the legacy single-stage attention pooler."""
-    default_model = build_model({"embedding_dim": 8})
-    explicit_model = build_model({"embedding_dim": 8}, {"pooling": "attention"})
+    default_model = build_hypermodel()
+    explicit_model = build_hypermodel(hyper_head={"pooling": "attention"})
 
     assert isinstance(default_model.hypermodel.hyper_pooling, AttentionPooler)
     assert isinstance(explicit_model.hypermodel.hyper_pooling, AttentionPooler)
@@ -294,10 +252,10 @@ def test_build_task_records_trim_padding_from_visualized_sequences():
     assert record["query_accuracy"] == 0.5
 
 
-def test_forward_stashes_pooled_task_representation():
+def test_forward_stashes_pooled_task_representation(build_hypermodel, make_hypermodel_batch):
     """A forward pass must stash the pooled task latent for embedding-cluster diagnostics."""
-    model = build_model({"embedding_dim": 8})
-    batch = make_batch()
+    model = build_hypermodel()
+    batch = make_hypermodel_batch()
 
     logits, _ = model(batch)
 
@@ -306,13 +264,12 @@ def test_forward_stashes_pooled_task_representation():
     assert stashed.shape == (logits.shape[0], model.hypermodel.hyper_output_dim)
 
 
-def test_forward_stashes_pooled_task_representation_with_task_descriptor():
+def test_forward_stashes_pooled_task_representation_with_task_descriptor(
+    build_hypermodel, make_hypermodel_batch
+):
     """With a task descriptor configured, the stashed vector reflects the post-add value."""
-    model = build_model(
-        {"embedding_dim": 8},
-        {"num_tasks": 3},
-    )
-    batch = dict(make_batch())
+    model = build_hypermodel(hyper_head={"num_tasks": 3})
+    batch = make_hypermodel_batch()
     batch["task_category"] = ["1d_move_1p"]
 
     logits, _ = model(batch)
@@ -322,13 +279,12 @@ def test_forward_stashes_pooled_task_representation_with_task_descriptor():
     assert stashed.shape == (logits.shape[0], model.hypermodel.hyper_output_dim)
 
 
-def test_forward_stashes_pooled_task_representation_with_lora_adapter():
+def test_forward_stashes_pooled_task_representation_with_lora_adapter(
+    build_hypermodel, make_hypermodel_batch
+):
     """The lora_adapter path must also stash the pooled task latent, same as the dense path."""
-    model = build_model(
-        {"embedding_dim": 8},
-        {"lora_adapter": True, "lora_adapter_rank": 1},
-    )
-    batch = make_batch()
+    model = build_hypermodel(hyper_head={"lora_adapter": True, "lora_adapter_rank": 1})
+    batch = make_hypermodel_batch()
 
     logits, _ = model(batch)
 
@@ -337,12 +293,12 @@ def test_forward_stashes_pooled_task_representation_with_lora_adapter():
     assert stashed.shape == (logits.shape[0], model.hypermodel.hyper_output_dim)
 
 
-def test_collect_embedding_records_from_dataloader_returns_expected_records():
+def test_collect_embedding_records_from_dataloader_returns_expected_records(
+    build_hypermodel, make_hypermodel_batch
+):
     """The embedding-collection helper should pair one pooled vector per task with its label."""
-    model = build_model({"embedding_dim": 8})
-    batch = dict(make_batch())
-    batch["task_category"] = ["1d_move_1p"]
-    batch["task_id"] = torch.tensor([2], dtype=torch.long)
+    model = build_hypermodel()
+    batch = make_hypermodel_batch(task_category="1d_move_1p", task_id=2)
     dataloader = [batch, batch]
 
     records = model.collect_embedding_records_from_dataloader(dataloader)
