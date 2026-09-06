@@ -49,6 +49,10 @@ known-first-party = ["on_the_fly_models"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = [
+    "slow: depends on a built dataset on disk and takes real time to run (excluded by default, run with `pytest -m slow`)",
+]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu121" }

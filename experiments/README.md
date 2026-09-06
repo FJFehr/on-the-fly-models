@@ -47,6 +47,49 @@ paper, start here.
 Every experiment's own README has the full method, findings, and an exact
 "Running" command.
 
+## Data preparation
+
+Everything above shares one dataset, built once, from scratch, in three
+commands (none needs a GPU — pure CPU data prep):
+
+All three run as modules (`build_arc1d_compositional.py` imports
+`data_modules`, which needs the repo root on `sys.path` — `-m` gives it
+that; the other two don't strictly need it but are shown the same way for
+one consistent invocation style):
+
+```bash
+# 1. Ingest the raw 1D-ARC benchmark -> data/arc_1d
+python -m scripts.build_arc_1d
+
+# 2. The canonical augmentation recipe -> data/arc_1d_looped_augmented
+#    (per-pair colour augmentation, 200 colour variants x 5 shift positions,
+#    no mirror -> up to 1000 variants/base task, 721,000 train rows across
+#    18 categories; dev/test also lightly colour-augmented to reduce metric
+#    variance -- see docs/arc1d_story/01_data.md for the full derivation)
+python -m scripts.augment_arc_1d \
+    --per-pair --n-color-permutations 199 --shifts 1 2 -1 -2 --no-mirror \
+    --dev-test-n-permutations 19 \
+    --output-dir data/arc_1d_looped_augmented
+
+# 3. The compositional-generalisation holdout (experiment 4) -> data/arc_1d_compositional_holdout
+python -m scripts.build_arc1d_compositional
+```
+
+Verified: all three ran end-to-end (small-scale, into a scratch directory)
+while writing this — step 3 does fail with a plain `python
+scripts/build_arc1d_compositional.py` (`ModuleNotFoundError: No module
+named 'data_modules'`), which is exactly why all three are shown as `-m`
+invocations here rather than mixing styles.
+
+Every experiment's `data_dir` points at `data/arc_1d_looped_augmented`
+(step 2); experiment 4 additionally reads `data/arc_1d_compositional_holdout`
+(step 3) for its zero-shot eval. Once both exist, optionally confirm there's
+no train/eval content overlap (see "Data integrity" below):
+
+```bash
+pytest -m slow tests/test_data_leakage.py
+```
+
 ## Task examples
 
 Every task category the paper discusses — the 14 base ARC-1D categories
@@ -82,14 +125,31 @@ everything else in an experiment folder is code that produces or consumes
 
 ## Reproduction workflow
 
+One training entry point, always: `train.py --config <path>` (every
+`run*.sh` — the generic launcher or an experiment's own — is a thin wrapper
+around exactly this call, nothing bespoke per experiment). `train.py`
+already writes final val/test metrics to `results.txt` itself, so that's
+usually the whole pipeline: train → aggregate → plot.
+
 ```
 configs/*.yaml  →  scripts/run_config.sh (or the experiment's own run*.sh)
-                →  outputs/<project>/<run>/results.txt   (one per training run)
+                →  train.py --config <leaf>.yaml   (per (config, seed) pair)
+                →  outputs/<project>/<run>/results.txt
                 →  experiment's plot_*.py --outputs-dir outputs
                 →  outputs/results/<experiment>/*.csv    (aggregated numbers)
                 →  experiment's plot_*.py (no args)
                 →  outputs/figures/<experiment>/*.{png,pdf}
 ```
+
+Two things sit outside that default path, both optional:
+- `validate.py` — a generic, standalone re-evaluation tool (reload a saved
+  run, rescore `best`/`last`/`auto`/an explicit checkpoint). None of the 6
+  experiments' own pipelines call it — `results.txt` already has what they
+  need — it's there for ad-hoc checkpoint inspection.
+- `scripts/eval_compositional_holdout.py` — experiment 4's own extra step,
+  scoring an already-trained run against the disjoint compositional-holdout
+  set (`validate.py` has no notion of a second, different eval set). Called
+  automatically by `04_compositional_generalization`'s own `run*.sh`.
 
 Generic launcher (most experiments):
 
@@ -142,21 +202,23 @@ training run with `log_embedding_clusters: true` saves this file itself,
 naturally, as an end-of-run artifact
 (`outputs/<project>/<run>/embedding_clusters/embeddings.npz`, via
 `training.logging.log_embedding_cluster_plots`) — no `save_checkpoints`, no
-separate dump step. `scripts/dump_embedding_clusters.py` (reload a
+separate dump step. `legacy/scripts/dump_embedding_clusters.py` (reload a
 checkpoint, rerun the forward pass, dump the .npz) only remains useful for
 a run that predates this and has no `embeddings.npz` of its own.
 
 ## Data integrity
 
-Before any large rerun, `scripts/check_data_leakage.py` independently
+Before any large rerun, `tests/test_data_leakage.py` independently
 re-verifies that no augmented training example exactly matches a
 validation/test/compositional-holdout example — the same exact-content
 fingerprint `scripts/augment_arc_1d.py`'s build-time filter already uses,
 recomputed from the final on-disk splits rather than trusted to have run
-correctly:
+correctly. Marked `slow` (excluded from the default `pytest tests/` run —
+fingerprinting the full ~700K-row train split takes about a minute) and
+`skipif`-guarded on the dataset actually existing on disk:
 
 ```bash
-python scripts/check_data_leakage.py
+pytest -m slow tests/test_data_leakage.py
 ```
 
 Last run against `data/arc_1d_looped_augmented` (the dataset every

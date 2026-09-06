@@ -8,7 +8,7 @@ and panel labels so it can be rerun here with no arguments beyond --dim.
 Reads the raw pooled-embedding vectors dumped alongside training
 (training.logging.log_embedding_cluster_plots, `log_embedding_clusters:
 true`) or, for these specific historical runs, by the older
-scripts/dump_embedding_clusters.py from checkpoints rerun with
+legacy/scripts/dump_embedding_clusters.py from checkpoints rerun with
 save_checkpoints=true specifically so this never needs to retrain again --
 rerun this script any time with no cluster access needed, ~15s locally.
 

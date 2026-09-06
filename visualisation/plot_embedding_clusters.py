@@ -1,8 +1,11 @@
 """Paired cluster-map plots for a hypernetwork's pooled task latent.
 
 The default look-and-feel for comparing two trained runs' embedding
-disentanglement: reads two .npz dumps (see scripts/dump_embedding_clusters.py)
-and renders each available projection (PCA / t-SNE / UMAP) as one figure
+disentanglement: reads two .npz dumps -- saved automatically by training
+itself (`log_embedding_clusters: true`, see training.logging's
+log_embedding_cluster_plots) as `outputs/<project>/<run>/embedding_clusters/embeddings.npz`,
+or by legacy/scripts/dump_embedding_clusters.py for a run that predates
+that -- and renders each available projection (PCA / t-SNE / UMAP) as one figure
 with both runs side by side, sharing one legend -- so any two conditions
 (task-ID vs no task-ID, two model sizes, two seeds, ...) are directly
 comparable rather than living in separate single-condition files. Styled
@@ -15,8 +18,8 @@ uniform with the rest of the paper's figures:
   and plot_per_task.py)
 - category colours drawn from visualisation.arc_paper's PAPER_COLORS /
   PAPER_FILL_COLORS -- the same muted rainbow used in the task-example
-  figures (e.g. outputs/visualisations/arc_1d_task_1d_flip_46.pdf), not a
-  generic matplotlib colormap
+  figures (e.g. outputs/figures/00_task_examples/arc_1d_task_1d_flip_46.pdf),
+  not a generic matplotlib colormap
 - category labels run through arc_paper.shorten_task_label (drop
   "Pixel(s)", "Multicolor" -> "MC"), same as plot_per_task.py's x-axis
 - legend as a large, wrapped block along the bottom
@@ -36,8 +39,8 @@ pairs them.
 
 Usage
 -----
-Dump two checkpoints' embeddings first (scripts/dump_embedding_clusters.py),
-then:
+Train two runs with `log_embedding_clusters: true` first (each dumps its own
+embeddings.npz automatically), then:
 
     uv run python -m visualisation.plot_embedding_clusters \\
         --left-npz path/to/run_a.npz --left-label "Task ID" \\
@@ -155,7 +158,7 @@ def render_paired_panel(
 
 def _load_npz(npz_path: Path) -> tuple[np.ndarray, list[str]] | None:
     if not npz_path.exists():
-        print(f"Skipping: {npz_path} not found (run scripts/dump_embedding_clusters.py first).")
+        print(f"Skipping: {npz_path} not found (train with log_embedding_clusters: true first).")
         return None
     data = np.load(npz_path, allow_pickle=True)
     return data["vectors"], list(data["task_categories"])
