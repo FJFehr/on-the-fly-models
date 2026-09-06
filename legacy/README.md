@@ -17,7 +17,15 @@ without some work.
 - **`data_modules/`** — `arc1d_meta_padded_multiclass.py` /
   `arc1d_meta_simple.py`, each used by exactly one legacy config family
   (`arc1d_multiclass` / `arc1d_binary`) and nothing in `experiments/`.
-- **`tests/`** — the test files for those two datamodules.
+- **`visualisation/`** — `plot_capacity.py` (the old capacity-track
+  plotter), `plot_boxplots.py` (unreferenced sequence-length boxplot tool),
+  `weight_space.py` (only used by `scripts/analyze_weight_space_pca.py`
+  above), and `attention.py`/`plot_attention.py` (a task-attention-gallery
+  renderer whose only call site, `Lightning.log_task_attention_gallery`, is
+  `hasattr`-guarded in `training/trainer.py`/`training/logging.py` but not
+  implemented by any current model class — dead code path, nothing
+  currently calls it).
+- **`tests/`** — the test files for everything above.
 
 None of these datamodules are registered in the active
 `data_modules.DATA_REGISTRY` any more. To rerun a legacy config, re-add its

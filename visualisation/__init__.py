@@ -9,6 +9,13 @@
 #
 # Consumers should import from this package, not from the submodule:
 #   from visualisation import render_task_figure, figure_to_wandb_image
+#
+# Task-attention-gallery rendering (render_task_attention_figure,
+# resolve_attention_matrix) moved to legacy/visualisation/attention.py: the
+# hook that would call it (Lightning.log_task_attention_gallery) is
+# hasattr-guarded in training/trainer.py and training/logging.py, but no
+# current model class defines that method, so it never fires. Re-add the
+# import here if a model implements it again.
 # ---------------------------------------------------------------------------
 
 from visualisation.arc import (
@@ -17,7 +24,6 @@ from visualisation.arc import (
     render_task_prediction_figure,
     render_val_example_figure,
 )
-from visualisation.attention import render_task_attention_figure, resolve_attention_matrix
 from visualisation.style import (
     FONT_SIZES,
     MODEL_COLORS,
@@ -37,9 +43,7 @@ __all__ = [
     "figure_to_wandb_image",
     "format_task_category",
     "normalize_task_category",
-    "render_task_attention_figure",
     "render_task_figure",
     "render_task_prediction_figure",
     "render_val_example_figure",
-    "resolve_attention_matrix",
 ]
