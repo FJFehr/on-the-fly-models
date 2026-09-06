@@ -2,7 +2,7 @@
 
 Companion to plot_tasks.py, which renders the standard high-contrast
 ARC-AGI style used for quick inspection / W&B. This script targets the
-LaTeX write-up: vector PDF output via visualisation.arc_paper.
+LaTeX write-up: vector PDF output via visualisation.paper.arc_paper.
 """
 
 import argparse
@@ -11,9 +11,14 @@ from pathlib import Path
 from datasets import Dataset, DatasetDict
 from matplotlib import pyplot as plt
 
-from visualisation.arc_paper import render_task_figure_paper
-from visualisation.plot_tasks import filter_tasks, is_task_dataset, load_task_data, select_dataset
-from visualisation.style import apply_latex_style
+from visualisation.core.style import apply_latex_style
+from visualisation.paper.arc_paper import render_task_figure_paper
+from visualisation.paper.plot_tasks import (
+    filter_tasks,
+    is_task_dataset,
+    load_task_data,
+    select_dataset,
+)
 
 # Matches experiments/01_multitask_capacity/plot_per_task.py's font
 # override, so task-example figures and per-task result figures set the same
@@ -56,7 +61,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", default="data/arc_1d")
     parser.add_argument("--split", default="train")
-    parser.add_argument("--output-dir", type=Path, default=Path("outputs/figures/00_task_examples"))
+    parser.add_argument(
+        "--output-dir", type=Path, default=Path("outputs/figures/00_task_examples")
+    )
     parser.add_argument("--task-category", default=None)
     parser.add_argument("--task-id", type=int, default=None)
     parser.add_argument("--max-tasks", type=int, default=None)

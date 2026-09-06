@@ -4,7 +4,7 @@ HYPERNETWORK (Exp 4), all five conditions on one chart.
 The full story in one figure: individual training (the ceiling) vs. the two
 ways of sharing one model across tasks -- direct joint training (which hits
 the capacity cliff) and the hypernetwork (which closes it, with a task-ID
-signal). Colours pulled from visualisation.arc_paper's PAPER_COLORS (the
+signal). Colours pulled from visualisation.paper.arc_paper's PAPER_COLORS (the
 same muted-rainbow palette as outputs/visualisations/arc_1d_task_1d_flip_46.pdf),
 not the purple/green scheme used elsewhere in this repo's per-task plots --
 this figure needs 5 distinguishable conditions, not 2-3.
@@ -29,8 +29,8 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 
-from visualisation.arc_paper import PAPER_COLORS, lighten
-from visualisation.style import apply_latex_style, format_task_category
+from visualisation.paper.arc_paper import PAPER_COLORS, lighten
+from visualisation.core.style import apply_latex_style, format_task_category
 
 
 def darken(hex_color: str, amount: float = 0.2) -> str:

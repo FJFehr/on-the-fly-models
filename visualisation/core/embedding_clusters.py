@@ -18,7 +18,7 @@ from sklearn.manifold import TSNE
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 from umap import UMAP
 
-from visualisation.style import format_task_category
+from visualisation.core.style import format_task_category
 
 MIN_TSNE_SAMPLES = 4
 MIN_UMAP_SAMPLES = 3

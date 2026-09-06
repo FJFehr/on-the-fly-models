@@ -16,7 +16,7 @@ uniform with the rest of the paper's figures:
   legible, unlike single-panel plots), top/right spines stripped
   (matching experiments/01_multitask_capacity/plot_capacity_cliff.py
   and plot_per_task.py)
-- category colours drawn from visualisation.arc_paper's PAPER_COLORS /
+- category colours drawn from visualisation.paper.arc_paper's PAPER_COLORS /
   PAPER_FILL_COLORS -- the same muted rainbow used in the task-example
   figures (e.g. outputs/figures/00_task_examples/arc_1d_task_1d_flip_46.pdf),
   not a generic matplotlib colormap
@@ -25,7 +25,7 @@ uniform with the rest of the paper's figures:
 - legend as a large, wrapped block along the bottom
 - markers at 3x the base visual diameter, alpha 0.7
 
-Reuses visualisation.embedding_clusters's projection-computation and
+Reuses visualisation.core.embedding_clusters's projection-computation and
 scatter-drawing logic (_compute_projection_panels / _draw_scatter_panel)
 rather than reimplementing it -- this module only supplies the colours,
 labels, and chrome that need to differ from that module's own
@@ -42,7 +42,7 @@ Usage
 Train two runs with `log_embedding_clusters: true` first (each dumps its own
 embeddings.npz automatically), then:
 
-    uv run python -m visualisation.plot_embedding_clusters \\
+    uv run python -m visualisation.paper.plot_embedding_clusters \\
         --left-npz path/to/run_a.npz --left-label "Task ID" \\
         --right-npz path/to/run_b.npz --right-label "No task ID" \\
         --out-dir path/to/output/dir --out-prefix cluster_paired
@@ -60,9 +60,9 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 
-from visualisation.arc_paper import PAPER_COLORS, PAPER_FILL_COLORS, shorten_task_label
-from visualisation.embedding_clusters import _compute_projection_panels, _draw_scatter_panel
-from visualisation.style import apply_latex_style, format_task_category
+from visualisation.core.embedding_clusters import _compute_projection_panels, _draw_scatter_panel
+from visualisation.core.style import apply_latex_style, format_task_category
+from visualisation.paper.arc_paper import PAPER_COLORS, PAPER_FILL_COLORS, shorten_task_label
 
 # PAPER_COLORS/PAPER_FILL_COLORS are keyed 0-9 for ARC cell values (0 = null/
 # background, not a real category colour) -- reused here as an 18-slot
@@ -96,7 +96,7 @@ def build_display_categories(
     task_categories: list[str],
 ) -> tuple[list[str], list[str], dict[str, str]]:
     """Map raw category keys to short display labels and assign each a
-    colour from the shared paper palette (visualisation.arc_paper)."""
+    colour from the shared paper palette (visualisation.paper.arc_paper)."""
     display_categories = [shorten_task_label(format_task_category(c)) for c in task_categories]
     unique_categories = sorted(set(display_categories))
     if len(unique_categories) > len(PALETTE_CYCLE):

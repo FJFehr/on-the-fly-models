@@ -14,7 +14,7 @@ matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 from matplotlib.patches import FancyBboxPatch
 
-from visualisation.style import format_task_category
+from visualisation.core.style import format_task_category
 
 
 def shorten_task_label(label: str) -> str:
@@ -28,7 +28,7 @@ def shorten_task_label(label: str) -> str:
     return label.replace("Multicolor", "MC")
 
 
-# Marks a composition in a compositional-task title (see visualisation.style's
+# Marks a composition in a compositional-task title (see visualisation.core.style's
 # TASK_CATEGORY_DISPLAY_NAMES) -- mathtext, not the plain unicode "∘" (missing
 # from Nimbus Roman, silently dropped by matplotlib).
 COMPOSITION_MARK = r"$\circ$"
@@ -143,7 +143,7 @@ PAPER_LABEL_COLOR = "#3A3730"
 CELL_GAP = 0.05  # a small gap between cells -- distinct pills, not fused runs
 ROUNDING = 0.3  # absolute radius (cell size is 1x1) -- pill-like end caps
 
-# Panel/title text sizes. Deliberately much larger than visualisation.style's
+# Panel/title text sizes. Deliberately much larger than visualisation.core.style's
 # FONT_SIZES: these figures render at a large native size (PANEL_WIDTH is
 # fixed in inches, independent of a LaTeX column width) and get shrunk a lot
 # on the page, so labels need to be oversized to still read at print size.

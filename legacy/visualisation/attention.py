@@ -3,7 +3,7 @@
 import matplotlib.pyplot as plt
 import torch
 
-from visualisation.style import FONT_SIZES, format_task_category
+from visualisation.core.style import FONT_SIZES, format_task_category
 
 
 def resolve_attention_matrix(

@@ -8,14 +8,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from muon import SingleDeviceMuonWithAuxAdam
 
-from metrics import accuracy, exact_match_accuracy
 from models.canon_transformer import CanonRecursiveTransformer, CanonTransformer
+from models.cnn import CNN
 from models.hypermodel_lightning import TASK_CATEGORY_INDEX
 from models.looped_transformer import CanonLoopedTransformer, LoopedTransformer
-from models.rope_looped_transformer import RoPECanonLoopedTransformer
-from models.cnn import CNN
+from models.metrics import accuracy, exact_match_accuracy
 from models.recursive_transformer import RecursiveTransformer
 from models.rnn import RNN
+from models.rope_looped_transformer import RoPECanonLoopedTransformer
 from models.task_token_embedder import TaskTokenEmbedder
 from models.transformer import Transformer
 from visualisation import figure_to_wandb_image, render_val_example_figure
@@ -464,7 +464,7 @@ class DirectSupervisedLightning(pl.LightningModule):
         """
         import os
 
-        from training.logging import _log_wandb_payload
+        from training.logging import log_wandb_payload
 
         self.eval()
         device = next(self.parameters()).device
@@ -543,7 +543,7 @@ class DirectSupervisedLightning(pl.LightningModule):
             fig.savefig(os.path.join(hard_dir, filename), dpi=150, bbox_inches="tight")
             wandb_payload[f"{key_prefix}_{i}"] = figure_to_wandb_image(fig, caption=caption)
 
-        _log_wandb_payload(wandb_logger, wandb_payload)
+        log_wandb_payload(wandb_logger, wandb_payload)
         print(
             f"Logged {len(hard)} hard {split} examples "
             f"({len(wrong_examples)} total failures) to {hard_dir}"

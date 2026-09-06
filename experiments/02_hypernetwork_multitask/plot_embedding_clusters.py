@@ -1,6 +1,6 @@
 """Preset: Task ID vs w/o Task ID paired cluster maps, dim=6 or dim=4 (Experiment 4).
 
-Thin wrapper around visualisation.plot_embedding_clusters -- the actual
+Thin wrapper around visualisation.paper.plot_embedding_clusters -- the actual
 rendering logic (theme, palette, pairing layout) lives there and is shared
 by every experiment; this just fills in this experiment's two .npz paths
 and panel labels so it can be rerun here with no arguments beyond --dim.
@@ -31,7 +31,7 @@ Usage
 import argparse
 from pathlib import Path
 
-from visualisation.plot_embedding_clusters import render_paired_cluster_maps
+from visualisation.paper.plot_embedding_clusters import render_paired_cluster_maps
 
 NPZ_DIR = Path("outputs/results/02_hypernetwork_multitask")
 

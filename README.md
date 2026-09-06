@@ -265,60 +265,63 @@ Shared experiment defaults:
 
 ## Repository layout
 
+For the paper's 6 experiments, start at [`experiments/README.md`](experiments/README.md)
+instead — it's the current, actively-maintained map of that tree. This
+section is the whole-repo picture:
+
 ```text
 on-the-fly-models/
-├── .agents/                        # Agent contract, style guide, task briefs
-├── configs/
-│   └── experiments/
-│       ├── arc1d_binary/                  # Binary hypermodel experiments
-│       ├── arc1d_multiclass/              # Multiclass hypermodel experiments
-│       ├── arc1d_capacity_binary/         # Binary direct-supervised baselines
-│       ├── arc1d_capacity_multiclass/     # Fixed-length multiclass baselines
-│       ├── arc1d_capacity_variable_multiclass/
-│       ├── arc1d_capacity_small/
-│       ├── arc1d_capacity_medium/
-│       ├── arc1d_capacity_large/
-│       ├── arc1d_capacity_augmented_small/
-│       ├── arc1d_capacity_augmented_medium/
-│       ├── arc1d_capacity_augmented_large/
-│       └── arc1d_recursion_ablation_*/     # Recursion/looped training ablations
-├── data/
-│   ├── arc_1d/                      # Task-level DatasetDict (variable-length, 18 categories)
-│   ├── arc_1d_simple/               # Binary padded baseline dataset
-│   ├── arc_1d_padded_multiclass/    # Multiclass padded baseline dataset
-│   └── arc_1d_augmented/            # Augmented variable-length dataset (train only)
-├── data_modules/
-│   ├── __init__.py                 # Datamodule registry
-│   ├── arc1d_direct.py             # Flat supervised datamodule (Exp 1)
-│   ├── arc1d_meta_simple.py        # Binary task-level datamodule
-│   ├── arc1d_meta_multiclass.py    # Multiclass task-level datamodule
-│   └── arc1d_meta_padded_multiclass.py
-├── models/
-│   ├── __init__.py                 # Model registry
-│   ├── direct_supervised_lightning.py  # DirectSupervisedLightning (Exp 1)
-│   ├── hypermodel.py               # Generic hypernetwork-target wrapper
-│   ├── hypermodel_lightning.py     # HyperModelLightning training module
-│   ├── task_token_embedder.py      # Shared task-token embedding components
-│   ├── cnn.py                      # Generic 1D CNN encoder
-│   ├── mlp.py                      # Global MLP backbone
-│   ├── rnn.py                      # Generic RNN encoder
-│   └── transformer.py              # Generic transformer encoder
-├── scripts/
-│   ├── build_arc_1d.py             # Build task-level and derived ARC1D datasets
-│   ├── augment_arc_1d.py           # Colour and shift augmentation for ARC1D train split
-│   ├── visualise_augmentation.py   # Visualise augmentation effects per task category
-│   ├── run_arc1d_capacity.py       # Batch launcher for capacity sweeps
-│   ├── gen_*ablation_configs.py    # Generate recursion ablation config variants
-│   ├── run_ablation_*.sh           # Multi-GPU recursion ablation launchers
-│   └── analyze_weight_space_pca.py # Offline PCA of hyper-generated vs direct RNN weights
-├── tests/
-├── training/                       # Shared config, logging, and trainer utilities
-├── visualisation/
-├── metrics.py
-├── train.py
-├── validate.py
+├── train.py                        # entry point: config -> model/datamodule -> fit
+├── validate.py                     # entry point: reload a saved run -> validate/test
+├── README.md
 ├── pyproject.toml
-└── README.md
+│
+├── models/                         # what gets trained: architectures + Lightning wrappers
+│   ├── __init__.py                     # MODEL_REGISTRY
+│   ├── metrics.py                      # accuracy / exact_match_accuracy
+│   ├── direct_supervised_lightning.py  # DirectSupervisedLightning
+│   ├── looped_supervised_lightning.py  # LoopedSupervisedLightning (N_supervision recursion)
+│   ├── hypermodel.py                   # generic hypernetwork <-> target-model wrapper
+│   ├── hypermodel_lightning.py         # HyperModelLightning training module
+│   ├── task_token_embedder.py          # shared task-token embedding, both training tracks
+│   ├── canon_layer.py, canon_transformer.py, rope.py, rope_looped_transformer.py
+│   │                                    # the RoPE+Canon target/hypernetwork architecture family
+│   ├── transformer.py, cnn.py, rnn.py, mlp.py, activations.py, looped_transformer.py,
+│   │   recursive_transformer.py        # backbone building blocks / alternative encoders
+│
+├── data_modules/                   # what gets trained on: datasets
+│   ├── __init__.py                     # DATA_REGISTRY
+│   ├── arc1d_direct.py                 # flat (input, output) supervised datamodule
+│   ├── arc1d_meta_multiclass.py        # task-level (support+query) datamodule for the hypernetwork
+│   ├── arc1d_compositional.py          # synthetic chained-skill holdout generator
+│   └── task_filtering.py               # shared, caching-aware task-category/id filter
+│
+├── training/                       # how a run executes: mechanics, not definitions
+│   ├── __init__.py
+│   ├── config.py                       # YAML + _base_ inheritance, dotlist overrides
+│   ├── trainer.py                      # Lightning trainer/callbacks, checkpoint I/O
+│   └── logging.py                      # model summaries, W&B, results.txt, run artifacts
+│
+├── visualisation/
+│   ├── __init__.py                     # public rendering API, re-exported from core/
+│   ├── core/                           # shared rendering: used by training AND paper figures
+│   │   ├── arc.py, style.py, embedding_clusters.py
+│   └── paper/                          # paper-specific figure generators only
+│       ├── arc_paper.py, plot_tasks.py, plot_paper_tasks.py, plot_embedding_clusters.py
+│
+├── scripts/                        # data prep + standalone analysis, run directly
+│   ├── build_arc_1d.py                 # ingest the raw 1D-ARC benchmark
+│   ├── augment_arc_1d.py               # colour/shift/mirror augmentation
+│   ├── build_arc1d_compositional.py    # build the compositional holdout set
+│   ├── eval_compositional_holdout.py   # zero-shot-evaluate a trained run against it
+│   ├── run_config.sh                   # generic train.py launcher (skip-on-done, GPU round-robin)
+│   ├── visualise_augmentation.py, measure_compute_efficiency.py, fetch_experiments.sh
+│
+├── experiments/                    # the paper's 6 experiments -- see experiments/README.md
+├── legacy/                         # everything superseded, moved via git mv (history intact)
+├── docs/arc1d_story/                # research-narrative writeups
+├── tests/                          # pytest suite (testpaths); `slow`-marked tests need built data
+└── .agents/                        # operating contract for coding agents working in this repo
 ```
 
 ## Tests

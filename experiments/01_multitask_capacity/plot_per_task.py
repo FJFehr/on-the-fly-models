@@ -37,8 +37,8 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 
-from visualisation.arc_paper import PAPER_COLORS, PAPER_FILL_COLORS
-from visualisation.style import apply_latex_style, format_task_category
+from visualisation.paper.arc_paper import PAPER_COLORS, PAPER_FILL_COLORS
+from visualisation.core.style import apply_latex_style, format_task_category
 
 HERE = Path(__file__).parent
 CSV_PATH = Path("outputs/results/01_multitask_capacity/results_per_task.csv")
@@ -48,7 +48,7 @@ DIMS = ("4", "6", "10")
 # (experiments/02_hypernetwork_multitask/per_task_dim4_combined.png)
 # so a reader sees one consistent colour language across both experiments:
 # baseline/individual = khaki-brown, joint+task-ID = slate blue, joint-no-ID
-# = purple. From visualisation.arc_paper's PAPER_COLORS (the muted rainbow
+# = purple. From visualisation.paper.arc_paper's PAPER_COLORS (the muted rainbow
 # also used for ARC cell values 0-9), not picked ad hoc.
 COLORS = {
     "individual": PAPER_COLORS[0],  # khaki/tan -- baseline

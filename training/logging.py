@@ -13,7 +13,7 @@ import torch
 from lightning.pytorch.loggers import WandbLogger
 
 from visualisation import figure_to_wandb_image, render_val_example_figure
-from visualisation.embedding_clusters import (
+from visualisation.core.embedding_clusters import (
     DEFAULT_GROUP_STYLES,
     compute_linear_probe_accuracy,
     render_embedding_cluster_figure,
@@ -21,7 +21,7 @@ from visualisation.embedding_clusters import (
 )
 
 
-def _log_wandb_payload(
+def log_wandb_payload(
     wandb_logger,
     payload: dict,
     *,
@@ -398,7 +398,7 @@ def log_hard_val_examples(
 
     if snapshot_label is not None:
         wandb_payload["hard_example_snapshot"] = snapshot_label
-    _log_wandb_payload(wandb_logger, wandb_payload)
+    log_wandb_payload(wandb_logger, wandb_payload)
 
     print(
         f"Logged {len(hard_examples)} hard validation examples "
@@ -645,7 +645,7 @@ def log_embedding_cluster_plots(
     render fully opaque, drawn last (on top); holdout points render behind them at a
     higher-than-normal alpha (translucent but still legible), so it's visually clear where the
     model places examples it never trained on relative to the solid validation clusters (see
-    visualisation.embedding_clusters.render_embedding_cluster_figure's `groups` argument).
+    visualisation.core.embedding_clusters.render_embedding_cluster_figure's `groups` argument).
     Omit it (default) for the original single-group behaviour, used by every other experiment.
 
     Logs the combined multi-panel (PCA + t-SNE + UMAP) figure to disk and to W&B as before,
@@ -679,7 +679,7 @@ def log_embedding_cluster_plots(
     # embeddings.npz, saved naturally as part of the run that computed them, no separate
     # checkpoint-reload step needed. Same schema legacy/scripts/dump_embedding_clusters.py
     # (only still useful for a run that predates this) produces, so every consumer
-    # (visualisation.plot_embedding_clusters et al.) reads either the same way.
+    # (visualisation.paper.plot_embedding_clusters et al.) reads either the same way.
     np.savez_compressed(
         os.path.join(cluster_dir, "embeddings.npz"),
         vectors=torch.stack([record["pooled_embedding"] for record in records]).numpy(),
@@ -737,7 +737,7 @@ def log_embedding_cluster_plots(
             summary_file.write(_format_linear_probe_summary(probe))
         probe_message = f" | linear probe accuracy: {probe['mean_accuracy']:.3f}"
 
-    _log_wandb_payload(wandb_logger, wandb_payload)
+    log_wandb_payload(wandb_logger, wandb_payload)
 
     print(f"Logged pooled-task-latent embedding cluster map to {cluster_dir}{probe_message}")
 

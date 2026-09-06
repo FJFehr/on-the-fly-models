@@ -43,8 +43,8 @@ import numpy as np
 from matplotlib.patches import Patch
 from matplotlib import pyplot as plt
 
-from visualisation.arc_paper import PAPER_COLORS, PAPER_FILL_COLORS
-from visualisation.style import apply_latex_style
+from visualisation.paper.arc_paper import PAPER_COLORS, PAPER_FILL_COLORS
+from visualisation.core.style import apply_latex_style
 CSV_PATH = Path("outputs/results/03_reusability_generate_once_execute_many/results_generalization_loo.csv")
 PLOT_PATH = Path("outputs/figures/03_reusability_generate_once_execute_many/generalization_loo.png")
 

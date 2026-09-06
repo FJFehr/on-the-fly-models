@@ -1,6 +1,6 @@
 """Regression tests for task-category label normalization."""
 
-from visualisation.style import format_task_category, normalize_task_category
+from visualisation.core.style import format_task_category, normalize_task_category
 
 
 def test_normalize_task_category_strips_multiclass_prefix():

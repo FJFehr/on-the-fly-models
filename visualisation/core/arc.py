@@ -14,7 +14,7 @@ matplotlib.use("Agg")
 
 from matplotlib import pyplot as plt
 
-from visualisation.style import FONT_SIZES, format_task_category
+from visualisation.core.style import FONT_SIZES, format_task_category
 
 # Standard ARC color palette (integers 0-9)
 ARC_COLORS = {

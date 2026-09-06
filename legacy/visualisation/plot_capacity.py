@@ -21,7 +21,7 @@ from matplotlib import pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 
-from visualisation.style import (
+from visualisation.core.style import (
     FONT_SIZES,
     MODEL_COLORS,
     MODEL_DISPLAY_NAMES,

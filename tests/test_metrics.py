@@ -7,7 +7,7 @@ behaviour instead of broad, weak coverage across every helper metric.
 
 import torch
 
-from metrics import exact_match_accuracy
+from models.metrics import exact_match_accuracy
 
 
 def test_exact_match_accuracy_is_one_for_perfect_predictions():

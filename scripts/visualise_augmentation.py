@@ -21,8 +21,8 @@ matplotlib.use("Agg")
 from datasets import load_from_disk
 from matplotlib import pyplot as plt
 
-from visualisation.arc import draw_sequence
-from visualisation.style import FONT_SIZES, format_task_category
+from visualisation.core.arc import draw_sequence
+from visualisation.core.style import FONT_SIZES, format_task_category
 
 INPUT_DIR = Path("data/arc_1d")
 

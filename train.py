@@ -4,15 +4,21 @@ This file intentionally keeps very little logic of its own.
 
 The design goal is:
 - `train.py` explains the high-level run lifecycle
-- `train_utils.py` owns reusable runtime helpers
+- `training/` (config parsing, trainer/callbacks, logging/artifacts) owns
+  reusable runtime helpers -- run mechanics, not model or data definitions
 - model classes own model-specific training behavior and visualisation details
 
 That split keeps this file readable when you want to answer
 "what happens during a run?" without also reading every low-level helper.
+The `_get_gpu_ids`/`_resolve_free_gpus` helpers below are the one exception:
+`--free-gpus` is entrypoint-level CLI behavior with a single caller, so they
+live here rather than as their own module in `training/`.
 """
 
 import argparse
 import os
+import re as _re
+import subprocess
 import sys
 
 import lightning as pl
@@ -32,7 +38,6 @@ from training.logging import (
     write_model_summary,
     write_results_file,
 )
-from training.gpu_utils import resolve_free_gpus
 from training.trainer import (
     build_callbacks,
     build_trainer,
@@ -40,10 +45,32 @@ from training.trainer import (
     run_post_training_artifacts,
 )
 
-
-import re as _re
-
 _ANSI_ESCAPE = _re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\r")
+
+
+def _get_gpu_ids(max_memory_used_mb: int | None = 500) -> list[int]:
+    """Return GPU IDs. If max_memory_used_mb is set, only return GPUs below that threshold."""
+    result = subprocess.run(
+        ["nvidia-smi", "--query-gpu=index,memory.used", "--format=csv,noheader,nounits"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    ids = []
+    for line in result.stdout.strip().splitlines():
+        idx, mem_used = line.split(", ")
+        if max_memory_used_mb is None or int(mem_used) < max_memory_used_mb:
+            ids.append(int(idx))
+    return ids
+
+
+def _resolve_free_gpus(max_memory_used_mb: int | None = 500) -> tuple[list[int], int]:
+    """Return (gpu_ids, count) for all available GPUs.
+
+    Pass max_memory_used_mb=None to include occupied GPUs.
+    """
+    gpus = _get_gpu_ids(max_memory_used_mb)
+    return gpus, len(gpus)
 
 
 class _DualStreamWriter:
@@ -146,15 +173,15 @@ def main() -> None:
 
     if runtime_cfg.get("devices") == "auto":
         max_mem = 500 if cli_args.free_gpus else None
-        gpu_ids, count = resolve_free_gpus(max_memory_used_mb=max_mem)
+        gpu_ids, count = _resolve_free_gpus(max_memory_used_mb=max_mem)
         if count > 0:
             os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in gpu_ids)
             runtime_cfg["devices"] = count
             mode = "free" if cli_args.free_gpus else "all"
-            print(f"[gpu_utils] {mode} GPUs: {gpu_ids} → using {count} (CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']})")
+            print(f"[gpu] {mode} GPUs: {gpu_ids} → using {count} (CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']})")
         else:
             runtime_cfg["devices"] = 1
-            print("[gpu_utils] No free GPUs found, falling back to 1 device")
+            print("[gpu] No free GPUs found, falling back to 1 device")
 
     # The output directory is treated as the canonical home for this run:
     # config snapshot, model summary, checkpoints, visualisations, and results.

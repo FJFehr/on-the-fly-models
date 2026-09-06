@@ -40,8 +40,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.interpolate import PchipInterpolator
 
-from visualisation.arc_paper import PAPER_COLORS
-from visualisation.style import apply_latex_style
+from visualisation.paper.arc_paper import PAPER_COLORS
+from visualisation.core.style import apply_latex_style
 
 HERE = Path(__file__).parent
 CSV_PATH = Path("outputs/results/01_multitask_capacity/results.csv")
@@ -60,7 +60,7 @@ DIM_PARAMS = {"4": 1398, "6": 2444, "10": 5400}
 # (experiments/02_hypernetwork_multitask/per_task_dim4_combined.png)
 # so a reader sees one consistent colour language across both experiments:
 # baseline/individual = khaki-brown, joint+task-ID = slate blue, joint-no-ID
-# = purple. From visualisation.arc_paper's PAPER_COLORS (the muted rainbow
+# = purple. From visualisation.paper.arc_paper's PAPER_COLORS (the muted rainbow
 # also used for ARC cell values 0-9), not picked ad hoc.
 COLORS = {
     "individual": PAPER_COLORS[0],  # khaki/tan -- baseline

@@ -7,7 +7,7 @@ from datasets import Dataset, DatasetDict, concatenate_datasets, load_from_disk
 from matplotlib import pyplot as plt
 
 from visualisation import render_task_figure
-from visualisation.style import apply_latex_style
+from visualisation.core.style import apply_latex_style
 
 
 def parse_args() -> argparse.Namespace:

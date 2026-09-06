@@ -4,7 +4,7 @@ import matplotlib
 import numpy as np
 import pytest
 
-from visualisation.embedding_clusters import (
+from visualisation.core.embedding_clusters import (
     DEFAULT_GROUP_STYLES,
     _legend_bottom_margin,
     compute_linear_probe_accuracy,

@@ -30,7 +30,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from plot_per_task_combined import COLORS, LABELS
-from visualisation.style import apply_latex_style, format_task_category
+from visualisation.core.style import apply_latex_style, format_task_category
 
 HERE = Path(__file__).parent
 CSV_PATH = Path("outputs/results/02_hypernetwork_multitask/results_per_task_dim4_combined.csv")

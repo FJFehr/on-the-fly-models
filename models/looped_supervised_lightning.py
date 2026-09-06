@@ -18,14 +18,14 @@ import torch.nn.functional as F
 from muon import SingleDeviceMuonWithAuxAdam
 from torch.nn.utils import clip_grad_norm_
 
-from metrics import accuracy, exact_match_accuracy
 from models.canon_transformer import CanonRecursiveTransformer, CanonTransformer
+from models.cnn import CNN
 from models.hypermodel_lightning import TASK_CATEGORY_INDEX
 from models.looped_transformer import CanonLoopedTransformer, LoopedTransformer
-from models.rope_looped_transformer import RoPECanonLoopedTransformer
-from models.cnn import CNN
+from models.metrics import accuracy, exact_match_accuracy
 from models.recursive_transformer import RecursiveTransformer
 from models.rnn import RNN
+from models.rope_looped_transformer import RoPECanonLoopedTransformer
 from models.task_token_embedder import TaskTokenEmbedder
 from models.transformer import Transformer
 from visualisation import figure_to_wandb_image, render_val_example_figure

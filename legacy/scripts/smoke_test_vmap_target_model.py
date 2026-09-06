@@ -41,10 +41,10 @@ All output is printed with flush=True (or via a line-buffered stdout) so `tail -
 redirected log file shows progress live rather than appearing to hang.
 
 Usage:
-    uv run python scripts/smoke_test_vmap_target_model.py
-    CUDA_VISIBLE_DEVICES=0 uv run python scripts/smoke_test_vmap_target_model.py
-    uv run python scripts/smoke_test_vmap_target_model.py --skip-flash   # if flash hangs
-    uv run python scripts/smoke_test_vmap_target_model.py --quick        # smaller/faster pass
+    uv run python legacy/scripts/smoke_test_vmap_target_model.py
+    CUDA_VISIBLE_DEVICES=0 uv run python legacy/scripts/smoke_test_vmap_target_model.py
+    uv run python legacy/scripts/smoke_test_vmap_target_model.py --skip-flash   # if flash hangs
+    uv run python legacy/scripts/smoke_test_vmap_target_model.py --quick        # smaller/faster pass
 """
 
 import argparse

@@ -18,13 +18,13 @@
 # import here if a model implements it again.
 # ---------------------------------------------------------------------------
 
-from visualisation.arc import (
+from visualisation.core.arc import (
     figure_to_wandb_image,
     render_task_figure,
     render_task_prediction_figure,
     render_val_example_figure,
 )
-from visualisation.style import (
+from visualisation.core.style import (
     FONT_SIZES,
     MODEL_COLORS,
     MODEL_DISPLAY_NAMES,

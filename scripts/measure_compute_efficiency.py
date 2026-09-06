@@ -104,7 +104,7 @@ from models import MODEL_REGISTRY
 from models.hypermodel_lightning import TASK_CATEGORY_INDEX
 from training.config import build_runtime_config_dict, load_config
 from training.trainer import load_checkpoint_state, resolve_evaluation_checkpoint_path
-from visualisation.style import apply_latex_style
+from visualisation.core.style import apply_latex_style
 
 DEFAULT_HYPER_CONFIG = "legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/notd.yaml"
 DEFAULT_BASELINE_CONFIG = "experiments/06_data_efficiency_ablation/individual/configs/1d_fill/v3.yaml"
@@ -188,7 +188,7 @@ def measure_forward_flops_and_time(
     fn, n_warmup: int, n_iters: int, device: torch.device
 ) -> tuple[int, float]:
     """Time and FLOP-count a zero-arg forward-only closure. Mirrors
-    scripts/smoke_test_vmap_target_model.py's warm-up/perf_counter/cuda-sync pattern."""
+    legacy/scripts/smoke_test_vmap_target_model.py's warm-up/perf_counter/cuda-sync pattern."""
     is_cuda = device.type == "cuda"
     for _ in range(n_warmup):
         fn()

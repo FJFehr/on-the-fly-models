@@ -69,7 +69,7 @@ def test_log_embedding_cluster_plots_dumps_an_npz_alongside_the_figure(tmp_path)
 def test_log_embedding_cluster_plots_npz_excludes_holdout_records(tmp_path):
     """The dumped .npz is the plain reference set, even when a holdout overlay is requested --
     holdout points get mixed into the *figure* but shouldn't pollute the reusable dump other
-    scripts (visualisation.plot_embedding_clusters et al.) read as "this run's embeddings"."""
+    scripts (visualisation.paper.plot_embedding_clusters et al.) read as "this run's embeddings"."""
     model = build_model()
     reference_batches = [make_batch("1d_move_1p", 1)]
     holdout_batches = [make_batch("1d_comp_fill_mirror", 99)]

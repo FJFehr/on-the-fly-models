@@ -8,7 +8,7 @@ from datasets import Dataset, DatasetDict, load_from_disk
 from matplotlib import pyplot as plt
 from matplotlib.patches import Patch
 
-from visualisation.style import FONT_SIZES, apply_latex_style, format_task_category
+from visualisation.core.style import FONT_SIZES, apply_latex_style, format_task_category
 
 DEFAULT_SPLITS = ("train", "dev", "test")
 SPLIT_SHADES = {

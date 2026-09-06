@@ -10,7 +10,7 @@ from data_modules import DATA_REGISTRY
 from models import MODEL_REGISTRY
 from training.config import apply_grouped_config_aliases, build_runtime_config_dict
 from visualisation import render_task_attention_figure, resolve_attention_matrix
-from visualisation.style import apply_latex_style
+from visualisation.core.style import apply_latex_style
 
 
 def resolve_checkpoint_path(output_path: str, checkpoint_path: str | None) -> str:
