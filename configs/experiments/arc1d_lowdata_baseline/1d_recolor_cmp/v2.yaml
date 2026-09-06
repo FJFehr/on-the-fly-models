@@ -1,0 +1,7 @@
+_base_: configs/experiments/arc1d_lowdata_baseline/base.yaml
+experiment_name: lowdata_baseline_1d_recolor_cmp_v2
+task_categories:
+- 1d_recolor_cmp
+val_task_categories:
+- 1d_recolor_cmp
+variants_per_base_task: 2

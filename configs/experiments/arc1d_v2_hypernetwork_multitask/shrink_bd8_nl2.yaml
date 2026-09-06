@@ -1,0 +1,14 @@
+# Hypernetwork-size shrink sweep (dim=6 target, frozen_td only). See
+# shrink_bd64_nl2.yaml for the full rationale. This cell: bottleneck_dim=8,
+# num_layers=2.
+_base_: configs/experiments/arc1d_v2_hypernetwork_multitask/base.yaml
+experiment_name: v2_hyper_multitask_shrink_bd8_nl2
+
+hyper_model:
+  params:
+    num_layers: 2
+
+hyper_head:
+  bottleneck_dim: 8
+  num_tasks: 18
+  freeze_task_indicator: true

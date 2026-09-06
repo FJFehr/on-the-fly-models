@@ -1,0 +1,7 @@
+_base_: configs/experiments/arc1d_lowdata_baseline/base.yaml
+experiment_name: lowdata_baseline_1d_hollow_v3
+task_categories:
+- 1d_hollow
+val_task_categories:
+- 1d_hollow
+variants_per_base_task: 3

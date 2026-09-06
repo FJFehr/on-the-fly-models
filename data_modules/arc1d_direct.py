@@ -1,5 +1,7 @@
 """Flat supervised datamodule for ARC-1D direct training experiments."""
 
+import random
+
 import lightning as pl
 import torch
 import torch.nn.functional as F
@@ -87,6 +89,8 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
         test_split: str = "test",
         overfit_single_batch: bool = False,
         padding_value: int = PAD_IDX,
+        variants_per_base_task: int | None = None,
+        data_seed: int = 42,
         **kwargs,
     ):
         super().__init__()
@@ -101,6 +105,8 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
         self.val_split = val_split
         self.test_split = test_split
         self.overfit_single_batch = overfit_single_batch
+        self.variants_per_base_task = variants_per_base_task
+        self.data_seed = data_seed
         self.collator = Arc1dDirectPaddingCollator(padding_value=padding_value)
         # binary tasks store values as float32; multiclass uses class indices (long)
         self.dtype = torch.float32 if prediction_task == "binary" else torch.long
@@ -114,6 +120,40 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
         msg = f"Unknown ARC1D split {split_name!r}."
         raise ValueError(msg)
 
+    def _stratified_variants_per_base_task(
+        self, tasks: list[dict], variants_per_base_task: int
+    ) -> list[dict]:
+        """Keep up to variants_per_base_task rows per (category, base task) group.
+
+        Augmented rows carry task_id = original_task_id * 10000 + aug_index
+        (see scripts/augment_arc_1d.py's augment_task), so aug_index == 0 is
+        always the untransformed original example for that base task.
+        Each group's selection always includes that original first, then a
+        fixed data_seed-ordered sequence of the remaining augmented variants -
+        so level K's selection is always level K-1's plus exactly one more
+        per base task (nested/cumulative across levels), and level 1 is
+        exactly the original, unaugmented example for every base task.
+
+        Deterministic given self.data_seed, independent of the training seed,
+        so multiple training seeds at a fixed level see identical training data.
+        """
+        by_base_task: dict[tuple[str, int], list[dict]] = {}
+        for task in tasks:
+            key = (task["task_category"], task["task_id"] // 10000)
+            by_base_task.setdefault(key, []).append(task)
+
+        rng = random.Random(self.data_seed)
+        selected: list[dict] = []
+        for key in sorted(by_base_task):
+            variants = by_base_task[key]
+            original = [t for t in variants if t["task_id"] % 10000 == 0]
+            rest = [t for t in variants if t["task_id"] % 10000 != 0]
+            rng.shuffle(rest)
+            ordered = original + rest
+            n = min(variants_per_base_task, len(ordered))
+            selected.extend(ordered[:n])
+        return selected
+
     def build_flat_dataset(
         self,
         dataset_dict: DatasetDict,
@@ -121,6 +161,7 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
         task_categories: list[str] | None,
         *,
         use_support: bool,
+        variants_per_base_task: int | None = None,
     ) -> Arc1dDirectDataset:
         """Build a flat list of (input, output) pairs from a split.
 
@@ -130,12 +171,17 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
             task_categories: Optional filter; None means all categories.
             use_support: If True, yield all 3 support pairs per task.
                          If False, yield only the query pair per task.
+            variants_per_base_task: If set, subsample rows per base task
+                (stratified/nested, see _stratified_variants_per_base_task)
+                before unpacking into flat (input, output) pairs.
         """
         resolved = self.resolve_split_name(dataset_dict, split_name)
         tasks = filter_split(dataset_dict[resolved], task_categories, self.task_ids)
         if not tasks:
             msg = f"No ARC1D tasks matched the configured filters in split {split_name!r}."
             raise ValueError(msg)
+        if variants_per_base_task is not None:
+            tasks = self._stratified_variants_per_base_task(tasks, variants_per_base_task)
 
         items = []
         for task in tasks:
@@ -167,7 +213,11 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
         dataset_dict = DatasetDict.load_from_disk(self.data_dir)
         val_cats = self.val_task_categories or self.task_categories
         self.train_dataset = self.build_flat_dataset(
-            dataset_dict, self.train_split, self.task_categories, use_support=True
+            dataset_dict,
+            self.train_split,
+            self.task_categories,
+            use_support=True,
+            variants_per_base_task=self.variants_per_base_task,
         )
         self.val_dataset = self.build_flat_dataset(
             dataset_dict, self.val_split, val_cats, use_support=False

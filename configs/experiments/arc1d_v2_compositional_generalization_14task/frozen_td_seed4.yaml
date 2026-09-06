@@ -1,0 +1,6 @@
+_base_: configs/experiments/arc1d_v2_compositional_generalization_14task/base.yaml
+experiment_name: v2_compositional_generalization_14task_frozen_td_seed4
+seed: 4
+hyper_head:
+  num_tasks: 28
+  freeze_task_indicator: true

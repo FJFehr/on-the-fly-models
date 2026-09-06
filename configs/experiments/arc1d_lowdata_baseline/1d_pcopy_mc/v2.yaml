@@ -1,0 +1,7 @@
+_base_: configs/experiments/arc1d_lowdata_baseline/base.yaml
+experiment_name: lowdata_baseline_1d_pcopy_mc_v2
+task_categories:
+- 1d_pcopy_mc
+val_task_categories:
+- 1d_pcopy_mc
+variants_per_base_task: 2

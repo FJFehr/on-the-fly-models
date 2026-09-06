@@ -43,6 +43,22 @@ TASK_CATEGORY_DISPLAY_NAMES: dict[str, str] = {
     "1d_recolor_cnt": "Recolor by Size",
     "1d_recolor_cmp": "Recolor by Size Comparison",
     "1d_scale_dp": "Scaling",
+    # Compositional generalization held-out categories (data_modules/arc1d_compositional.py):
+    # each chains two of the single-task rules above in sequence (stage 1 then stage 2, left to
+    # right). "$\circ$" (mathtext, not the plain unicode "∘") marks that composition -- the bare
+    # unicode glyph isn't in Nimbus Roman and was silently dropped by matplotlib; routing it
+    # through mathtext (still available even with font.serif overridden to Nimbus Roman, since
+    # mathtext.fontset stays "cm") renders it correctly.
+    "1d_comp_denoise1c_shift3": r"Denoise $\circ$ Shift 3",
+    "1d_comp_fill_mirror": r"Fill $\circ$ Mirror",
+    "1d_comp_fill_shift3": r"Fill $\circ$ Shift 3",
+    "1d_comp_fill_movedynamic": r"Fill $\circ$ Move Dynamic",
+    "1d_comp_hollow_shift3": r"Hollow $\circ$ Shift 3",
+    "1d_comp_denoisemc_copy": r"Denoise Multicolor $\circ$ Pattern Copy",
+    "1d_comp_denoisemc_denoise1c": r"Denoise Multicolor $\circ$ Denoise",
+    "1d_comp_movedynamic_hollow": r"Move Dynamic $\circ$ Hollow",
+    "1d_comp_shift3_copy": r"Shift 3 $\circ$ Pattern Copy",
+    "1d_comp_denoisemc_mirror": r"Denoise Multicolor $\circ$ Mirror",
 }
 
 def normalize_task_category(category: str) -> str:

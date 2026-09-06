@@ -1,0 +1,17 @@
+# Smoke test 2/2: encoder hidden_dim=32 (genuinely untested -- nothing below
+# hidden_dim=64 has ever been run in this project). num_heads=4 still
+# divides evenly (32/4=8 head_dim). Otherwise identical to
+# smoke_dim6_frozentd_enc64.yaml. If this clears the same success criteria,
+# it becomes the main grid's encoder size (honors "the hypernetwork should
+# be small too"); if not, fall back to enc64.
+_base_: configs/experiments/arc1d_v2_hypernetwork_multitask/base.yaml
+experiment_name: v2_hyper_multitask_smoke_dim6_frozentd_enc32
+
+hyper_model:
+  params:
+    hidden_dim: 32
+    num_heads: 4
+
+hyper_head:
+  num_tasks: 18
+  freeze_task_indicator: true

@@ -1,0 +1,14 @@
+# Smoke test 1/2: encoder hidden_dim=64 (the "safe" size, base.yaml default,
+# smallest size ever proven to work anywhere in this project). dim=6 target,
+# frozen_td (the more representative "does the basic mechanism work" arm).
+# Single seed. Run before the main 12-job grid -- see
+# docs/arc1d_story (Experiment 4 plan) for success criteria: no NaN /
+# non-finite-grad-norm RuntimeError, train_loss trending down, some real
+# learning signal (easy categories -- denoising/pcopy) within ~200-500 of
+# 8000 steps.
+_base_: configs/experiments/arc1d_v2_hypernetwork_multitask/base.yaml
+experiment_name: v2_hyper_multitask_smoke_dim6_frozentd_enc64
+
+hyper_head:
+  num_tasks: 18
+  freeze_task_indicator: true

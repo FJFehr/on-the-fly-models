@@ -1,0 +1,168 @@
+# Experiment 4: first joint (all-task) hypernetwork run, minimal recipe.
+#
+# Builds directly on Experiment 1 (arc1d_v2_minimal_size: a 2,444-param
+# dim=6 RoPE+Canon target already matches the dim=10 individual-training
+# reference) and Experiment 2 (arc1d_v2_multitask: joint DIRECT training of
+# that same small architecture hits a real capacity cliff -- 74.0% joint
+# w/ task-ID vs 98.9% individual at dim=6 -- which is the whole motivation
+# for a hypernetwork). Every prior hypernetwork experiment in this repo used
+# a much bigger target (dim=16+) and encoder (rope_canon_zhu_transformer,
+# hidden_dim=64/num_layers=8, ~1.58M params). This is the first test of
+# whether the hypernetwork mechanism itself can be small too.
+#
+# Hypothesis: joint frozen_td/notd exact match at dim=6/dim=4 should land
+# close to Experiment 1's individual-training ceiling (13/14 tasks at 1.0,
+# move_dp the one soft spot), not Experiment 2's joint-direct numbers.
+#
+# hyper_model.params.hidden_dim (64 here) is the "enc64" default -- the
+# smoke_*_enc32.yaml leaf overrides it to 32 to test a genuinely smaller,
+# previously-untested encoder size before the main grid commits to one.
+# hyper_model.name is the PLAIN rope_canon_transformer (no Zhu tricks:
+# RMSNorm/QK-norm/SwiGLU), already registered in HYPERNETWORK_REGISTRY and
+# confirmed architecturally identical to rope_canon_zhu_transformer with all
+# three trick-flags off -- simpler, no code changes needed.
+#
+# 14-task set matching Experiments 1-3 exactly (1d_recolor_cmp excluded,
+# per docs/arc1d_story/06_phase1_findings.md's Phase 1 scope decision;
+# re-inclusion deferred to a follow-up, not part of this run).
+#
+# N_supervision=1 (not the historical default of 2) -- matches the "no loops
+# or N_sup needed" finding for the target model, applied here to the
+# hypernetwork's own training loop. max_steps=8000/warmup_steps=800
+# preserves the Round 2 convention's 8000-total-optimizer-update budget
+# (N_supervision=1 x max_steps=8000 == N_supervision=2 x max_steps=4000).
+#
+# Self-contained (no _base_ of its own), matching every sibling base.yaml,
+# because the config loader only resolves one level of _base_ inheritance
+# (training/config.py).
+project_name: arc1d_v2_hypernetwork_multitask
+entity: fjfehr
+output_dir: outputs
+seed: 42
+experiment_name: v2_hyper_multitask
+output_path: ${output_dir}/${project_name}/${experiment_name}
+
+data: arc_1d_meta_multiclass
+data_dir: data/arc_1d_looped_augmented
+model: hyper_model
+primary_metric: val_loss
+num_workers: 0
+
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_scale_dp
+task_ids: null
+val_task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_scale_dp
+train_split: train
+val_split: val
+test_split: test
+overfit_single_batch: false
+
+accelerator: auto
+float32_matmul_precision: medium
+precision: bf16-mixed
+devices: 1
+save_checkpoints: false
+
+optimizer: Muon
+muon_lr: 0.005
+muon_momentum: 0.95
+batch_size: 512
+learning_rate: 0.001
+weight_decay: 0.01
+gradient_clip_val: 10.0
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: ${max_steps}
+    eta_min: 0.0001
+max_steps: 8000
+warmup_steps: 800
+N_supervision: 1
+
+log_task_examples: true
+log_task_examples_every_n_epochs: 100
+num_periodic_train_task_examples: 100
+num_periodic_val_task_examples: 100
+log_embedding_clusters: true
+
+prediction_task: multiclass
+num_classes: 10
+padding_idx: 10
+stop_on_perfect_val_exact_match: false
+
+task_encoding:
+  embedding_dim: 16
+  value_vocab_size: 11
+  use_sinusoidal_pe: false
+
+target_model:
+  name: rope_canon_looped_transformer
+  params:
+    hidden_dim: 6
+    num_heads: 1
+    inner_dim: 6
+    inner_num_heads: 1
+    n_loops: 1
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_block_skip: false
+    use_loop_skip: false
+
+# hidden_dim=32: smoke-tested against the hidden_dim=64 "safe" default and
+# selected for the main grid -- at matched step counts (~500-650 steps) it
+# tracked at least as well (lower loss, higher train exact match), so there's
+# no reason to pay for the larger encoder. See
+# smoke_dim6_frozentd_enc64.yaml/smoke_dim6_frozentd_enc32.yaml for the two
+# smoke configs and docs/arc1d_story (Experiment 4 plan) for the comparison.
+hyper_model:
+  name: rope_canon_transformer
+  params:
+    hidden_dim: 32
+    num_heads: 4
+    num_layers: 2
+    output_dim: 64
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    block_size: 2048
+
+# Placeholder: notd. Overridden per leaf for frozen_td.
+hyper_head:
+  pooling: attention
+  bottleneck_dim: 128
+  num_tasks: null
+  freeze_task_indicator: false
+  lora_adapter: false

@@ -1,0 +1,7 @@
+_base_: configs/experiments/arc1d_lowdata_baseline/base.yaml
+experiment_name: lowdata_baseline_1d_mirror_v1
+task_categories:
+- 1d_mirror
+val_task_categories:
+- 1d_mirror
+variants_per_base_task: 1
