@@ -5,7 +5,7 @@ import torch
 from datasets import DatasetDict
 from torch.utils.data import DataLoader, Dataset
 
-from data_modules.arc1d_simple import filter_split
+from data_modules.task_filtering import filter_split
 
 
 class Arc1dMetaSimpleTaskDataset(Dataset):
