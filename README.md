@@ -5,9 +5,83 @@ Task-conditioned models that generate or adapt a small target model from a task'
 **→ For the paper's experiments, start at [`experiments/README.md`](experiments/README.md).**
 It names the 6 experiments, their status, and the exact commands to reproduce
 each figure. Everything below this point describes the original 1D-ARC
-capacity/binary/multiclass track that predates that work — still functional,
+capacity/binary/multiclass track that predates that work: still functional,
 but superseded as the active story. Its configs and scripts now live under
 `legacy/` (see [`legacy/README.md`](legacy/README.md)).
+
+## Reproducing from a clean environment
+
+The exact sequence for a full clean-slate rerun of the paper experiments under
+`experiments/`: fresh environment, datasets rebuilt from scratch, everything else
+downstream of that. Full per-experiment commands and findings live in
+[`experiments/README.md`](experiments/README.md); this is the process, once.
+
+```bash
+uv sync --python 3.12 --managed-python
+
+uv run python -m scripts.build_arc_1d
+uv run python -m scripts.augment_arc_1d \
+    --per-pair --n-color-permutations 199 --shifts 1 2 -1 -2 --no-mirror \
+    --dev-test-n-permutations 19 \
+    --output-dir data/arc_1d_looped_augmented
+uv run python -m scripts.build_arc1d_compositional
+```
+
+This builds `data/arc_1d` (the raw benchmark), `data/arc_1d_looped_augmented`
+(721,000 train rows, the dataset every current experiment shares) and
+`data/arc_1d_compositional_holdout` (experiment 4's zero-shot eval set).
+Optionally confirm there's no train/eval overlap:
+`uv run pytest -m slow tests/test_data_leakage.py`.
+
+**Known gotcha**: on some NFS-mounted home directories, `uv sync` can silently
+strip the executable bit from `wandb`'s bundled binary, which fails every
+training job instantly with `PermissionError: ... wandb/bin/wandb-core`. Fix
+with `chmod +x .venv/lib/python3.12/site-packages/wandb/bin/wandb-core
+.venv/lib/python3.12/site-packages/wandb/bin/gpu_stats` if training jobs fail
+immediately after a fresh `uv sync`.
+
+### Running on the cluster
+
+Training runs on GPU nodes (`torrnodeN.priv`), reachable with a single
+`ssh torrnodeN.priv` (a `ProxyJump` through the lab's login host handles the hop
+transparently via `~/.ssh/config`). Standing convention: only launch jobs on
+`torrnode8`, `torrnode9`, `torrnode11`-`torrnode15` (not `torrnode10`, not
+`torrnode1`-`torrnode7`), per `experiments/02_hypernetwork_multitask/README.md`
+(where the reasoning is explained).
+
+```bash
+ssh torrnode15.priv
+git clone git@github.com:FJFehr/on-the-fly-models.git && cd on-the-fly-models
+uv sync --python 3.12 --managed-python
+# build the datasets as above, then launch a sweep across all 8 GPUs:
+CFG_DIR=experiments/01_multitask_capacity SEEDS_OVERRIDE="1 2 3 4 5" \
+    GPUS="0,1,2,3,4,5,6,7" bash scripts/run_config.sh
+```
+
+`scripts/run_config.sh` skips any `(config, seed)` pair that already has a
+`results.txt`, so it's always safe to rerun. Launch it under `nohup ... &` (or
+`tmux`) so it survives the SSH session ending. `CFG_DIR` recurses, so pointing
+it at an experiment's whole directory sweeps every config folder underneath
+it too (a sub-study living alongside the main configs, say). Narrow `CFG_DIR`
+to a specific subfolder for a scoped launch, and pass `PROJECT=<name>`
+explicitly if you want its results grouped under a project other than that
+subfolder's own basename.
+
+Once training finishes, fetch the results back (checkpoints excluded) and
+regenerate the figures:
+
+```bash
+REMOTE_HOST=torrnode15.priv bash scripts/fetch_experiments.sh 01_multitask_capacity
+uv run python experiments/01_multitask_capacity/plot_all.py --outputs-dir outputs
+```
+
+`experiments/01_multitask_capacity/plot_all.py` is that experiment's single
+entry point: it rescans `outputs/`, refreshes every CSV under
+`outputs/results/01_multitask_capacity/`, and renders every figure (the
+capacity-cliff plot plus a per-task breakdown for every size present in the
+data) in one pass. Other experiments' own READMEs list their exact
+plot script(s); this one-script-does-everything convention isn't wired up
+everywhere yet.
 
 The current codebase is a config-driven 1D ARC experimentation repo with two active tracks: task-level hypermodel experiments and direct-supervised baselines. Shared registries and runtime utilities let the same training and evaluation entrypoints run both tracks from YAML configs.
 

@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-# Fetch experiment outputs from torrnode11.priv, excluding model checkpoints.
+# Fetch experiment outputs from a torrnode, excluding model checkpoints.
 #
 # Usage:
 #   bash scripts/fetch_experiments.sh arc1d_uniform_ablation
 #   bash scripts/fetch_experiments.sh outputs/arc1d_uniform_ablation
 #   bash scripts/fetch_experiments.sh arc1d_uniform_ablation arc1d_recursion_ablation
+#   REMOTE_HOST=torrnode15.priv bash scripts/fetch_experiments.sh 01_multitask_capacity
+#
+# Env vars:
+#   REMOTE_HOST  which torrnode to pull from (default: torrnode11.priv)
+#   REMOTE_REPO  repo directory name on that node, under /homes/55/fabiojfehr/
+#                (default: on-the-fly-models)
 
 set -uo pipefail
 
-REMOTE_HOST="torrnode11.priv"
-REMOTE_BASE="/homes/55/fabiojfehr/on-the-fly-models/outputs"
+REMOTE_HOST="${REMOTE_HOST:-torrnode11.priv}"
+REMOTE_REPO="${REMOTE_REPO:-on-the-fly-models}"
+REMOTE_BASE="/homes/55/fabiojfehr/${REMOTE_REPO}/outputs"
 LOCAL_BASE="outputs"
 JUMP_HOST="robots.ox.ac.uk"
 
