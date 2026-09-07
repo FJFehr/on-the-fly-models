@@ -149,6 +149,59 @@ CFG_DIR=experiments/01_multitask_capacity/configs/nocanon PROJECT=01_multitask_c
 uv run python experiments/01_multitask_capacity/plot_canon_ablation.py --outputs-dir outputs
 ```
 
+## Optimizer ablation
+
+**Question**: how much of this experiment's story depends on Muon
+specifically? `configs/adamw/` mirrors every Joint and Individual config
+with `optimizer: AdamW` instead of Muon, Canon left enabled, so this
+isolates the optimizer choice alone.
+
+![Optimizer ablation capacity cliff](../../../outputs/figures/01_multitask_capacity/capacity_cliff_optimizer_ablation.png)
+
+*(Not committed, regenerate with `uv run python plot_optimizer_ablation.py
+--outputs-dir outputs` from this folder.)* Same colour-by-condition scheme
+as the other capacity-cliff plots; solid is Muon, dashed is AdamW. The
+learning rates and scheduler are annotated on the figure itself.
+
+| condition | 1.4K (dim=4) | 2.4K (dim=6) | 5.4K (dim=10) | 9.5K (dim=14) |
+|---|---:|---:|---:|---:|
+| Individual, Muon | 92.6% | 98.3% | 98.7% | 98.6% |
+| Individual, AdamW | 83.9% | 96.6% | 98.2% | 99.2% |
+| Joint notd, Muon | 13.4% | 40.7% | 57.5% | 65.6% |
+| Joint notd, AdamW | 4.4% | 23.5% | 43.1% | 50.1% |
+| Joint td, Muon | 21.2% | 73.2% | 93.2% | 97.5% |
+| Joint td, AdamW | 18.1% | 65.2% | 87.0% | 94.4% |
+
+Muon beats AdamW in every cell except one (Individual at dim=14, where
+AdamW edges ahead slightly, 99.2% vs. 98.6% -- likely noise given the
+seed-to-seed variance elsewhere). The gap is largest at the smallest sizes
+and for joint training, narrowing as capacity grows. Worth reading with a
+caveat though: the AdamW learning rate (0.001) is base.yaml's existing
+RAdam-tuned default, not a value tuned for AdamW on this task, so part of
+this gap may reflect that rather than a fundamental Muon-vs-AdamW
+difference -- see `gen_adamw_configs.py`'s docstring.
+
+Muon and AdamW's parameter groups aren't directly comparable one-to-one:
+Muon configs actually run two optimizers together (a Muon group for hidden
+`nn.Linear` weights at `muon_lr=0.005, muon_momentum=0.95`, plus an AdamW
+*aux* group for everything else -- embeddings, norms, Canon conv weights,
+biases, the final output layer -- at `learning_rate=0.0005`), while the
+AdamW-ablation configs use a single AdamW optimizer for every parameter at
+`learning_rate=0.001`. Both share `weight_decay=0.01` and the same
+schedule: 200-step linear warmup, then cosine decay to 0 over the
+remaining `max_steps=8000` steps.
+
+Run the same way as the canon ablation, with a narrower `CFG_DIR`:
+
+```bash
+CFG_DIR=experiments/01_multitask_capacity/configs/adamw PROJECT=01_multitask_capacity \
+    SEEDS_OVERRIDE="1 2 3 4 5" GPUS="0,1,2,3,4,5,6,7" bash scripts/run_config.sh
+```
+
+```bash
+uv run python experiments/01_multitask_capacity/plot_optimizer_ablation.py --outputs-dir outputs
+```
+
 ## Method
 
 - **Individual**: one model per task category, no cross-task sharing,
@@ -226,6 +279,7 @@ uv run python experiments/01_multitask_capacity/plot_all.py --outputs-dir output
 `plot_capacity_cliff.py`/`plot_per_task.py` still work standalone (see "The
 plot" above) if you only want one figure refreshed; `plot_all.py` is the
 single entry point for "just finished training, rebuild everything." Note it
-only covers the Joint and Individual conditions above, not the canon
-ablation: that has its own script, `plot_canon_ablation.py` (see "Canon
+only covers the Joint and Individual conditions above, not the two
+ablations: those have their own scripts, `plot_canon_ablation.py` (see
+"Canon ablation" above) and `plot_optimizer_ablation.py` (see "Optimizer
 ablation" above).
