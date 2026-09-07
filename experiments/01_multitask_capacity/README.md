@@ -104,6 +104,13 @@ mirrors every Joint and Individual config in this experiment with
 width, optimizer, and step budget otherwise, so the two are directly
 comparable size for size.
 
+![Canon ablation capacity cliff](../../../outputs/figures/01_multitask_capacity/capacity_cliff_canon_ablation.png)
+
+*(Not committed, regenerate with `uv run python plot_canon_ablation.py
+--outputs-dir outputs` from this folder.)* Same colour-by-condition scheme
+as the main capacity-cliff plot; line style now carries the ablation
+instead: solid is canon, dashed is no canon.
+
 | condition | 1.4K (dim=4) | 2.4K (dim=6) | 5.4K (dim=10) | 9.5K (dim=14) |
 |---|---:|---:|---:|---:|
 | Individual, canon | 92.6% | 98.3% | 98.7% | 98.6% |
@@ -136,7 +143,11 @@ CFG_DIR=experiments/01_multitask_capacity/configs/nocanon PROJECT=01_multitask_c
 `PROJECT` must be set explicitly here: `CFG_DIR`'s own basename is
 `nocanon`, which would otherwise scatter results under
 `outputs/nocanon/` instead of alongside everything else in
-`outputs/01_multitask_capacity/`.
+`outputs/01_multitask_capacity/`. Then regenerate the comparison above:
+
+```bash
+uv run python experiments/01_multitask_capacity/plot_canon_ablation.py --outputs-dir outputs
+```
 
 ## Method
 
@@ -216,4 +227,5 @@ uv run python experiments/01_multitask_capacity/plot_all.py --outputs-dir output
 plot" above) if you only want one figure refreshed; `plot_all.py` is the
 single entry point for "just finished training, rebuild everything." Note it
 only covers the Joint and Individual conditions above, not the canon
-ablation (that comparison is currently a one-off table, not its own plot).
+ablation: that has its own script, `plot_canon_ablation.py` (see "Canon
+ablation" above).
