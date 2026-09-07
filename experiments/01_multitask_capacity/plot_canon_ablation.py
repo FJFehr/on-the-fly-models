@@ -164,13 +164,20 @@ def plot(series: dict[tuple[str, bool], dict[str, dict]], out_path: Path) -> Non
                 continue
             x = np.array([DIM_PARAMS[d] for d in dims_present], dtype=float)
             means = np.array([s[d]["mean"] for d in dims_present])
+            stds = np.array([s[d]["std"] for d in dims_present])
 
             log_x = np.log10(x)
             log_x_fine = np.linspace(log_x.min(), log_x.max(), 200)
             x_fine = 10**log_x_fine
             mean_fine = PchipInterpolator(log_x, means)(log_x_fine)
+            lo_fine = np.clip(PchipInterpolator(log_x, means - stds)(log_x_fine), 0, 1)
+            hi_fine = np.clip(PchipInterpolator(log_x, means + stds)(log_x_fine), 0, 1)
 
             canon_tag = "canon" if canon else "no canon"
+            ax.fill_between(
+                x_fine, lo_fine, hi_fine, color=COLORS[cond], alpha=0.10, linewidth=0,
+                zorder=1,
+            )
             ax.plot(
                 x_fine, mean_fine, color=COLORS[cond], linestyle=linestyle, alpha=alpha,
                 linewidth=2.2, label=f"{LABELS[cond]} ({canon_tag})", zorder=3,
