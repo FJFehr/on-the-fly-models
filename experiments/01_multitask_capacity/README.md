@@ -160,8 +160,8 @@ isolates the optimizer choice alone.
 
 *(Not committed, regenerate with `uv run python plot_optimizer_ablation.py
 --outputs-dir outputs` from this folder.)* Same colour-by-condition scheme
-as the other capacity-cliff plots; solid is Muon, dashed is AdamW. The
-learning rates and scheduler are annotated on the figure itself.
+as the other capacity-cliff plots; solid is Muon, dashed is AdamW. Learning
+rates and scheduler are below, not on the figure itself.
 
 | condition | 1.4K (dim=4) | 2.4K (dim=6) | 5.4K (dim=10) | 9.5K (dim=14) |
 |---|---:|---:|---:|---:|

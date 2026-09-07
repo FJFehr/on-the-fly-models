@@ -9,11 +9,8 @@ this isolates the optimizer choice alone. Colour still separates condition
 (khaki/blue/purple, same palette as the other capacity-cliff plots); line
 style separates the ablation: solid = Muon, dashed = AdamW.
 
-The hyperparameters (learning rates, scheduler) differ meaningfully between
-the two optimizers and are annotated directly on the figure -- see "Canon
-ablation" and "Method" in this experiment's README for the muon_lr choice
-and the general reasoning about why the AdamW learning rate is a starting
-point, not a value tuned for AdamW specifically.
+The two optimizers' learning rates and shared scheduler are documented in
+"Optimizer ablation" in this experiment's README, not on the figure itself.
 
 Usage
 -----
@@ -39,16 +36,6 @@ HERE = Path(__file__).parent
 CSV_PATH = Path("outputs/results/01_multitask_capacity/results_optimizer_ablation.csv")
 PLOT_PATH = Path("outputs/figures/01_multitask_capacity/capacity_cliff_optimizer_ablation.png")
 CSV_FIELDS = ["condition", "muon", "dim", "params", "seed", "test_exact_match"]
-
-# Both optimizers share: weight_decay=0.01, CosineAnnealingLR (eta_min=0.0)
-# over max_steps=8000 with a 200-step linear warmup first. Reproduced from
-# experiments/01_multitask_capacity/configs/base.yaml, notd.yaml (Muon) and
-# configs/adamw/joint/notd_dim4.yaml (AdamW).
-HYPERPARAM_TEXT = (
-    "Muon: lr=0.005, momentum=0.95 (+ AdamW aux group, lr=0.0005)\n"
-    "AdamW: lr=0.001\n"
-    "Shared: weight_decay=0.01, warmup 200 steps, cosine decay to 0 over 8000 steps"
-)
 
 
 def extract_records(outputs_dir: Path) -> list[dict]:
@@ -167,7 +154,7 @@ def plot(series: dict[tuple[str, bool], dict[str, dict]], out_path: Path) -> Non
             "pdf.fonttype": 42,
         }
     )
-    fig, ax = plt.subplots(figsize=(6.4, 6.3))
+    fig, ax = plt.subplots(figsize=(6.4, 5.8))
     dims_sorted = sorted(DIM_PARAMS, key=lambda d: DIM_PARAMS[d])
 
     for cond in ("individual", "td", "notd"):
@@ -219,11 +206,7 @@ def plot(series: dict[tuple[str, bool], dict[str, dict]], out_path: Path) -> Non
         handlelength=1.6, labelspacing=0.3, borderaxespad=0.3,
     )
 
-    fig.tight_layout(rect=(0, 0.1, 1, 1))
-    fig.text(
-        0.5, 0.005, HYPERPARAM_TEXT, ha="center", va="bottom", fontsize=8.5,
-        color="0.35", linespacing=1.6,
-    )
+    fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path)
     pdf_path = out_path.with_suffix(".pdf")
