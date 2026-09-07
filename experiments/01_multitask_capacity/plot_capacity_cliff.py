@@ -296,8 +296,9 @@ def main() -> None:
         records = read_csv(CSV_PATH)
 
     series = build_series(records)
+    dims_sorted = sorted(DIM_PARAMS, key=lambda d: DIM_PARAMS[d])
     for cond in ("individual", "notd", "td"):
-        for dim in ("4", "6", "10"):
+        for dim in dims_sorted:
             s = series[cond].get(dim)
             if s:
                 print(
