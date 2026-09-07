@@ -43,7 +43,7 @@ from visualisation.core.style import apply_latex_style, format_task_category
 HERE = Path(__file__).parent
 CSV_PATH = Path("outputs/results/01_multitask_capacity/results_per_task.csv")
 
-DIMS = ("4", "6", "10")
+DIMS = ("4", "6", "10", "14")
 # Same palette as the hypernetwork multitask comparison
 # (experiments/02_hypernetwork_multitask/per_task_dim4_combined.png)
 # so a reader sees one consistent colour language across both experiments:

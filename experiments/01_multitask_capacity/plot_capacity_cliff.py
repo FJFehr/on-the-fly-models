@@ -54,7 +54,7 @@ PLOT_PATH = Path("outputs/figures/01_multitask_capacity/capacity_cliff.png")
 # Total parameter counts measured directly (embedder + backbone + head; +180
 # for the task-embedding table in the "Joint + ID" arms, not shown on the
 # x-axis since the swept quantity is backbone width, not that fixed addition).
-DIM_PARAMS = {"4": 1398, "6": 2444, "10": 5400}
+DIM_PARAMS = {"4": 1398, "6": 2444, "10": 5400, "14": 9508}
 
 # Same palette as the hypernetwork multitask comparison
 # (experiments/02_hypernetwork_multitask/per_task_dim4_combined.png)
