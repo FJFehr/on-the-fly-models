@@ -147,7 +147,7 @@ def plot(series: dict[tuple[str, bool], dict[str, dict]], out_path: Path) -> Non
             "axes.labelsize": 23,
             "xtick.labelsize": 20,
             "ytick.labelsize": 20,
-            "legend.fontsize": 14,
+            "legend.fontsize": 11,
             "pdf.fonttype": 42,
         }
     )
@@ -198,7 +198,10 @@ def plot(series: dict[tuple[str, bool], dict[str, dict]], out_path: Path) -> Non
     ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
     ax.grid(axis="y", alpha=0.3, linewidth=0.6)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(loc="lower right", frameon=False, ncol=1)
+    ax.legend(
+        loc="lower right", frameon=False, ncol=1,
+        handlelength=1.6, labelspacing=0.3, borderaxespad=0.3,
+    )
 
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
