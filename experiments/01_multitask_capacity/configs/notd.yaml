@@ -7,7 +7,7 @@
 # this joint run falls well short of that, it's evidence a single fixed
 # weight set can't hold all 14 tasks at once.
 _base_: experiments/01_multitask_capacity/configs/base.yaml
-experiment_name: v2_multitask_notd
+experiment_name: joint_notd_dim10
 project_name: 01_multitask_capacity
 task_categories:
 - 1d_denoising_1c

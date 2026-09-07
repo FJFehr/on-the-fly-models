@@ -4,7 +4,7 @@
 # from Experiment 1 instead of RC1's dim=10. task_encoding.embedding_dim
 # stays fixed at 10.
 _base_: experiments/01_multitask_capacity/configs/base.yaml
-experiment_name: v2_multitask_td_dim6
+experiment_name: joint_td_dim6
 project_name: 01_multitask_capacity
 task_categories:
 - 1d_denoising_1c

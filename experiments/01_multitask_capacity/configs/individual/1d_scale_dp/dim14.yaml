@@ -1,5 +1,5 @@
 _base_: experiments/01_multitask_capacity/configs/base.yaml
-experiment_name: v2_individual_dim14_1d_scale_dp
+experiment_name: individual_dim14_1d_scale_dp
 project_name: 01_multitask_capacity
 task_categories:
 - 1d_scale_dp

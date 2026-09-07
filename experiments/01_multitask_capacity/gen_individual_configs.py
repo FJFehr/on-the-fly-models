@@ -77,7 +77,7 @@ CANON_PARAMS = {
 def config_at(dim: int, category: str) -> dict:
     return {
         "_base_": BASE_CFG,
-        "experiment_name": f"v2_individual_dim{dim}_{category}",
+        "experiment_name": f"individual_dim{dim}_{category}",
         "project_name": "01_multitask_capacity",
         "task_categories": [category],
         "save_checkpoints": False,

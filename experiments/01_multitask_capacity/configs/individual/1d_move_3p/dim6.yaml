@@ -1,5 +1,5 @@
 _base_: experiments/01_multitask_capacity/configs/base.yaml
-experiment_name: v2_individual_dim6_1d_move_3p
+experiment_name: individual_dim6_1d_move_3p
 project_name: 01_multitask_capacity
 task_categories:
 - 1d_move_3p

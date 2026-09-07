@@ -8,7 +8,7 @@
 # (models/hypermodel.py). Reference point: same as notd.yaml, Phase 1's
 # individually-trained 14-task mean (0.986).
 _base_: experiments/01_multitask_capacity/configs/base.yaml
-experiment_name: v2_multitask_td
+experiment_name: joint_td_dim10
 project_name: 01_multitask_capacity
 task_categories:
 - 1d_denoising_1c

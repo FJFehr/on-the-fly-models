@@ -5,7 +5,7 @@
 # not yet run. task_encoding.embedding_dim stays fixed at 10, matching
 # every other size in this sweep.
 _base_: experiments/01_multitask_capacity/configs/base.yaml
-experiment_name: v2_multitask_notd_dim14
+experiment_name: joint_notd_dim14
 project_name: 01_multitask_capacity
 task_categories:
 - 1d_denoising_1c

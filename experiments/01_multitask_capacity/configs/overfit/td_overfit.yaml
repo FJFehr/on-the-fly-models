@@ -3,7 +3,7 @@
 # use_task_embedding: true, confirm the embedding table wires in and the
 # model can still reach perfect exact match when data isn't the bottleneck.
 _base_: experiments/01_multitask_capacity/configs/base.yaml
-experiment_name: v2_multitask_overfit_td
+experiment_name: overfit_td
 project_name: 01_multitask_capacity
 task_categories:
   - 1d_denoising_1c

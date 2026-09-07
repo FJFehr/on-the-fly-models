@@ -1,5 +1,5 @@
 _base_: experiments/01_multitask_capacity/configs/base.yaml
-experiment_name: v2_individual_dim10_1d_denoising_1c
+experiment_name: individual_dim10_1d_denoising_1c
 project_name: 01_multitask_capacity
 task_categories:
 - 1d_denoising_1c

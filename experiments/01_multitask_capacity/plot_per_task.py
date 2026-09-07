@@ -117,7 +117,7 @@ def extract_records(outputs_dir: Path) -> list[dict]:
     records = []
     project_dir = outputs_dir / "01_multitask_capacity"
 
-    individual_re = re.compile(r"^v2_individual_dim(\d+)_(.+)_seed(\d+)$")
+    individual_re = re.compile(r"^individual_dim(\d+)_(.+)_seed(\d+)$")
     for path in sorted(project_dir.glob("*/results.txt")):
         m = individual_re.match(path.parent.name)
         if not m:
@@ -131,12 +131,12 @@ def extract_records(outputs_dir: Path) -> list[dict]:
                  "val_exact_match": score}
             )
 
-    pattern = re.compile(r"^v2_multitask_(notd|td)(?:_dim(\d+))?_seed(\d+)$")
+    pattern = re.compile(r"^joint_(notd|td)_dim(\d+)_seed(\d+)$")
     for path in sorted(project_dir.glob("*/results.txt")):
         m = pattern.match(path.parent.name)
         if not m:
             continue
-        cond, dim, seed = m.group(1), m.group(2) or "10", int(m.group(3))
+        cond, dim, seed = m.group(1), m.group(2), int(m.group(3))
         for task, score in parse_val_by_task(path).items():
             records.append(
                 {"condition": cond, "dim": dim, "task": task, "seed": seed,

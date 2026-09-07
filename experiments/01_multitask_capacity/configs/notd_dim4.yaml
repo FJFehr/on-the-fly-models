@@ -6,7 +6,7 @@
 # hold all 14 tasks jointly the same way? task_encoding.embedding_dim stays
 # fixed at 10 for comparability, matching Experiment 1's convention.
 _base_: experiments/01_multitask_capacity/configs/base.yaml
-experiment_name: v2_multitask_notd_dim4
+experiment_name: joint_notd_dim4
 project_name: 01_multitask_capacity
 task_categories:
 - 1d_denoising_1c

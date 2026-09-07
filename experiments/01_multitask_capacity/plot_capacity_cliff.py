@@ -10,10 +10,14 @@ Compares three training regimes across model size (parameter count):
                      (td*.yaml)
 
 All three conditions land under outputs/01_multitask_capacity/ (the project
-name run_config.sh derives from this experiment's directory name) -- not the
-older, now-stale arc1d_v2_multitask/arc1d_v2_minimal_size/
-arc1d_v2_backbone_capacity project names some configs used to carry before
-the paper-repro reorg.
+name run_config.sh derives from this experiment's directory name), with run
+directories named joint_{notd,td}_dim{4,6,10,14}_seed{N} and
+individual_dim{4,6,10,14}_<task>_seed{N} -- not the older "v2_multitask_"/
+"v2_individual_" prefixes (dropped as vestigial: a leftover pre-reorg
+versioning scheme that meant nothing once this lived under
+01_multitask_capacity/), nor the even older
+arc1d_v2_multitask/arc1d_v2_minimal_size/arc1d_v2_backbone_capacity project
+names some configs carried before the paper-repro reorg.
 
 All raw per-seed results live in results.csv next to this script (one row =
 one seed's test_query_exact_match; "individual" rows are already averaged
@@ -105,7 +109,7 @@ def extract_records(outputs_dir: Path) -> list[dict]:
 
     project_dir = outputs_dir / "01_multitask_capacity"
 
-    individual_re = re.compile(r"^v2_individual_dim(\d+)_.+_seed(\d+)$")
+    individual_re = re.compile(r"^individual_dim(\d+)_.+_seed(\d+)$")
     for path in sorted(project_dir.glob("*/results.txt")):
         m = individual_re.match(path.parent.name)
         if not m:
@@ -128,12 +132,12 @@ def extract_records(outputs_dir: Path) -> list[dict]:
                 }
             )
 
-    pattern = re.compile(r"^v2_multitask_(notd|td)(?:_dim(\d+))?_seed(\d+)$")
+    pattern = re.compile(r"^joint_(notd|td)_dim(\d+)_seed(\d+)$")
     for path in sorted(project_dir.glob("*/results.txt")):
         m = pattern.match(path.parent.name)
         if not m:
             continue
-        cond, dim, seed = m.group(1), m.group(2) or "10", int(m.group(3))
+        cond, dim, seed = m.group(1), m.group(2), int(m.group(3))
         score = parse_test_exact_match(path)
         if score is not None:
             records.append(
