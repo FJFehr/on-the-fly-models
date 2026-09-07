@@ -1,5 +1,5 @@
 _base_: experiments/02_hypernetwork_multitask/configs/base.yaml
-experiment_name: v2_hyper_multitask_dim4_notd
+experiment_name: hyper_multitask_dim4_notd
 
 target_model:
   params:

@@ -35,11 +35,11 @@
 # Self-contained (no _base_ of its own), matching every sibling base.yaml,
 # because the config loader only resolves one level of _base_ inheritance
 # (training/config.py).
-project_name: arc1d_v2_hypernetwork_multitask
+project_name: 02_hypernetwork_multitask
 entity: fjfehr
 output_dir: outputs
 seed: 42
-experiment_name: v2_hyper_multitask
+experiment_name: hyper_multitask
 output_path: ${output_dir}/${project_name}/${experiment_name}
 
 data: arc_1d_meta_multiclass
@@ -88,7 +88,7 @@ accelerator: auto
 float32_matmul_precision: medium
 precision: bf16-mixed
 devices: 1
-save_checkpoints: false
+save_checkpoints: true
 
 optimizer: Muon
 muon_lr: 0.005
