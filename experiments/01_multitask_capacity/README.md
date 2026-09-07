@@ -138,9 +138,13 @@ CFG_DIR=experiments/01_multitask_capacity SEEDS_OVERRIDE="1 2 3 4 5" GPUS="0,1,2
 ```
 
 Skips any (config, seed) pair that already has an `outputs/01_multitask_capacity/<run>/results.txt`,
-so it's safe to rerun to backfill missing seeds. Then rebuild the committed CSVs and figures:
+so it's safe to rerun to backfill missing seeds. Then rebuild every committed CSV and figure
+(capacity-cliff plus a per-task breakdown for every size present in the data) in one pass:
 
 ```bash
-python experiments/01_multitask_capacity/plot_capacity_cliff.py --outputs-dir outputs
-python experiments/01_multitask_capacity/plot_per_task.py --outputs-dir outputs
+uv run python experiments/01_multitask_capacity/plot_all.py --outputs-dir outputs
 ```
+
+`plot_capacity_cliff.py`/`plot_per_task.py` still work standalone (see "The plot" above) if
+you only want one figure refreshed; `plot_all.py` is the single entry point for "just finished
+training, rebuild everything."
