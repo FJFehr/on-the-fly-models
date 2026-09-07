@@ -137,7 +137,7 @@ CFG_DIR=experiments/01_multitask_capacity SEEDS_OVERRIDE="1 2 3 4 5" GPUS="0,1,2
     bash scripts/run_config.sh                  # 3-way parallel
 ```
 
-Skips any (config, seed) pair that already has an `outputs/arc1d_v2_multitask/<run>/results.txt`,
+Skips any (config, seed) pair that already has an `outputs/01_multitask_capacity/<run>/results.txt`,
 so it's safe to rerun to backfill missing seeds. Then rebuild the committed CSVs and figures:
 
 ```bash

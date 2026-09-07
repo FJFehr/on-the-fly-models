@@ -1,26 +1,8 @@
-# Experiment 2b at dim=6: joint 14-task training, WITH task embedding ("td").
-#
-# Same as td.yaml (use_task_embedding: true), but on the dim=6 architecture
-# from Experiment 1 instead of RC1's dim=10. task_encoding.embedding_dim
-# stays fixed at 10.
 _base_: experiments/01_multitask_capacity/configs/base.yaml
-experiment_name: v2_multitask_td_dim6
+experiment_name: v2_individual_dim14_1d_denoising_1c
 project_name: 01_multitask_capacity
 task_categories:
 - 1d_denoising_1c
-- 1d_denoising_mc
-- 1d_fill
-- 1d_flip
-- 1d_hollow
-- 1d_mirror
-- 1d_move_1p
-- 1d_move_2p
-- 1d_move_2p_dp
-- 1d_move_3p
-- 1d_move_dp
-- 1d_pcopy_1c
-- 1d_pcopy_mc
-- 1d_scale_dp
 save_checkpoints: false
 model: direct_supervised
 optimizer: Muon
@@ -32,13 +14,13 @@ task_encoding:
   embedding_dim: 10
   value_vocab_size: 11
   use_sinusoidal_pe: false
-  use_task_embedding: true
+  use_task_embedding: false
 backbone_model:
   name: rope_canon_looped_transformer
   params:
-    hidden_dim: 6
+    hidden_dim: 14
     num_heads: 1
-    inner_dim: 6
+    inner_dim: 14
     inner_num_heads: 1
     n_loops: 1
     dropout: 0.1

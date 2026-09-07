@@ -4,7 +4,7 @@
 # ("td"/"notd"), swept across a shrinking hidden_dim to find the capacity
 # cliff. Inherited unchanged from its original home (arc1d_recursion_ablation,
 # where this backbone size/step-budget recipe was first established).
-project_name: arc1d_v2_multitask
+project_name: 01_multitask_capacity
 entity: fjfehr
 output_dir: outputs
 seed: 42

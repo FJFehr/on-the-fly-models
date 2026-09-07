@@ -6,7 +6,7 @@
 # stays fixed at 10, matching every other size in this sweep.
 _base_: experiments/01_multitask_capacity/configs/base.yaml
 experiment_name: v2_multitask_td_dim14
-project_name: arc1d_v2_multitask
+project_name: 01_multitask_capacity
 task_categories:
 - 1d_denoising_1c
 - 1d_denoising_mc

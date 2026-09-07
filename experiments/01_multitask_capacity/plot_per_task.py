@@ -19,7 +19,7 @@ results_per_task.csv next to this script (same reasoning as
 plot_capacity_cliff.py's results.csv: outputs/ is gitignored and normally
 only exists on the cluster node that ran the jobs). --dim selects which
 size to render; --outputs-dir rescans every size found under
-arc1d_v2_minimal_size / arc1d_v2_multitask and refreshes the CSV first.
+outputs/01_multitask_capacity/ and refreshes the CSV first.
 
 Usage
 -----
@@ -113,12 +113,13 @@ def parse_val_by_task(results_path: Path) -> dict[str, float]:
 
 
 def extract_records(outputs_dir: Path) -> list[dict]:
-    """Scan every available dim under both experiment output dirs."""
+    """Scan every available dim under the experiment's output dir."""
     records = []
+    project_dir = outputs_dir / "01_multitask_capacity"
 
-    minsize_re = re.compile(r"^v2_minsize_dim(\d+)_(.+)_seed(\d+)$")
-    for path in sorted((outputs_dir / "arc1d_v2_minimal_size").glob("*/results.txt")):
-        m = minsize_re.match(path.parent.name)
+    individual_re = re.compile(r"^v2_individual_dim(\d+)_(.+)_seed(\d+)$")
+    for path in sorted(project_dir.glob("*/results.txt")):
+        m = individual_re.match(path.parent.name)
         if not m:
             continue
         dim, task, seed = m.group(1), m.group(2), int(m.group(3))
@@ -130,24 +131,8 @@ def extract_records(outputs_dir: Path) -> list[dict]:
                  "val_exact_match": score}
             )
 
-    # dim=10 individual lives under a different project (the original Phase 1
-    # RC1 run), not arc1d_v2_minimal_size (which only ever swept dim 4/6).
-    rc1_re = re.compile(r"^v2_RC1_dim10_(.+)_rope_canon_n1_seed(\d+)$")
-    for path in sorted((outputs_dir / "arc1d_v2_backbone_capacity").glob("*/results.txt")):
-        m = rc1_re.match(path.parent.name)
-        if not m:
-            continue
-        task, seed = m.group(1), int(m.group(2))
-        scores = parse_val_by_task(path)
-        score = scores.get(task)
-        if score is not None:
-            records.append(
-                {"condition": "individual", "dim": "10", "task": task, "seed": seed,
-                 "val_exact_match": score}
-            )
-
     pattern = re.compile(r"^v2_multitask_(notd|td)(?:_dim(\d+))?_seed(\d+)$")
-    for path in sorted((outputs_dir / "arc1d_v2_multitask").glob("*/results.txt")):
+    for path in sorted(project_dir.glob("*/results.txt")):
         m = pattern.match(path.parent.name)
         if not m:
             continue
