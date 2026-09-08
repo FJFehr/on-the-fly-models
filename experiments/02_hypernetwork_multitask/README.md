@@ -263,13 +263,20 @@ uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py -
 ```
 
 The live dump covers the whole validation split (100 points/category for
-this experiment's data), which reads a lot busier than the paper figures'
-original 5/category. `--max-per-category 5` subsamples down to that before
-fitting the projection (not just the display after, which would give a
-different-looking t-SNE/UMAP embedding than fitting on the smaller set
-directly):
+this experiment's data: 5 non-augmented base tasks x 20 colour variants
+each, per `scripts/augment_arc_1d.py`'s `--dev-test-n-permutations`), which
+reads a lot busier than the paper figures' original 5/category.
+`--originals-only` keeps just the real, non-augmented example per base task
+(`task_id % 10000 == 0` -- `augment_task()` always places the unmodified
+task first) rather than an arbitrary N of the 100; `--max-per-category N`
+is the more general cut if you want a different, arbitrary count instead.
+Both subsample *before* fitting the projection, not just the display after
+(t-SNE/UMAP fit a different-looking embedding on 1,400 points than on 70,
+so filtering post-hoc wouldn't reproduce the sparser look):
 
 ```bash
+uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py \
+    --dim 4 --all-seeds --originals-only
 uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py \
     --dim 4 --all-seeds --max-per-category 5
 ```

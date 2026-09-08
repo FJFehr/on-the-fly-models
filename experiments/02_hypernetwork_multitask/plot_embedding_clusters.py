@@ -36,6 +36,8 @@ Usage
         --projections t-SNE   # only the pairing actually used in the paper
     uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py \\
         --dim 4 --all-seeds --max-per-category 5   # sparser look, matching the paper figures
+    uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py \\
+        --dim 4 --all-seeds --originals-only   # the real 5/category: non-augmented originals only
 """
 
 import argparse
@@ -79,6 +81,13 @@ def parse_args() -> argparse.Namespace:
         "this experiment's data, which reads busier than the paper figures' original "
         "5/category; pass --max-per-category 5 to match that sparser look).",
     )
+    parser.add_argument(
+        "--originals-only",
+        action="store_true",
+        help="Keep only the real, non-augmented 5/category (task_id %% 10000 == 0) instead "
+        "of an arbitrary N of the 100/category augmented validation split. Combine with "
+        "--max-per-category for a smaller cut of just the originals.",
+    )
     return parser.parse_args()
 
 
@@ -95,6 +104,7 @@ def render_one(
     out_dir: Path,
     projections: list[str] | None,
     max_per_category: int | None,
+    originals_only: bool,
 ) -> None:
     out_prefix = f"cluster_dim{dim}_paired"
     if seed is not None:
@@ -108,6 +118,7 @@ def render_one(
         out_prefix=out_prefix,
         projections=projections,
         max_per_category=max_per_category,
+        originals_only=originals_only,
     )
 
 
@@ -118,10 +129,13 @@ def main() -> None:
             print(f"== seed {seed} ==")
             render_one(
                 args.dim, seed, FIGURES_DIR / f"seed{seed}", args.projections,
-                args.max_per_category,
+                args.max_per_category, args.originals_only,
             )
     else:
-        render_one(args.dim, args.seed, FIGURES_DIR, args.projections, args.max_per_category)
+        render_one(
+            args.dim, args.seed, FIGURES_DIR, args.projections,
+            args.max_per_category, args.originals_only,
+        )
 
 
 if __name__ == "__main__":

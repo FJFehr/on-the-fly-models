@@ -157,23 +157,44 @@ def render_paired_panel(
 
 
 def _load_npz(
-    npz_path: Path, max_per_category: int | None = None
+    npz_path: Path,
+    max_per_category: int | None = None,
+    originals_only: bool = False,
 ) -> tuple[np.ndarray, list[str]] | None:
     """Load one embeddings.npz. training.logging's end-of-run dump covers the
-    whole validation split (100/category for this experiment's data, not a
-    handful) -- fine for a training-time diagnostic, but a projection fit on
-    1,400 points reads far busier than one fit on a curated few dozen. Pass
-    max_per_category to subsample *before* the projection is computed (not
+    whole validation split (100/category for this experiment's data: 5 base
+    (non-augmented) tasks x 20 colour variants each, per
+    scripts/augment_arc_1d.py's --dev-test-n-permutations) -- fine for a
+    training-time diagnostic, but a projection fit on 1,400 points reads far
+    busier than one fit on a curated few dozen.
+
+    Both subsampling modes work *before* the projection is computed, not
     just the display afterward -- t-SNE/UMAP fit a materially different
     embedding on 1,400 points than on 70, so subsampling post-hoc wouldn't
-    reproduce the sparser original look), taking the first N rows per
-    category in the order the dump already has them (deterministic, no
-    extra seed needed)."""
+    reproduce the sparser original look:
+
+    - originals_only: keep only the actual non-augmented example per base
+      task (task_id % 10000 == 0 -- augment_task() always places the
+      unmodified task first, `[task] + generate_color_permutations(...)`,
+      so aug_index 0 is never a colour variant), the real 5/category, not
+      an arbitrary N of the 100.
+    - max_per_category: an arbitrary cap instead, first N rows per category
+      in the order the dump already has them (deterministic, no extra seed
+      needed). Applies after originals_only if both are given, though with
+      originals_only there are already only 5/category to begin with.
+    """
     if not npz_path.exists():
         print(f"Skipping: {npz_path} not found (train with log_embedding_clusters: true first).")
         return None
     data = np.load(npz_path, allow_pickle=True)
     vectors, task_categories = data["vectors"], list(data["task_categories"])
+
+    if originals_only:
+        task_ids = data["task_ids"]
+        keep = [i for i, tid in enumerate(task_ids) if tid % 10000 == 0]
+        vectors = vectors[keep]
+        task_categories = [task_categories[i] for i in keep]
+
     if max_per_category is None:
         return vectors, task_categories
 
@@ -196,15 +217,16 @@ def render_paired_cluster_maps(
     out_prefix: str = "cluster_paired",
     projections: list[str] | None = None,
     max_per_category: int | None = None,
+    originals_only: bool = False,
 ) -> None:
     """Load both .npz dumps and render every shared projection as one
     left/right paired figure (PNG + PDF) in out_dir. See _load_npz for what
-    max_per_category does and why it subsamples before, not after, fitting
-    the projection."""
+    max_per_category/originals_only do and why they subsample before, not
+    after, fitting the projection."""
     apply_theme()
 
-    left = _load_npz(left_npz, max_per_category)
-    right = _load_npz(right_npz, max_per_category)
+    left = _load_npz(left_npz, max_per_category, originals_only)
+    right = _load_npz(right_npz, max_per_category, originals_only)
     if left is None or right is None:
         return
     left_vectors, left_categories = left
@@ -264,6 +286,14 @@ def parse_args() -> argparse.Namespace:
         "validation split, which reads busy; a small number (5, say) matches the sparser "
         "look of the original paper figures.",
     )
+    parser.add_argument(
+        "--originals-only",
+        action="store_true",
+        help="Keep only the actual non-augmented example per base task (the real "
+        "5/category, task_id %% 10000 == 0) rather than an arbitrary N of the full "
+        "augmented validation split. Takes precedence over --max-per-category's "
+        "selection; the two can still be combined.",
+    )
     return parser.parse_args()
 
 
@@ -272,6 +302,7 @@ def main() -> None:
     render_paired_cluster_maps(
         args.left_npz, args.left_label, args.right_npz, args.right_label,
         args.out_dir, args.out_prefix, args.projections, args.max_per_category,
+        args.originals_only,
     )
 
 
