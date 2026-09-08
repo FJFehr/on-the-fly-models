@@ -10,9 +10,10 @@ paper, start here.
 1. **[`01_multitask_capacity/`](01_multitask_capacity/)** — can one small
    model learn all 14 ARC-1D tasks jointly (one shared weight set, no
    per-task model)? Produces the capacity-cliff plot and the per-task
-   breakdown at dim=6. **Status: done** (5 seeds, dims 4/6/10).
-   TODO: a 10K-scale rerun, a with/without-canon ablation, and confirming
-   the with/without-td result holds at 10K too.
+   breakdown at dim=6, plus Canon and optimizer (Muon vs. AdamW)
+   ablations. **Status: done** (5 seeds, dims 4/6/10/14, Individual/Joint
+   w/ td/Joint w/o td all self-contained here, both ablations across all
+   four dims).
 2. **[`02_hypernetwork_multitask/`](02_hypernetwork_multitask/)** — the
    hypernetwork: does generating per-task weights close the gap #1
    couldn't, at the same parameter budget? Produces the cluster plots
@@ -243,7 +244,7 @@ Sizes and seed counts have grown organically and aren't yet uniform:
 
 | Experiment | Sizes used | Seeds |
 |---|---|---|
-| 01 (multitask capacity) | dim 4, 6, 10, 14 (~10K) all done -- Joint, Individual, and both ablations (Canon, optimizer) | 5 throughout |
+| 01 (multitask capacity) | dim 4, 6, 10, 14 (~10K) all done -- Joint, Individual, and both ablations (Canon, optimizer), all four dims | 5 throughout |
 | 02 (hypernetwork) | dim 4, 6 | dim=4: 5 (checkpoints saved); dim=6: 3, no checkpoints (original grid, not rerun). 1 (smoke/sizing checks), 5 (LoRA rank sweep) |
 | 04 (compositional) | dim 4 (matched-scale) | 5 |
 | 06 (data efficiency) | dim 6 (fixed) | 3 |
@@ -258,7 +259,7 @@ means #2's dim=6 and #06, once rerun/completed.
 
 | Experiment | with/without td | with/without canon |
 |---|---|---|
-| 01 | yes | TODO (not yet run) |
+| 01 | yes | yes (dims 4/6/10/14) |
 | 02 | yes (`notd` / `frozen_td`) | — |
 | 03 | yes (planned) | — |
 | 04 | yes (`notd` / `frozen_td`) | — |
@@ -283,11 +284,9 @@ scripts, and the two datamodules (`arc1d_meta_padded_multiclass`,
 
 ## Open TODOs
 
-- 10K-scale rerun: #1 (`notd_dim14.yaml`/`td_dim14.yaml` scaffolded, not yet
-  run — 9,508/9,688 params; also needs a matching individual-baseline
-  config, which doesn't exist at dim=14 or anywhere inside `01_multitask_capacity/`
-  yet) and #2.
-- With/without-canon ablation: #1.
+- 10K-scale rerun: #2's own `matched-scale` point (still 1 seed) -- #1's
+  dim=14 (9,508/9,688 params, Individual/Joint w/ td/Joint w/o td, 5 seeds
+  each) is done.
 - Confirm the architecture/seed standard above, then backfill #2 and #6 to
   5 seeds.
 - Pick #2's best seed once its 10K rerun lands → unblocks #3.
