@@ -1,10 +1,10 @@
 """Regenerate every figure for experiment 1 (multi-task capacity) in one pass.
 
-The single entry point to run after a training sweep finishes: rescans
-outputs/, refreshes both CSVs, and renders the capacity-cliff plot plus a
-per-task breakdown for every model size actually present in the data --
-no need to remember plot_capacity_cliff.py's own invocation and then
-plot_per_task.py once per --dim.
+The single entry point to run after a training sweep finishes (see run.sh):
+rescans outputs/, refreshes every CSV, and renders every figure --
+capacity-cliff, a per-task breakdown for every model size present, and both
+ablations (Canon, optimizer) if their data is present. No need to remember
+five separate scripts' own invocations.
 
 Usage
 -----
@@ -15,7 +15,9 @@ Usage
 import argparse
 from pathlib import Path
 
+import plot_canon_ablation as canon_ablation
 import plot_capacity_cliff as cliff
+import plot_optimizer_ablation as optimizer_ablation
 import plot_per_task as per_task
 
 
@@ -72,6 +74,30 @@ def main() -> None:
         out_path = Path(f"outputs/figures/01_multitask_capacity/per_task_dim{dim}.png")
         per_task.plot(series, dim, out_path)
         print(f"  dim={dim:>2s}: {out_path}")
+
+    print("\n== Canon ablation (with vs. without Canon) ==")
+    if args.from_csv:
+        canon_records = canon_ablation.read_csv(canon_ablation.CSV_PATH)
+    else:
+        canon_records = canon_ablation.extract_records(args.outputs_dir)
+        canon_ablation.write_csv(canon_records, canon_ablation.CSV_PATH)
+    if canon_records:
+        canon_ablation.plot(canon_ablation.build_series(canon_records), canon_ablation.PLOT_PATH)
+    else:
+        print("  No canon-ablation data found (configs/nocanon/) -- skipping.")
+
+    print("\n== Optimizer ablation (Muon vs. AdamW) ==")
+    if args.from_csv:
+        opt_records = optimizer_ablation.read_csv(optimizer_ablation.CSV_PATH)
+    else:
+        opt_records = optimizer_ablation.extract_records(args.outputs_dir)
+        optimizer_ablation.write_csv(opt_records, optimizer_ablation.CSV_PATH)
+    if opt_records:
+        optimizer_ablation.plot(
+            optimizer_ablation.build_series(opt_records), optimizer_ablation.PLOT_PATH
+        )
+    else:
+        print("  No optimizer-ablation data found (configs/adamw/) -- skipping.")
 
     print("\nDone. Figures in outputs/figures/01_multitask_capacity/")
     print(f"CSVs in {cliff.CSV_PATH.parent}")

@@ -251,35 +251,32 @@ originally carried from before the paper-repro reorg: `joint_{notd,td}_dim
 
 ## Running
 
-```bash
-CFG_DIR=experiments/01_multitask_capacity SEEDS_OVERRIDE="1 2 3 4 5" \
-    bash scripts/run_config.sh                  # sequential, 1 GPU
-CFG_DIR=experiments/01_multitask_capacity SEEDS_OVERRIDE="1 2 3 4 5" GPUS="0,1,2" \
-    bash scripts/run_config.sh                  # 3-way parallel
-```
-
-`CFG_DIR` recurses, so this sweeps every config under this experiment's
-whole tree: the 45 Joint/overfit jobs above, the 280 Individual jobs, and
-the 320 canon-ablation jobs together (645 total at 5 seeds). To run just one
-of those pieces, narrow `CFG_DIR` to its subfolder (`configs/individual`,
-`configs/nocanon`) and set `PROJECT=01_multitask_capacity` explicitly, since
-the subfolder's own basename would otherwise become the project name (see
-"Canon ablation" above for a worked example).
-
-Skips any (config, seed) pair that already has an
-`outputs/01_multitask_capacity/<run>/results.txt`, so it's safe to rerun to
-backfill missing seeds. Then rebuild every committed CSV and figure
-(capacity-cliff plus a per-task breakdown for every size present in the
-data) in one pass:
+Two commands reproduce this experiment end to end, run and plot:
 
 ```bash
+bash experiments/01_multitask_capacity/run.sh                        # sequential, 1 GPU
+GPUS="0,1,2,3,4,5,6,7" bash experiments/01_multitask_capacity/run.sh  # 8-way parallel
+
 uv run python experiments/01_multitask_capacity/plot_all.py --outputs-dir outputs
 ```
 
-`plot_capacity_cliff.py`/`plot_per_task.py` still work standalone (see "The
-plot" above) if you only want one figure refreshed; `plot_all.py` is the
-single entry point for "just finished training, rebuild everything." Note it
-only covers the Joint and Individual conditions above, not the two
-ablations: those have their own scripts, `plot_canon_ablation.py` (see
-"Canon ablation" above) and `plot_optimizer_ablation.py` (see "Optimizer
-ablation" above).
+`run.sh` wraps `scripts/run_config.sh` with this experiment's `CFG_DIR`
+baked in; `CFG_DIR` recurses, so one call sweeps every config under this
+experiment's whole tree: the 45 Joint/overfit jobs, the 280 Individual jobs,
+and both ablations (320 Canon, 320 optimizer) together, 965 jobs total at 5
+seeds. Skips any `(config, seed)` pair that already has a `results.txt`, so
+it's always safe to rerun: backfill missing seeds, resume after an
+interruption, or add an ablation you haven't run yet (whatever's already
+done is skipped automatically). To run just one piece instead, narrow
+`CFG_DIR` to its subfolder (`configs/individual`, `configs/nocanon`,
+`configs/adamw`) and call `scripts/run_config.sh` directly with
+`PROJECT=01_multitask_capacity` set explicitly (see "Canon ablation" above
+for a worked example) -- the subfolder's own basename would otherwise become
+the project name.
+
+`plot_all.py` rescans `outputs/`, refreshes all four CSVs, and renders all
+eight figures (capacity-cliff, a per-task breakdown per size, and both
+ablations) in one pass -- the single entry point for "just finished
+training, rebuild everything." `plot_capacity_cliff.py`/`plot_per_task.py`/
+`plot_canon_ablation.py`/`plot_optimizer_ablation.py` still work standalone
+(see their own sections above) if you only want one figure refreshed.

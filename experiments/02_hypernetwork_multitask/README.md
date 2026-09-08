@@ -225,6 +225,21 @@ blocked on exactly this. `frozen_td`: 94.8% mean test exact match (95.5 /
 71.0% with wider seed variance, consistent with the same failure mode
 already documented above (move-family conflation), not a new problem.
 
+Reproduce it with two commands, run then plot:
+
+```bash
+bash experiments/02_hypernetwork_multitask/run.sh                        # sequential, 1 GPU
+GPUS="0,1,2,3,4,5,6,7" bash experiments/02_hypernetwork_multitask/run.sh  # 8-way parallel
+
+uv run python experiments/02_hypernetwork_multitask/plot_per_task_combined.py --outputs-dir outputs
+```
+
+`run.sh` wraps `scripts/run_config.sh` with this experiment's `CFG_DIR` and
+a `dim4*.yaml` `CELL_GLOB` baked in (dim6's configs live in the same folder
+but are the original, un-rerun 3-seed data, deliberately not part of this).
+Skips any `(config, seed)` pair that already has a `results.txt`, so it's
+always safe to rerun.
+
 Every seed's own `embeddings.npz` (per-run, dumped automatically by
 `log_embedding_clusters: true`) is reachable directly:
 
