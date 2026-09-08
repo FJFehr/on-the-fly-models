@@ -218,32 +218,38 @@ All results pulled from wandb (`fjfehr/arc1d_v2_hypernetwork_multitask`).
 
 The dim=4 pair (`dim4_notd.yaml`/`dim4_frozentd.yaml`) has since been rerun
 clean-slate at 5 seeds, with `save_checkpoints: true` (was `false`) so a
-checkpoint now exists for every seed -- unblocking experiment 3, which was
-blocked on exactly this. `frozen_td`: 94.8% mean test exact match (95.5 /
-94.9 / 92.3 / 96.1 / 95.2), close to the original 3-seed 95.7%. `notd`:
-65.3% mean (51.8 / 68.6 / 67.7 / 65.1 / 73.5), a bit below the original
-71.0% with wider seed variance, consistent with the same failure mode
-already documented above (move-family conflation), not a new problem.
+checkpoint now exists for every seed (dim=6 still has none; that pair
+hasn't been rerun). This is the same size experiment 3's preliminary pass
+already used (one ad-hoc "freshly-checkpointed retrain" per condition,
+before this rerun existed) -- now real, multi-seed checkpoints instead, a
+genuine best-seed to pick from at that size. It does not by itself satisfy
+experiment 3's own stated formal-design blocker though: that calls for the
+smaller ~10K *matched-scale* point specifically (see "How small can the
+hypernetwork go?" above), a separate rerun not done here.
 
-Linear-probe accuracy across all 5 seeds (`report_linear_probe.py`, mean +-
-1 s.d.): `frozen_td` **100.00% +- 0.00pp** (perfectly consistent, matching
-the original single-seed 100%); `notd` **92.37% +- 2.34pp** (88.2 / 92.6 /
-95.1 / 92.0 / 94.0) -- notably higher than the original 3-seed run's
-79-87% range, though both point at the same qualitative story (a real but
-partial disentanglement gap without a task-identity signal, well short of
-a total failure).
+**Results.** `frozen_td`: 94.8% mean test exact match (95.5 / 94.9 / 92.3 /
+96.1 / 95.2), close to the original 3-seed 95.7%. `notd`: 65.3% mean (51.8 /
+68.6 / 67.7 / 65.1 / 73.5), a bit below the original 71.0% with wider seed
+variance -- consistent with the same failure mode already documented above
+(move-family conflation), not a new problem.
 
-```bash
-uv run python experiments/02_hypernetwork_multitask/report_linear_probe.py --dim 4
-```
+Linear-probe accuracy across all 5 seeds (mean +- 1 s.d.): `frozen_td`
+**100.00% +- 0.00pp** (perfectly consistent, matching the original
+single-seed 100%); `notd` **92.37% +- 2.34pp** (88.2 / 92.6 / 95.1 / 92.0 /
+94.0) -- notably higher than the original 3-seed run's 79-87% range, though
+both point at the same qualitative story (a real but partial
+disentanglement gap without a task-identity signal, well short of a total
+failure).
 
-Reproduce it with two commands, run then plot:
+**Reproducing.** Run, then plot both the per-task breakdown and the
+linear-probe aggregate:
 
 ```bash
 bash experiments/02_hypernetwork_multitask/run.sh                        # sequential, 1 GPU
 GPUS="0,1,2,3,4,5,6,7" bash experiments/02_hypernetwork_multitask/run.sh  # 8-way parallel
 
 uv run python experiments/02_hypernetwork_multitask/plot_per_task_combined.py --outputs-dir outputs
+uv run python experiments/02_hypernetwork_multitask/report_linear_probe.py --dim 4
 ```
 
 `run.sh` wraps `scripts/run_config.sh` with this experiment's `CFG_DIR` and
@@ -252,10 +258,10 @@ but are the original, un-rerun 3-seed data, deliberately not part of this).
 Skips any `(config, seed)` pair that already has a `results.txt`, so it's
 always safe to rerun.
 
-Every seed's own `embeddings.npz` (per-run, dumped automatically by
-`log_embedding_clusters: true`) is reachable directly, one seed at a time
-or all five at once (each into its own `seed<N>/` subfolder, all three
-projections -- PCA, t-SNE, UMAP):
+**Cluster plots, any seed.** Every seed's own `embeddings.npz` (per-run,
+dumped automatically by `log_embedding_clusters: true`) is reachable
+directly, one seed at a time or all five at once (each into its own
+`seed<N>/` subfolder, all three projections -- PCA, t-SNE, UMAP):
 
 ```bash
 uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py --dim 4 --seed 3
@@ -269,7 +275,7 @@ reads a lot busier than the paper figures' original 5/category.
 `--originals-only` keeps just the real, non-augmented example per base task
 (`task_id % 10000 == 0` -- `augment_task()` always places the unmodified
 task first) rather than an arbitrary N of the 100; `--max-per-category N`
-is the more general cut if you want a different, arbitrary count instead.
+is the more general cut if a different, arbitrary count is wanted instead.
 Both subsample *before* fitting the projection, not just the display after
 (t-SNE/UMAP fit a different-looking embedding on 1,400 points than on 70,
 so filtering post-hoc wouldn't reproduce the sparser look):
@@ -279,13 +285,6 @@ uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py \
     --dim 4 --all-seeds --originals-only
 uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py \
     --dim 4 --all-seeds --max-per-category 5
-```
-
-`plot_per_task.py`/`plot_per_task_combined.py` can now rescan live
-`outputs/` too (previously they only read the committed, 3-seed CSV):
-
-```bash
-uv run python experiments/02_hypernetwork_multitask/plot_per_task_combined.py --outputs-dir outputs
 ```
 
 The encoder-size pre-flight, sizing, and LoRA-rank sweeps described above
@@ -304,5 +303,5 @@ similarly for `smoke_*`/`lora_matched_*`) if you need to rerun one.
   LoRA sweeps only used `frozen_td`.
 - `1d_recolor_cmp` re-inclusion (deferred from this 14-task run).
 - A low-data cut for the joint hypernetwork case (this run used full data).
-- Retrieving a checkpoint requires a rerun with `save_checkpoints: true`
-  for at least one cell — none exists from this run.
+- dim=6 still has no checkpoints and is still 3 seeds (the dim=4 rerun above
+  resolved both for dim=4 only, deliberately -- see "Dim=4 rerun").

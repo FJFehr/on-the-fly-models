@@ -17,11 +17,15 @@ paper, start here.
    hypernetwork: does generating per-task weights close the gap #1
    couldn't, at the same parameter budget? Produces the cluster plots
    (task-representation disentanglement, with vs. without a task-identity
-   signal) and the dim=4 per-task breakdown. **Status: done** at dim=4/6 (3
-   seeds main grid, 5 seeds for the LoRA rank sweep). TODO: a 10K-scale
-   rerun; models are saved (`save_checkpoints: true`) for both the `notd`
-   and `frozen_td` arms so the embedding dumps behind the cluster plots
-   stay reproducible without retraining.
+   signal) and the dim=4 per-task breakdown. **Status: done.** dim=4: 5
+   seeds, `save_checkpoints: true` (a clean-slate rerun of the original
+   3-seed grid, which had no checkpoints) -- real multi-seed checkpoints at
+   the size experiment 3's preliminary pass already used, though not by
+   itself experiment 3's stated formal-design blocker, which calls for the
+   smaller ~10K `matched-scale` point specifically; dim=6 still at the
+   original 3 seeds, no checkpoints. TODO: dim=6's own rerun, and the
+   `matched-scale` rerun itself (still 1 seed) that unblocks experiment 3
+   properly.
 3. **`03_reusability_generate_once_execute_many/`** — reusability: take the
    best seed from #2, cache its support-set embedding once, and ask whether
    that single cached embedding generalises to *other instances* of the
@@ -239,16 +243,16 @@ Sizes and seed counts have grown organically and aren't yet uniform:
 
 | Experiment | Sizes used | Seeds |
 |---|---|---|
-| 01 (multitask capacity) | dim 4, 6, 10 done; dim 14 (~10K) scaffolded, not run | 5 (dim=10 individual arm: 3, from the original run) |
-| 02 (hypernetwork) | dim 4, 6 | 3 (main grid), 1 (smoke/sizing checks), 5 (LoRA rank sweep) |
+| 01 (multitask capacity) | dim 4, 6, 10, 14 (~10K) all done -- Joint, Individual, and both ablations (Canon, optimizer) | 5 throughout |
+| 02 (hypernetwork) | dim 4, 6 | dim=4: 5 (checkpoints saved); dim=6: 3, no checkpoints (original grid, not rerun). 1 (smoke/sizing checks), 5 (LoRA rank sweep) |
 | 04 (compositional) | dim 4 (matched-scale) | 5 |
 | 06 (data efficiency) | dim 6 (fixed) | 3 |
 
 **Proposed standard** (confirm before the next round of reruns): dims **4
-and 6** as the paper's stable sizes (drop dim=10 from new work — keep the
+and 6** as the paper's stable sizes (drop dim=10 from new work -- keep the
 existing dim=10 result in #1 for capacity-cliff breadth, don't extend it
-elsewhere), **5 seeds** everywhere. This mainly means backfilling #2's main
-grid and #06 from 3→5 seeds once they're rerun at 10K / completed.
+elsewhere), **5 seeds** everywhere. #1 is fully backfilled; this now mainly
+means #2's dim=6 and #06, once rerun/completed.
 
 ## Ablation axes
 
