@@ -241,10 +241,13 @@ Skips any `(config, seed)` pair that already has a `results.txt`, so it's
 always safe to rerun.
 
 Every seed's own `embeddings.npz` (per-run, dumped automatically by
-`log_embedding_clusters: true`) is reachable directly:
+`log_embedding_clusters: true`) is reachable directly, one seed at a time
+or all five at once (each into its own `seed<N>/` subfolder, all three
+projections -- PCA, t-SNE, UMAP):
 
 ```bash
 uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py --dim 4 --seed 3
+uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py --dim 4 --all-seeds
 ```
 
 `plot_per_task.py`/`plot_per_task_combined.py` can now rescan live

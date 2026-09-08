@@ -31,6 +31,8 @@ Usage
     uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py \\
         --dim 4 --seed 3   # this seed's own live outputs/ dump, not the flat file
     uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py \\
+        --dim 4 --all-seeds   # every seed (1-5), each in its own outputs/figures/.../seedN/
+    uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py \\
         --projections t-SNE   # only the pairing actually used in the paper
 """
 
@@ -41,6 +43,8 @@ from visualisation.paper.plot_embedding_clusters import render_paired_cluster_ma
 
 NPZ_DIR = Path("outputs/results/02_hypernetwork_multitask")
 OUTPUTS_DIR = Path("outputs/02_hypernetwork_multitask")
+FIGURES_DIR = Path("outputs/figures/02_hypernetwork_multitask")
+SEEDS = (1, 2, 3, 4, 5)
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,8 +59,14 @@ def parse_args() -> argparse.Namespace:
         "directory to still exist (fetch it from the cluster node first if not).",
     )
     parser.add_argument(
+        "--all-seeds",
+        action="store_true",
+        help=f"Render every seed in {SEEDS}, each into its own "
+        f"{FIGURES_DIR}/seed<N>/ subfolder. Overrides --seed.",
+    )
+    parser.add_argument(
         "--projections", nargs="+", default=None, choices=["PCA", "t-SNE", "UMAP"],
-        help="Subset to render (default: all three available).",
+        help="Subset to render (default: all three available: PCA, t-SNE, UMAP).",
     )
     return parser.parse_args()
 
@@ -68,20 +78,29 @@ def _npz_path(dim: int, cond: str, seed: int | None) -> Path:
     return OUTPUTS_DIR / run / "embedding_clusters" / "embeddings.npz"
 
 
+def render_one(dim: int, seed: int | None, out_dir: Path, projections: list[str] | None) -> None:
+    out_prefix = f"cluster_dim{dim}_paired"
+    if seed is not None:
+        out_prefix += f"_seed{seed}"
+    render_paired_cluster_maps(
+        left_npz=_npz_path(dim, "frozentd", seed),
+        left_label="Task ID",
+        right_npz=_npz_path(dim, "notd", seed),
+        right_label="w/o Task ID",
+        out_dir=out_dir,
+        out_prefix=out_prefix,
+        projections=projections,
+    )
+
+
 def main() -> None:
     args = parse_args()
-    out_prefix = f"cluster_dim{args.dim}_paired"
-    if args.seed is not None:
-        out_prefix += f"_seed{args.seed}"
-    render_paired_cluster_maps(
-        left_npz=_npz_path(args.dim, "frozentd", args.seed),
-        left_label="Task ID",
-        right_npz=_npz_path(args.dim, "notd", args.seed),
-        right_label="w/o Task ID",
-        out_dir=Path("outputs/figures/02_hypernetwork_multitask"),
-        out_prefix=out_prefix,
-        projections=args.projections,
-    )
+    if args.all_seeds:
+        for seed in SEEDS:
+            print(f"== seed {seed} ==")
+            render_one(args.dim, seed, FIGURES_DIR / f"seed{seed}", args.projections)
+    else:
+        render_one(args.dim, args.seed, FIGURES_DIR, args.projections)
 
 
 if __name__ == "__main__":
