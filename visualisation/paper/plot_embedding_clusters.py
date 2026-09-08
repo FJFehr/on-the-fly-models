@@ -156,12 +156,35 @@ def render_paired_panel(
     return fig
 
 
-def _load_npz(npz_path: Path) -> tuple[np.ndarray, list[str]] | None:
+def _load_npz(
+    npz_path: Path, max_per_category: int | None = None
+) -> tuple[np.ndarray, list[str]] | None:
+    """Load one embeddings.npz. training.logging's end-of-run dump covers the
+    whole validation split (100/category for this experiment's data, not a
+    handful) -- fine for a training-time diagnostic, but a projection fit on
+    1,400 points reads far busier than one fit on a curated few dozen. Pass
+    max_per_category to subsample *before* the projection is computed (not
+    just the display afterward -- t-SNE/UMAP fit a materially different
+    embedding on 1,400 points than on 70, so subsampling post-hoc wouldn't
+    reproduce the sparser original look), taking the first N rows per
+    category in the order the dump already has them (deterministic, no
+    extra seed needed)."""
     if not npz_path.exists():
         print(f"Skipping: {npz_path} not found (train with log_embedding_clusters: true first).")
         return None
     data = np.load(npz_path, allow_pickle=True)
-    return data["vectors"], list(data["task_categories"])
+    vectors, task_categories = data["vectors"], list(data["task_categories"])
+    if max_per_category is None:
+        return vectors, task_categories
+
+    keep = []
+    seen: dict[str, int] = {}
+    for i, category in enumerate(task_categories):
+        count = seen.get(category, 0)
+        if count < max_per_category:
+            keep.append(i)
+            seen[category] = count + 1
+    return vectors[keep], [task_categories[i] for i in keep]
 
 
 def render_paired_cluster_maps(
@@ -172,13 +195,16 @@ def render_paired_cluster_maps(
     out_dir: Path,
     out_prefix: str = "cluster_paired",
     projections: list[str] | None = None,
+    max_per_category: int | None = None,
 ) -> None:
     """Load both .npz dumps and render every shared projection as one
-    left/right paired figure (PNG + PDF) in out_dir."""
+    left/right paired figure (PNG + PDF) in out_dir. See _load_npz for what
+    max_per_category does and why it subsamples before, not after, fitting
+    the projection."""
     apply_theme()
 
-    left = _load_npz(left_npz)
-    right = _load_npz(right_npz)
+    left = _load_npz(left_npz, max_per_category)
+    right = _load_npz(right_npz, max_per_category)
     if left is None or right is None:
         return
     left_vectors, left_categories = left
@@ -229,6 +255,15 @@ def parse_args() -> argparse.Namespace:
         "--projections", nargs="+", default=None, choices=["PCA", "t-SNE", "UMAP"],
         help="Subset to render (default: all three available).",
     )
+    parser.add_argument(
+        "--max-per-category",
+        type=int,
+        default=None,
+        help="Subsample to at most this many points per task category before fitting the "
+        "projection (default: use every point in the dump). The raw dump covers the whole "
+        "validation split, which reads busy; a small number (5, say) matches the sparser "
+        "look of the original paper figures.",
+    )
     return parser.parse_args()
 
 
@@ -236,7 +271,7 @@ def main() -> None:
     args = parse_args()
     render_paired_cluster_maps(
         args.left_npz, args.left_label, args.right_npz, args.right_label,
-        args.out_dir, args.out_prefix, args.projections,
+        args.out_dir, args.out_prefix, args.projections, args.max_per_category,
     )
 
 

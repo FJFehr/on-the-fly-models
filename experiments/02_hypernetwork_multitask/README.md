@@ -250,6 +250,18 @@ uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py -
 uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py --dim 4 --all-seeds
 ```
 
+The live dump covers the whole validation split (100 points/category for
+this experiment's data), which reads a lot busier than the paper figures'
+original 5/category. `--max-per-category 5` subsamples down to that before
+fitting the projection (not just the display after, which would give a
+different-looking t-SNE/UMAP embedding than fitting on the smaller set
+directly):
+
+```bash
+uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py \
+    --dim 4 --all-seeds --max-per-category 5
+```
+
 `plot_per_task.py`/`plot_per_task_combined.py` can now rescan live
 `outputs/` too (previously they only read the committed, 3-seed CSV):
 

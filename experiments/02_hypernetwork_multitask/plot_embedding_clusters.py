@@ -34,6 +34,8 @@ Usage
         --dim 4 --all-seeds   # every seed (1-5), each in its own outputs/figures/.../seedN/
     uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py \\
         --projections t-SNE   # only the pairing actually used in the paper
+    uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py \\
+        --dim 4 --all-seeds --max-per-category 5   # sparser look, matching the paper figures
 """
 
 import argparse
@@ -68,6 +70,15 @@ def parse_args() -> argparse.Namespace:
         "--projections", nargs="+", default=None, choices=["PCA", "t-SNE", "UMAP"],
         help="Subset to render (default: all three available: PCA, t-SNE, UMAP).",
     )
+    parser.add_argument(
+        "--max-per-category",
+        type=int,
+        default=None,
+        help="Subsample to at most this many points per task category before fitting the "
+        "projection (default: every point -- the whole validation split, 100/category for "
+        "this experiment's data, which reads busier than the paper figures' original "
+        "5/category; pass --max-per-category 5 to match that sparser look).",
+    )
     return parser.parse_args()
 
 
@@ -78,7 +89,13 @@ def _npz_path(dim: int, cond: str, seed: int | None) -> Path:
     return OUTPUTS_DIR / run / "embedding_clusters" / "embeddings.npz"
 
 
-def render_one(dim: int, seed: int | None, out_dir: Path, projections: list[str] | None) -> None:
+def render_one(
+    dim: int,
+    seed: int | None,
+    out_dir: Path,
+    projections: list[str] | None,
+    max_per_category: int | None,
+) -> None:
     out_prefix = f"cluster_dim{dim}_paired"
     if seed is not None:
         out_prefix += f"_seed{seed}"
@@ -90,6 +107,7 @@ def render_one(dim: int, seed: int | None, out_dir: Path, projections: list[str]
         out_dir=out_dir,
         out_prefix=out_prefix,
         projections=projections,
+        max_per_category=max_per_category,
     )
 
 
@@ -98,9 +116,12 @@ def main() -> None:
     if args.all_seeds:
         for seed in SEEDS:
             print(f"== seed {seed} ==")
-            render_one(args.dim, seed, FIGURES_DIR / f"seed{seed}", args.projections)
+            render_one(
+                args.dim, seed, FIGURES_DIR / f"seed{seed}", args.projections,
+                args.max_per_category,
+            )
     else:
-        render_one(args.dim, args.seed, FIGURES_DIR, args.projections)
+        render_one(args.dim, args.seed, FIGURES_DIR, args.projections, args.max_per_category)
 
 
 if __name__ == "__main__":
