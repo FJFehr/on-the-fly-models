@@ -225,6 +225,18 @@ blocked on exactly this. `frozen_td`: 94.8% mean test exact match (95.5 /
 71.0% with wider seed variance, consistent with the same failure mode
 already documented above (move-family conflation), not a new problem.
 
+Linear-probe accuracy across all 5 seeds (`report_linear_probe.py`, mean +-
+1 s.d.): `frozen_td` **100.00% +- 0.00pp** (perfectly consistent, matching
+the original single-seed 100%); `notd` **92.37% +- 2.34pp** (88.2 / 92.6 /
+95.1 / 92.0 / 94.0) -- notably higher than the original 3-seed run's
+79-87% range, though both point at the same qualitative story (a real but
+partial disentanglement gap without a task-identity signal, well short of
+a total failure).
+
+```bash
+uv run python experiments/02_hypernetwork_multitask/report_linear_probe.py --dim 4
+```
+
 Reproduce it with two commands, run then plot:
 
 ```bash
