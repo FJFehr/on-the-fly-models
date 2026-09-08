@@ -1,11 +1,28 @@
+# Matched-scale hypernetwork: every dimension in the pipeline set to the same size
+# as the dim=4 target it's generating, rather than staying at base.yaml's larger fixed
+# width (hyper_model hidden_dim=32/num_heads=4/num_layers=2/output_dim=64,
+# hyper_head.bottleneck_dim=128). ~10,156 total hypernetwork params (vs. ~200K at the
+# old fixed width) -- see "Dim=4 rerun" in this experiment's README for the full story
+# and results; this is now the standard sizing for dim=4, not an alternative.
 _base_: experiments/02_hypernetwork_multitask/configs/base.yaml
 experiment_name: hyper_multitask_dim4_notd
+
+task_encoding:
+  embedding_dim: 4
 
 target_model:
   params:
     hidden_dim: 4
     inner_dim: 4
 
+hyper_model:
+  params:
+    hidden_dim: 4
+    num_heads: 1
+    num_layers: 1
+    output_dim: 4
+
 hyper_head:
+  bottleneck_dim: 8
   num_tasks: null
   freeze_task_indicator: false

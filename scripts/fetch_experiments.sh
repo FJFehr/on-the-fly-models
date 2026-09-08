@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
-# Fetch experiment outputs from a torrnode, excluding model checkpoints.
+# Fetch experiment outputs from a torrnode, excluding model checkpoints by default.
 #
 # Usage:
 #   bash scripts/fetch_experiments.sh arc1d_uniform_ablation
 #   bash scripts/fetch_experiments.sh outputs/arc1d_uniform_ablation
 #   bash scripts/fetch_experiments.sh arc1d_uniform_ablation arc1d_recursion_ablation
 #   REMOTE_HOST=torrnode15.priv bash scripts/fetch_experiments.sh 01_multitask_capacity
+#   INCLUDE_CHECKPOINTS=1 bash scripts/fetch_experiments.sh 02_hypernetwork_multitask
 #
 # Env vars:
-#   REMOTE_HOST  which torrnode to pull from (default: torrnode11.priv)
-#   REMOTE_REPO  repo directory name on that node, under /homes/55/fabiojfehr/
-#                (default: on-the-fly-models)
+#   REMOTE_HOST          which torrnode to pull from (default: torrnode11.priv)
+#   REMOTE_REPO          repo directory name on that node, under /homes/55/fabiojfehr/
+#                        (default: on-the-fly-models)
+#   INCLUDE_CHECKPOINTS  1 to also pull *.ckpt / checkpoints/ (default: excluded --
+#                        most experiments only need results.txt/logs/figures locally;
+#                        set this when you actually need the trained weights, e.g. to
+#                        run a downstream eval script against them)
 
 set -uo pipefail
 
@@ -19,6 +24,7 @@ REMOTE_REPO="${REMOTE_REPO:-on-the-fly-models}"
 REMOTE_BASE="/homes/55/fabiojfehr/${REMOTE_REPO}/outputs"
 LOCAL_BASE="outputs"
 JUMP_HOST="robots.ox.ac.uk"
+INCLUDE_CHECKPOINTS="${INCLUDE_CHECKPOINTS:-}"
 
 if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <output_dir> [output_dir ...]"
@@ -50,9 +56,13 @@ for ARG in "$@"; do
     echo "==> Fetching: $REMOTE_PATH"
     echo "         to: $LOCAL_PATH"
 
+    RSYNC_EXCLUDES=()
+    if [[ -z "$INCLUDE_CHECKPOINTS" ]]; then
+        RSYNC_EXCLUDES=(--exclude '*/checkpoints/*' --exclude '*.ckpt')
+    fi
+
     if rsync -avz \
-        --exclude '*/checkpoints/*' \
-        --exclude '*.ckpt' \
+        "${RSYNC_EXCLUDES[@]}" \
         -e "$RSYNC_SSH" \
         "$REMOTE_PATH" "$LOCAL_PATH"; then
         N=$(find "$LOCAL_PATH" -name "results.txt" | wc -l)
