@@ -15,21 +15,26 @@ score. The move family (1p/2p/3p/2p_dp/dp) is where the notd failures
 concentrate, the reason this plot exists.
 
 Data: results_per_task_dim4_combined.csv (same source as the 5-condition
-and radar plots), individual/hyper_notd/hyper_td rows only.
+and radar plots), individual/hyper_notd/hyper_td rows only. --outputs-dir
+rescans it from live outputs/ (see plot_per_task_combined.py's
+extract_records for exactly what it scans); without it, replots from the
+CSV as committed.
 
 Usage
 -----
     uv run python experiments/02_hypernetwork_multitask/plot_per_task.py
+    uv run python experiments/02_hypernetwork_multitask/plot_per_task.py --outputs-dir outputs
 """
 
+import argparse
 import csv
 import statistics
 from pathlib import Path
 
 import numpy as np
 from matplotlib import pyplot as plt
+from plot_per_task_combined import COLORS, LABELS, extract_records, write_csv
 
-from plot_per_task_combined import COLORS, LABELS
 from visualisation.core.style import apply_latex_style, format_task_category
 
 HERE = Path(__file__).parent
@@ -155,7 +160,21 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
     print(f"Saved {out_path} and {pdf_path}")
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--outputs-dir",
+        type=Path,
+        default=None,
+        help="If given, rescan this outputs/ dir and refresh results_per_task_dim4_combined.csv.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
+    if args.outputs_dir is not None:
+        write_csv(extract_records(args.outputs_dir), CSV_PATH)
     records = read_csv(CSV_PATH)
     series = build_series(records)
     plot(series, Path("outputs/figures/02_hypernetwork_multitask/per_task_dim4.png"))

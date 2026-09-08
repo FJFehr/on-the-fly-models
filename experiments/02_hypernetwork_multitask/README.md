@@ -214,6 +214,31 @@ CFG_DIR=experiments/02_hypernetwork_multitask CELL_GLOB="dim*.yaml" SEEDS_OVERRI
 
 All results pulled from wandb (`fjfehr/arc1d_v2_hypernetwork_multitask`).
 
+## Dim=4 rerun, 5 seeds (checkpoints + per-seed clusters)
+
+The dim=4 pair (`dim4_notd.yaml`/`dim4_frozentd.yaml`) has since been rerun
+clean-slate at 5 seeds, with `save_checkpoints: true` (was `false`) so a
+checkpoint now exists for every seed -- unblocking experiment 3, which was
+blocked on exactly this. `frozen_td`: 94.8% mean test exact match (95.5 /
+94.9 / 92.3 / 96.1 / 95.2), close to the original 3-seed 95.7%. `notd`:
+65.3% mean (51.8 / 68.6 / 67.7 / 65.1 / 73.5), a bit below the original
+71.0% with wider seed variance, consistent with the same failure mode
+already documented above (move-family conflation), not a new problem.
+
+Every seed's own `embeddings.npz` (per-run, dumped automatically by
+`log_embedding_clusters: true`) is reachable directly:
+
+```bash
+uv run python experiments/02_hypernetwork_multitask/plot_embedding_clusters.py --dim 4 --seed 3
+```
+
+`plot_per_task.py`/`plot_per_task_combined.py` can now rescan live
+`outputs/` too (previously they only read the committed, 3-seed CSV):
+
+```bash
+uv run python experiments/02_hypernetwork_multitask/plot_per_task_combined.py --outputs-dir outputs
+```
+
 The encoder-size pre-flight, sizing, and LoRA-rank sweeps described above
 ("How small can the hypernetwork go?", "Dense generation vs. LoRA adapter")
 were exploratory, one-off runs — their configs (`smoke_*.yaml`,

@@ -13,24 +13,32 @@ Move family (1p/2p/3p/2p_dp/dp) pinned as a contiguous block on the left,
 ascending by hyper_notd within each block -- same convention as
 plot_per_task.py, now with joint-direct's much larger failures visible too.
 
-Raw per-seed data in results_per_task_dim4_combined.csv (individual/joint_td/
-joint_notd pulled from arc1d_v2_multitask/results_per_task.csv, hyper_td/
-hyper_notd from this folder's own results_per_task_dim4.csv).
+Raw per-seed data in results_per_task_dim4_combined.csv. --outputs-dir
+rescans and rebuilds it from two live outputs/ trees: individual/joint_td/
+joint_notd from outputs/01_multitask_capacity/ (individual_dim4_*,
+joint_{notd,td}_dim4_*), hyper_td/hyper_notd from
+outputs/02_hypernetwork_multitask/ (hyper_multitask_dim4_{frozentd,notd}_*)
+-- both experiments' own naming conventions, dim=4 only. Without
+--outputs-dir, replots from the CSV as committed.
 
 Usage
 -----
     uv run python experiments/02_hypernetwork_multitask/plot_per_task_combined.py
+    uv run python experiments/02_hypernetwork_multitask/plot_per_task_combined.py \\
+        --outputs-dir outputs
 """
 
+import argparse
 import csv
+import re
 import statistics
 from pathlib import Path
 
 import numpy as np
 from matplotlib import pyplot as plt
 
-from visualisation.paper.arc_paper import PAPER_COLORS, lighten
 from visualisation.core.style import apply_latex_style, format_task_category
+from visualisation.paper.arc_paper import PAPER_COLORS, lighten
 
 
 def darken(hex_color: str, amount: float = 0.2) -> str:
@@ -76,6 +84,75 @@ FILL_COLORS = {cond: lighten(hex_) for cond, hex_ in COLORS.items()}
 def shorten_label(label: str) -> str:
     label = label.replace(" Pixels", "").replace(" Pixel", "")
     return label.replace("Multicolor", "MC")
+
+
+def parse_val_by_task(results_path: Path) -> dict[str, float]:
+    """Return {task: val_query_exact_match_by_task_<task>} from results.txt.
+    Same field/format both experiments log this under."""
+    scores = {}
+    prefix = "val_query_exact_match_by_task_"
+    for line in results_path.read_text().splitlines():
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            key, _, value = stripped.partition(":")
+            scores[key[len(prefix) :]] = float(value.strip())
+    return scores
+
+
+def extract_records(outputs_dir: Path) -> list[dict]:
+    """Scan two live outputs/ trees (dim=4 only) and return one row per
+    (condition, task, seed)."""
+    records = []
+
+    exp1_dir = outputs_dir / "01_multitask_capacity"
+    individual_re = re.compile(r"^individual_dim4_(.+)_seed(\d+)$")
+    for path in sorted(exp1_dir.glob("*/results.txt")):
+        m = individual_re.match(path.parent.name)
+        if not m:
+            continue
+        task, seed = m.group(1), int(m.group(2))
+        score = parse_val_by_task(path).get(task)
+        if score is not None:
+            records.append(
+                {"condition": "individual", "task": task, "seed": seed,
+                 "val_exact_match": score}
+            )
+
+    joint_re = re.compile(r"^joint_(notd|td)_dim4_seed(\d+)$")
+    for path in sorted(exp1_dir.glob("*/results.txt")):
+        m = joint_re.match(path.parent.name)
+        if not m:
+            continue
+        cond, seed = f"joint_{m.group(1)}", int(m.group(2))
+        for task, score in parse_val_by_task(path).items():
+            records.append(
+                {"condition": cond, "task": task, "seed": seed, "val_exact_match": score}
+            )
+
+    exp2_dir = outputs_dir / "02_hypernetwork_multitask"
+    hyper_re = re.compile(r"^hyper_multitask_dim4_(frozentd|notd)_seed(\d+)$")
+    hyper_cond = {"frozentd": "hyper_td", "notd": "hyper_notd"}
+    for path in sorted(exp2_dir.glob("*/results.txt")):
+        m = hyper_re.match(path.parent.name)
+        if not m:
+            continue
+        cond, seed = hyper_cond[m.group(1)], int(m.group(2))
+        for task, score in parse_val_by_task(path).items():
+            records.append(
+                {"condition": cond, "task": task, "seed": seed, "val_exact_match": score}
+            )
+
+    records.sort(key=lambda r: (r["condition"], r["task"], r["seed"]))
+    return records
+
+
+def write_csv(records: list[dict], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["condition", "task", "seed", "val_exact_match"])
+        writer.writeheader()
+        writer.writerows(records)
+    print(f"Wrote {len(records)} rows to {path}")
 
 
 def read_csv(path: Path) -> list[dict]:
@@ -175,8 +252,24 @@ def plot(series: dict[str, dict[str, dict]], out_path: Path) -> None:
     print(f"Saved {out_path} and {pdf_path}")
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--outputs-dir",
+        type=Path,
+        default=None,
+        help="If given, rescan this outputs/ dir and refresh results_per_task_dim4_combined.csv.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
-    records = read_csv(CSV_PATH)
+    args = parse_args()
+    if args.outputs_dir is not None:
+        records = extract_records(args.outputs_dir)
+        write_csv(records, CSV_PATH)
+    else:
+        records = read_csv(CSV_PATH)
     series = build_series(records)
     plot(series, Path("outputs/figures/02_hypernetwork_multitask/per_task_dim4_combined.png"))
 
