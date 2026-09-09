@@ -36,8 +36,14 @@ paper, start here.
    exception for both.
 4. **[`04_compositional_generalization/`](04_compositional_generalization/)**
    — zero-shot generalisation to *chained-skill* tasks the model never saw
-   combined during training (e.g. denoise-then-shift), using #2's 14-task
-   recipe. With vs. without td. **Status: done**, 5 seeds, both arms.
+   combined during training (e.g. denoise-then-shift). With vs. without td.
+   **Status: done**, 5 seeds, both arms — no longer trains its own models at
+   all; both arms reuse #2's own dim=4 checkpoints directly (in-distribution
+   numbers are literally #2's own results, `frozen_td` via a
+   mathematically-justified padding of its frozen, never-trained
+   task-indicator projection, see its README). `notd` beats `frozen_td` on
+   zero-shot token accuracy in 8/10 held-out categories, confirming the
+   original hypothesis.
 5. **`05_leave_one_out_task_generalization/`** — train on 13 of the 14 base
    task categories, 5 seeds, and test zero-shot on the held-out 14th
    category. With vs. without td. Distinct from #4: this holds out a whole
@@ -153,9 +159,11 @@ Two things sit outside that default path, both optional:
   experiments' own pipelines call it — `results.txt` already has what they
   need — it's there for ad-hoc checkpoint inspection.
 - `scripts/eval_compositional_holdout.py` — experiment 4's own extra step,
-  scoring an already-trained run against the disjoint compositional-holdout
-  set (`validate.py` has no notion of a second, different eval set). Called
-  automatically by `04_compositional_generalization`'s own `run*.sh`.
+  scoring a checkpoint against the disjoint compositional-holdout set
+  (`validate.py` has no notion of a second, different eval set). Called
+  automatically by `04_compositional_generalization`'s own `run.sh` — which,
+  unlike every other experiment's `run*.sh`, trains nothing at all: both its
+  arms reuse experiment 2's own dim=4 checkpoints directly (see its README).
 
 Generic launcher (most experiments):
 
@@ -169,9 +177,10 @@ CFG_DIR=experiments/01_multitask_capacity/configs SEEDS_OVERRIDE="1 2 3 4 5" GPU
 Skips any `(config, seed)` pair that already has a `results.txt`, so it's
 always safe to rerun to backfill missing seeds or resume a killed sweep.
 `04_compositional_generalization` and `06_data_efficiency_ablation/*` have
-their own `run*.sh` instead — they need a data-build step, a post-training
-eval pass, or a non-round-robin GPU claim policy the generic launcher
-doesn't cover — see their own READMEs.
+their own `run*.sh` instead — `04`'s is eval-only (reuses #2's checkpoints,
+no data-build/GPU claim needed at all), `06`'s need a data-build step and a
+non-round-robin GPU claim policy the generic launcher doesn't cover — see
+their own READMEs.
 
 ## Figures and results
 

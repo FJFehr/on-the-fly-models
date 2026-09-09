@@ -1,5 +1,5 @@
 _base_: experiments/04_compositional_generalization/configs/base.yaml
-experiment_name: v2_compositional_generalization_14task_notd_seed5
+experiment_name: notd_seed5
 seed: 5
 hyper_head:
   num_tasks: null

@@ -1,37 +1,39 @@
-# Base config for the standard-14-task rerun of arc1d_v2_compositional_generalization: train a
-# hypernetwork on the 14 in-distribution ARC-1D task categories (the standard v2 list used by
-# arc1d_v2_hypernetwork_multitask and the rest of the v2 family), zero-shot test on 10 synthetic
-# categories that chain two of those rules together (data/arc_1d_compositional_holdout, already
-# built -- see legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/README.md for
-# the generator, rule semantics, and combo-selection rationale, all reused unmodified here).
+# Recipe for the compositional-generalization question: does a hypernetwork trained on 14
+# in-distribution ARC-1D task categories generalise zero-shot to 10 synthetic categories that
+# chain two of those rules together (data/arc_1d_compositional_holdout, already built -- see
+# legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/README.md for the
+# generator, rule semantics, and combo-selection rationale, all reused unmodified here)?
 #
-# Only actual change from arc1d_v2_compositional_generalization/base.yaml: task_categories /
-# val_task_categories drop 1d_recolor_cmp, going from that experiment's 15-category list (kept
-# for apples-to-apples comparison against the older, bigger-recipe
-# arc1d_hypermodel_compositional_generalization run) down to the standard 14. Safe: none of the
-# 10 composite specs in data_modules/arc1d_compositional.py involve 1d_recolor_cmp, and
-# frozen_td's num_tasks=28 is sized off the fixed 18-category TASK_CATEGORY_INDEX registry
-# (models/hypermodel_lightning.py), not off how many categories this run trains on. Everything
-# else -- architecture, optimizer, budget, data -- is unchanged from that experiment.
+# As of this session, this config is documentation/provenance only -- NOT the active training
+# recipe. Both arms now reuse experiment 2's own dim=4 matched-scale checkpoints directly
+# (outputs/02_hypernetwork_multitask/hyper_multitask_dim4_{notd,frozentd}_seed{1..5}/, trained
+# on this exact 14-category recipe already) rather than training here from scratch -- see
+# run.sh and this experiment's README for the full reasoning (in short: no need to duplicate a
+# training run that already exists at the right architecture and data recipe). Kept accurate
+# and buildable in case a genuine from-scratch retrain is ever needed (e.g. a future dim=6
+# version) -- frozen_td.yaml specifically is still directly used, as the architecture template
+# scripts/eval_compositional_holdout.py builds its model from when evaluating experiment 2's
+# checkpoint after pad_frozentd_checkpoint.py extends it to num_tasks=28.
 #
-# Architecture is the "matched-scale" recipe from arc1d_v2_hypernetwork_multitask's sizing sweep
-# (10,156 total hypernetwork params, built around the dim=4 target model -- 1,398 params, the
-# "1.4k" scale this experiment is named for -- dense generation, 95.7% mean in-distribution exact
-# match at dim=4 -- the smallest config in that sweep that still held up). See
-# experiments/02_hypernetwork_multitask/configs/shrink_matched_dim4.yaml / base.yaml for the
-# source of every architecture/optimizer/budget value below.
+# Architecture is the "matched-scale" recipe from experiment 2's own sizing sweep (10,156
+# trainable hypernetwork params, built around the dim=4 target model -- 1,398 params) --
+# identical to experiments/02_hypernetwork_multitask/configs/dim4_notd.yaml/dim4_frozentd.yaml
+# except num_tasks (28 here, reserving 10 indices for the composite holdout categories; 18 in
+# experiment 2, which has no reason to reserve them for its own purposes).
 #
-# Critical deviation from its v2 source: save_checkpoints: true. The sizing-sweep configs this
-# architecture is copied from ran with save_checkpoints: false (they never evaluated on a held-out
-# set); this experiment needs the checkpoint for scripts/eval_compositional_holdout.py afterward.
+# task_categories/val_task_categories: the standard 14-category v2 list (drops 1d_recolor_cmp
+# from this experiment's own 15-category predecessor, arc1d_v2_compositional_generalization --
+# safe, since none of the 10 composite specs in data_modules/arc1d_compositional.py involve it,
+# and frozen_td's num_tasks=28 is sized off the fixed 18-category TASK_CATEGORY_INDEX registry
+# in models/hypermodel_lightning.py, not off how many categories this list has).
 #
 # Self-contained (no _base_ of its own), matching every sibling base.yaml, because the config
 # loader only resolves one level of _base_ inheritance (training/config.py's load_config).
-project_name: arc1d_v2_compositional_generalization_14task
+project_name: 04_compositional_generalization
 entity: fjfehr
 output_dir: outputs
 seed: 42
-experiment_name: v2_compositional_generalization_14task
+experiment_name: compositional_generalization
 output_path: ${output_dir}/${project_name}/${experiment_name}
 
 data: arc_1d_meta_multiclass

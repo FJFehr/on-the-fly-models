@@ -1,195 +1,153 @@
-# arc1d_v2_compositional_generalization_14task
+# Experiment 4: compositional generalisation
 
-## Goal
+## Question
 
-Same question as `arc1d_v2_compositional_generalization`: train a hypernetwork on in-distribution
-ARC-1D task categories, then test zero-shot on 10 synthetic categories that chain two of those
-rules together (e.g. denoise a block, *then* shift it) -- a combination it was never trained on,
-built from two skills it was.
+Train a hypernetwork on 14 in-distribution ARC-1D task categories, then test zero-shot on 10
+synthetic categories that chain two of those rules together (e.g. denoise a block, *then*
+shift it) -- a combination it was never trained on, built from two skills it was.
 
-**Hypothesis**: the `notd` arm (no task-identity embedding at all) should generalize to these
+**Hypothesis**: `notd` (no task-identity embedding at all) should generalise to these
 compositions *better* than `frozen_td` (a frozen, untrained one-hot task-identity embedding).
-Without an explicit per-task anchor, the model has to organize its own internal task
-representation from the support examples alone -- and that self-organized representation should
-blend two rules together more naturally when the query actually needs both. An explicit anchor,
-even an untrained/frozen one, instead pulls the model toward "this looks most like known task X,"
-which helps when the anchor happens to be right and actively works against blending when it
-isn't.
+Without an explicit per-task anchor, the model has to organise its own internal task
+representation from the support examples alone -- and that self-organised representation
+should blend two rules together more naturally when the query actually needs both. An
+explicit anchor, even an untrained/frozen one, instead pulls the model toward "this looks most
+like known task X," which helps when the anchor happens to be right and works against
+blending when it isn't.
 
-## Relationship to `arc1d_v2_compositional_generalization`
+## The finding
 
-This is that experiment, unchanged in every respect except the training task set:
+**Confirmed: `notd` beats `frozen_td` on zero-shot token accuracy in 8 of 10 held-out
+composite categories (macro mean 75.5% vs. 67.7%), while `frozen_td` dominates in-distribution
+(93.0% vs. 58.3% exact match) -- the same explicit-anchor tradeoff the hypothesis predicted.
+Exact match on the held-out set stays near zero for both arms.**
 
-- `arc1d_v2_compositional_generalization` trains on **15** categories (the standard 14 plus
-  `1d_recolor_cmp`, kept there for apples-to-apples comparison against the older, bigger-recipe
-  `arc1d_hypermodel_compositional_generalization` run).
-- This experiment trains on the **standard 14-category v2 list** instead (the same list
-  `arc1d_v2_hypernetwork_multitask` and the rest of the v2 family use), dropping
-  `1d_recolor_cmp`. Safe to drop: none of the 10 held-out composite categories involve
-  `1d_recolor_cmp` at all (see the combo table below), and `frozen_td`'s `num_tasks=28` is sized
-  off the fixed 18-category `TASK_CATEGORY_INDEX` registry (`models/hypermodel_lightning.py`),
-  not off how many categories this run actually trains on.
+| | In-distribution (14 categories) | Zero-shot holdout, seq_accuracy (10 categories) | Zero-shot holdout, exact_match |
+|---|---:|---:|---:|
+| `frozen_td` | **93.0%** | 67.7% | 0.05% |
+| `notd` | 58.3% | **75.5%** | 1.00% |
 
-Everything else is reused unmodified:
+(macro-average across categories, mean across 5 seeds each -- see
+`outputs/figures/04_compositional_generalization/per_task_indist.png` /
+`per_task_holdout.png`.)
 
-- `data_modules/arc1d_compositional.py` (the composite-task generator) and
-  `data/arc_1d_compositional_holdout` (the 400-instance, 10-category held-out set built from it).
-- `scripts/eval_compositional_holdout.py` (zero-shot eval + embedding-cluster holdout overlay).
+Per held-out category (seq_accuracy, mean across 5 seeds):
 
-See `arc1d_hypermodel_compositional_generalization/README.md` for the generator's architecture,
-the base-rule semantics table, and the full combo-selection rationale (which 10 pairings were
-kept and why) -- none of that is repeated here.
+| category | `notd` | `frozen_td` | diff |
+|---|---:|---:|---:|
+| `denoisemc_mirror` | 85.6% | 47.7% | **+37.9pp** |
+| `shift3_copy` | 70.3% | 57.2% | +13.1pp |
+| `fill_mirror` | 73.1% | 61.3% | +11.7pp |
+| `fill_movedynamic` | 71.6% | 62.7% | +9.0pp |
+| `hollow_shift3` | 85.2% | 78.2% | +7.0pp |
+| `fill_shift3` | 73.9% | 68.8% | +5.1pp |
+| `movedynamic_hollow` | 82.4% | 79.1% | +3.2pp |
+| `denoise1c_shift3` | 77.0% | 75.5% | +1.5pp |
+| `denoisemc_copy` | 67.3% | 69.6% | -2.3pp |
+| `denoisemc_denoise1c` | 68.3% | 76.7% | -8.3pp |
 
-## Architecture
+`notd` wins 8/10; `denoisemc_mirror` shows both the largest gap and the same direction as the
+original (larger-scale) version of this experiment's own finding, a consistent signal across
+scales, not a one-off.
 
-Copied unmodified from `arc1d_v2_compositional_generalization/base.yaml` (itself copied from
-`arc1d_v2_hypernetwork_multitask/shrink_matched_dim4.yaml`, the sizing sweep's smallest-that-
-still-holds config):
+## Method
 
-| Component | Value |
-|---|---|
-| Target model | `rope_canon_looped_transformer`, `hidden_dim=4`, flat (`n_loops=1`, not looped) -- **1,398 params**, the "1.4k" downstream/target-model scale this experiment is built around |
-| Hypernetwork encoder | `rope_canon_transformer` (plain, non-Zhu), `hidden_dim=4, num_layers=1, output_dim=4` |
-| `task_encoding.embedding_dim` | 4 |
-| `hyper_head.bottleneck_dim` | 8 |
-| Generation | Dense (`lora_adapter: false`) -- the sizing sweep found LoRA strictly worse below the dense floor at this scale |
-| Optimizer | Muon (`muon_lr=0.005, muon_momentum=0.95`) + AdamW aux (`lr=0.001, wd=0.01`) |
-| Budget | `N_supervision=1, max_steps=8000, warmup_steps=800` (8000-total-optimizer-update budget) |
-| Total hypernetwork params | 10,156 |
+**Both arms reuse experiment 2's own dim=4 matched-scale hypernetwork checkpoints directly --
+this experiment no longer trains anything.** Experiment 2's `dim4_notd.yaml`/
+`dim4_frozentd.yaml` already train on the *exact* 14-category recipe this experiment needs
+(confirmed by diffing the configs: identical `task_categories`/`val_task_categories`,
+identical `data_dir`, identical architecture) -- so in-distribution numbers above are
+literally experiment 2's own `results.txt`, and the only new thing this experiment adds is
+the zero-shot compositional-holdout eval (`scripts/eval_compositional_holdout.py`) on top of
+those checkpoints, 5 seeds each:
 
-Training data is the standard, full per-category augmented set (`data/arc_1d_looped_augmented`,
-no `variants_per_base_task` cap) -- only the task-category *list* differs from
-`arc1d_v2_compositional_generalization`, not the amount of data per category.
+- **`notd`**: no dependency on `num_tasks` at all (`hyper_head.num_tasks: null` means no
+  task-indicator projection exists in the model at all) -- experiment 2's checkpoints are
+  structurally identical to what this eval needs. Evaluated directly, no changes.
+- **`frozen_td`**: the eval script reserves indices 18-27 (10 composite categories) inside
+  `hypermodel.task_indicator_proj.weight`, a plain `nn.Linear(num_tasks, hyper_output_dim,
+  bias=False)`, requiring `num_tasks=28` at model-build time. Experiment 2's own `frozen_td`
+  was trained with `num_tasks=18` (no reason for experiment 2 itself to reserve those 10
+  slots) -- wrong shape to load directly.
 
-## Task set
+  **Resolved by padding, not retraining**: `pad_frozentd_checkpoint.py` extends that
+  checkpoint's projection matrix from 18 to 28 columns with 10 freshly-initialised values
+  before the eval runs. This is mathematically sound, not a shortcut: `freeze_task_indicator:
+  true` means that whole projection is random-init and **never gradient-updated**
+  (`models/hypermodel.py:288-289` calls `requires_grad_(False)` right after construction) --
+  both the real 18 columns and the 10 padded ones are equally "untrained random values from
+  `nn.Linear`'s default init," never touched by an optimizer step either way. Padding with 10
+  more is statistically identical to having trained with `num_tasks=28` from the start.
+  Verified end-to-end: the padded-checkpoint numbers above land in the same ballpark as this
+  experiment's own original, separately-trained `num_tasks=28` `frozen_td` run (see "Superseded
+  original run" below).
 
-The standard 14-category v2 list (drops `1d_recolor_cmp` from the 15-category list the original
-compositional-generalization experiments use):
+**Data**: `data/arc_1d_compositional_holdout` (10 composite categories, 40 instances each,
+built by `data_modules/arc1d_compositional.py` -- see
+`legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/README.md` for the
+generator, rule semantics, and combo-selection rationale, unmodified since).
 
-`1d_denoising_1c, 1d_denoising_mc, 1d_fill, 1d_flip, 1d_hollow, 1d_mirror, 1d_move_1p,
-1d_move_2p, 1d_move_2p_dp, 1d_move_3p, 1d_move_dp, 1d_pcopy_1c, 1d_pcopy_mc, 1d_scale_dp`
+**Architecture** (documented in `configs/base.yaml`/`notd.yaml`/`frozen_td.yaml`, kept
+buildable for a genuine from-scratch retrain if ever needed, e.g. a future dim=6 version, even
+though the active pipeline doesn't train from them): identical to experiment 2's dim=4
+matched-scale recipe (`task_encoding.embedding_dim=4`, target/hyper model `hidden_dim=4`,
+`hyper_head.bottleneck_dim=8` -- 10,156 trainable params), `num_tasks` the only difference.
 
-## Arms
+## Reproducing
 
-Only `notd` and `frozen_td` -- no plain `td`, matching `arc1d_v2_hypernetwork_multitask`'s own
-choice to drop it ("historically bimodal/unstable"), and a learned one-hot embedding is undefined
-on the held-out compositional indices anyway:
-
-| Variant | `hyper_head.num_tasks` | `hyper_head.freeze_task_indicator` |
-|---|---:|---:|
-| `notd` | `null` | `false` |
-| `frozen_td` | `28` (18 base + 10 reserved composite indices) | `true` |
-
-## Running
-
-The paper's reported findings are the 5-seed sweep (`notd_seed{1..5}.yaml` /
-`frozen_td_seed{1..5}.yaml`, generated by `gen_seeds.py`):
+One script to run (eval-only, no GPU/cluster needed once experiment 2's checkpoints are
+local), one to plot:
 
 ```bash
-python experiments/04_compositional_generalization/gen_seeds.py
-bash experiments/04_compositional_generalization/run_seeds.sh        # 8 GPUs (default)
-bash experiments/04_compositional_generalization/run_seeds.sh 4      # 4 GPUs
+bash experiments/04_compositional_generalization/run.sh
+uv run python experiments/04_compositional_generalization/plot_compositional.py --outputs-dir outputs
 ```
 
-A single-seed (seed=42) sanity variant is also available directly (`notd.yaml` /
-`frozen_td.yaml`, no generation step needed):
+`run.sh` evaluates `notd` directly against experiment 2's checkpoints, and pads +
+evaluates `frozen_td`'s (`pad_frozentd_checkpoint.py`, skip-on-done, writes the padded
+checkpoint under `outputs/04_compositional_generalization/padded_checkpoints/` so it's only
+computed once). Both write to `outputs/compute_efficiency/04_compositional_generalization/
+{notd,frozentd}_seed{1..5}/results.txt`. If experiment 2's checkpoints aren't local yet:
 
 ```bash
-bash experiments/04_compositional_generalization/run_train_eval.sh
+REMOTE_HOST=<node> INCLUDE_CHECKPOINTS=1 bash scripts/fetch_experiments.sh 02_hypernetwork_multitask
 ```
 
-Either script builds `data/arc_1d_compositional_holdout` if missing, trains the arm(s), then runs
-`scripts/eval_compositional_holdout.py` for each against the held-out compositional set. Set
-`FREE_GPUS_FLAG="--free-gpus"` if the node is shared.
+`plot_compositional.py --outputs-dir outputs` rescans both experiment 2's own tree
+(in-distribution) and this experiment's own eval output (zero-shot), writes
+`results_indist.csv`/`results_holdout.csv` under `outputs/results/
+04_compositional_generalization/`, prints the macro-average summary above, and renders both
+figures. Without `--outputs-dir`, replots from the CSVs as committed.
 
-## Reading results
+`configs/notd.yaml`/`configs/frozen_td.yaml` (and `gen_seeds.py`'s generated `*_seed{N}.yaml`
+leaves) remain accurate, buildable training recipes via `run_seeds.sh`/`run_train_eval.sh` --
+documentation of exactly what would reproduce experiment 2's checkpoints from scratch, not the
+active path. `frozen_td.yaml` specifically is still directly used, as the architecture
+template the padded-checkpoint eval builds its model from.
 
-`outputs/arc1d_v2_compositional_generalization_14task/<arm>/results.txt` for in-distribution
-val/test metrics (including the per-task-category exact-match and accuracy breakdown), and
-`outputs/arc1d_v2_compositional_generalization_14task/<arm>/compositional_holdout_eval/results.txt`
-for the zero-shot per-composite-category `exact_match`/`seq_accuracy` table. Compare directly
-against `arc1d_v2_compositional_generalization`'s own results (same architecture, same held-out
-set, only the training task list differs by one category) to see whether dropping
-`1d_recolor_cmp` changes the notd-vs-frozen_td direction or magnitude found there.
+## Superseded original run (kept for historical comparison, not part of the pipeline)
 
-## Status
+This experiment was originally run on 2026-09-01 with its own independently-trained
+checkpoints (both arms, `num_tasks=28` for `frozen_td` from the start, no padding needed) --
+5 seeds, both arms, on `torrnode7`, real checkpoints. That data still exists, undisturbed, at
+`outputs/arc1d_v2_compositional_generalization_14task/` (old naming, predates this session's
+cleanup) -- not migrated or deleted, just no longer authoritative. Its own numbers (macro
+in-distribution `frozen_td` 91.4%/`notd` 62.0% test exact match; zero-shot seq_accuracy
+`frozen_td` 60.0%/`notd` 74.1%) land close to the current ones above, as expected -- same
+architecture, a genuinely different training-run instance rather than a literal
+re-evaluation of the same weights, not a discrepancy.
 
-Run and evaluated, 5 seeds (1-5), both arms, on `torrnode7`. See Findings below.
+One known gap in that original run, now closed as a side effect of the current pipeline:
+its `embedding_clusters/` dumps are missing `embeddings.npz` (it predates that dump feature,
+added to `training/logging.py` on 2026-09-06, five days later) -- the current, checkpoint-reuse
+pipeline runs through today's code, so its own cluster dumps *do* include it automatically.
 
-## Findings (5 seeds: 1-5)
+## Open follow-ups
 
-**In-distribution (test set, all 14 training categories)** -- `frozen_td` dominates, same
-direction as every other `arc1d_v2_*` notd/frozen_td comparison, and clears the 15-category
-version's numbers too:
-
-| | `frozen_td` test EM | `notd` test EM |
-|---|---:|---:|
-| mean ± stdev (n=5) | **91.4% ± 7.2%** | **62.0% ± 10.0%** |
-
-**Zero-shot on the 10 held-out composite categories** (`n=40` per category, 400 per seed) --
-mean token accuracy (`seq_accuracy`) per category, averaged over the 5 seeds:
-
-| category | `frozen_td` seq_accuracy | `notd` seq_accuracy | diff |
-|---|---:|---:|---:|
-| `denoise1c_shift3` | 0.710 | 0.723 | +0.013 |
-| `denoisemc_copy` | 0.466 | 0.707 | +0.241 |
-| `denoisemc_denoise1c` | 0.537 | 0.709 | +0.172 |
-| `denoisemc_mirror` | 0.589 | 0.829 | +0.240 |
-| `fill_mirror` | 0.564 | 0.708 | +0.143 |
-| `fill_movedynamic` | 0.573 | 0.686 | +0.113 |
-| `fill_shift3` | 0.700 | 0.724 | +0.024 |
-| `hollow_shift3` | 0.598 | 0.854 | +0.255 |
-| `movedynamic_hollow` | 0.704 | 0.814 | +0.110 |
-| `shift3_copy` | 0.556 | 0.659 | +0.103 |
-| **overall mean ± stdev (n=5 seeds)** | **0.600 ± 0.065** | **0.741 ± 0.027** | **+0.141** |
-| **overall exact_match, mean (n=5 seeds)** | **0.000** | **0.013 ± 0.011** | |
-
-Per-category `exact_match`, same 5-seed averaging (`notd`'s hit count is out of 200 = 5 seeds ×
-40 held-out instances per category):
-
-| category | `frozen_td` exact_match | `notd` exact_match | `notd` hits |
-|---|---:|---:|---:|
-| `denoise1c_shift3` | 0.000 | 0.005 | 1/200 |
-| `denoisemc_copy` | 0.000 | 0.025 | 5/200 |
-| `denoisemc_denoise1c` | 0.000 | 0.020 | 4/200 |
-| `denoisemc_mirror` | 0.000 | 0.070 | 14/200 |
-| `fill_mirror` | 0.000 | 0.015 | 3/200 |
-| `fill_movedynamic` | 0.000 | 0.000 | 0/200 |
-| `fill_shift3` | 0.000 | 0.000 | 0/200 |
-| `hollow_shift3` | 0.000 | 0.000 | 0/200 |
-| `movedynamic_hollow` | 0.000 | 0.000 | 0/200 |
-| `shift3_copy` | 0.000 | 0.000 | 0/200 |
-| **total (2,000 held-out instances)** | **0/2,000** | **27/2,000 (1.35%)** | |
-
-`frozen_td` is a flat, exact zero -- not one exact match across every seed, every category, all
-2,000 held-out instances. `notd`'s exact matches concentrate in 5 of the 10 categories, and
-`denoisemc_mirror` stands out (14/200, 7%) -- notably the *same* category with the largest
-seq_accuracy gap above (+0.240), so the two metrics agree on where `notd`'s advantage is
-strongest, not just on average. The other 5 categories are exact-match-zero for both arms across
-every seed: the token-accuracy gap there is real, but at this model scale neither arm ever
-resolves it into a fully correct sequence.
-
-**The hypothesis holds, and much more cleanly than any single-seed compositional-generalization
-run before it: `notd` beats `frozen_td` on token accuracy in 10/10 categories** (not 6/10 or
-9/10 as in the two single-seed experiments this rerun improves on), with the per-seed means
-essentially non-overlapping (`frozen_td` seed range 51.3-68.9%, `notd` seed range 70.0-76.7%) --
-this is no longer an artifact of one outlier category or one lucky seed. Exact match stays
-essentially zero for both arms, as always, but even there the two arms separate cleanly:
-`frozen_td` scores exactly 0/2,000 held-out instances across all 5 seeds, while `notd` gets a
-handful right in every single seed (13-28 per seed, never zero) -- a small but perfectly
-consistent difference.
-
-This is exactly the pattern the hypothesis predicted: `frozen_td`'s explicit (if untrained)
-task-identity anchor buys a large, consistent in-distribution advantage (+29 points test EM) by
-giving the model a fixed slot per known task, but that same anchor actively works against it the
-moment the true answer isn't any single known task -- it has nothing to blend *from* except "which
-one known category is this closest to." `notd` has no such anchor, so its internal task
-representation is built solely from the support examples every time, which turns out to combine
-two rules together more naturally when the query actually needs both blended.
-
-**Caveats**: 5 seeds is still a small sample for the per-category breakdown (each category's
-5-seed mean has its own noise), and this is a single architecture at a single (very small) scale
--- it doesn't establish the finding holds at larger hypernetwork sizes or with different
-target-model widths. The overall seq_accuracy comparison (50 seed-category cells per arm,
-collapsed to 5 seed-level means) is the more defensible summary than any single category's
-number.
+- A dim=6 version of this experiment -- no spec exists; experiment 2's own dim=6 isn't
+  resized to matched-scale yet either (see its README).
+- `denoisemc_mirror`'s outsized `notd` advantage (+37.9pp) isn't diagnosed further -- is it
+  something specific about how denoise and mirror rules combine, or a broader pattern that
+  happens to show up most clearly there?
+- Only same-architecture reuse tested here -- no attempt to see whether the padding approach
+  (or the compositional-generalisation finding itself) holds at a different hypernetwork size.

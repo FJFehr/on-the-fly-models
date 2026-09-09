@@ -1,8 +1,10 @@
-# No task-identity signal at all. Included alongside frozen_td for parity with
-# arc1d_v2_hypernetwork_multitask's own notd/frozen_td comparison -- notd is one of the two
-# conditions evaluated on the held-out compositional set (see README.md).
+# No task-identity signal at all. Included alongside frozen_td for parity with experiment 2's
+# own notd/frozen_td comparison -- notd is one of the two conditions evaluated on the held-out
+# compositional set (see README.md). No architecture dependency on num_tasks, so experiment 2's
+# own notd checkpoint is directly reusable for that eval -- this leaf config is documentation/
+# provenance only, not the active training recipe (see base.yaml).
 _base_: experiments/04_compositional_generalization/configs/base.yaml
-experiment_name: v2_compositional_generalization_14task_notd
+experiment_name: notd
 
 hyper_head:
   num_tasks: null
