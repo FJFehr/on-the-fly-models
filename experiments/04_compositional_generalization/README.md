@@ -119,6 +119,14 @@ REMOTE_HOST=<node> INCLUDE_CHECKPOINTS=1 bash scripts/fetch_experiments.sh 02_hy
 04_compositional_generalization/`, prints the macro-average summary above, and renders both
 figures. Without `--outputs-dir`, replots from the CSVs as committed.
 
+`report_holdout_breakdown.py` (run after `plot_compositional.py`, reads its
+`results_holdout.csv`) writes the finer-grained per-composition breakdown -- token accuracy
+and exact match for both arms, per held-out category, plus an Overall row matching the paper's
+own aggregation convention (macro-averaged token accuracy; exact match pooled over all 2,000
+held-out instances, mathematically the same computation here since every category/seed cell
+has equal n=40) -- to `results_holdout_paper_table.csv`, the source for the per-composition
+paper table (`tab:compositional_breakdown`).
+
 `configs/notd.yaml`/`configs/frozen_td.yaml` (and `gen_seeds.py`'s generated `*_seed{N}.yaml`
 leaves) remain accurate, buildable training recipes via `run_seeds.sh`/`run_train_eval.sh` --
 documentation of exactly what would reproduce experiment 2's checkpoints from scratch, not the
