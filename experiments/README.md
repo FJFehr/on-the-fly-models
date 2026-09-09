@@ -18,21 +18,22 @@ paper, start here.
    hypernetwork: does generating per-task weights close the gap #1
    couldn't, at the same parameter budget? Produces the cluster plots
    (task-representation disentanglement, with vs. without a task-identity
-   signal) and the dim=4 per-task breakdown. **Status: done.** dim=4: 5
-   seeds, `save_checkpoints: true` (a clean-slate rerun of the original
-   3-seed grid, which had no checkpoints) -- real multi-seed checkpoints at
-   the size experiment 3's preliminary pass already used, though not by
-   itself experiment 3's stated formal-design blocker, which calls for the
-   smaller ~10K `matched-scale` point specifically; dim=6 still at the
-   original 3 seeds, no checkpoints. TODO: dim=6's own rerun, and the
-   `matched-scale` rerun itself (still 1 seed) that unblocks experiment 3
-   properly.
-3. **`03_reusability_generate_once_execute_many/`** — reusability: take the
-   best seed from #2, cache its support-set embedding once, and ask whether
-   that single cached embedding generalises to *other instances* of the
-   same task type at inference time ("generate once, execute many"), with
-   and without td. **Status: not yet built** — blocked on picking a best
-   seed from #2's 10K rerun.
+   signal) and the dim=4 per-task breakdown. **Status: done.** dim=4 has
+   been resized in place to the "matched-scale" recipe (~11.4K total
+   params, every pipeline dimension sized to match the dim=4 target itself
+   -- was previously a ~200K fixed-width recipe), rerun clean-slate at 5
+   seeds, both arms, `save_checkpoints: true` -- real, formal, multi-seed
+   checkpoints at the true matched scale, not the old fixed-width one (see
+   its own README's "Dim=4 rerun" for the numbers). dim=6 still at the
+   original 3 seeds, larger fixed-width recipe, no checkpoints -- not
+   resized this round. TODO: dim=6's own resize + rerun to match.
+3. **`03_reusability_generate_once_execute_many/`** — reusability: cache a
+   support-set embedding once, and ask whether that single cached embedding
+   generalises to *other instances* of the same task type at inference time
+   ("generate once, execute many"), with and without td. **Status: not yet
+   built.** #2's dim=4 matched-scale checkpoints (5 seeds, both arms) now
+   exist and are the right scale to evaluate against — no longer blocked on
+   a rerun or a best-seed pick (use all 5 seeds directly).
 4. **[`04_compositional_generalization/`](04_compositional_generalization/)**
    — zero-shot generalisation to *chained-skill* tasks the model never saw
    combined during training (e.g. denoise-then-shift), using #2's 14-task
@@ -245,15 +246,18 @@ Sizes and seed counts have grown organically and aren't yet uniform:
 | Experiment | Sizes used | Seeds |
 |---|---|---|
 | 01 (multitask capacity) | dim 4, 6, 10, 14 (~10K) all done -- Joint, Individual, and both ablations (Canon, optimizer), all four dims | 5 throughout |
-| 02 (hypernetwork) | dim 4, 6 | dim=4: 5 (checkpoints saved); dim=6: 3, no checkpoints (original grid, not rerun). 1 (smoke/sizing checks), 5 (LoRA rank sweep) |
+| 02 (hypernetwork) | dim 4 (matched-scale, ~11.4K), dim 6 (fixed-width, ~337K) | dim=4: 5, checkpoints saved; dim=6: 3, no checkpoints (original grid, not resized/rerun). 1 (smoke/sizing checks), 5 (LoRA rank sweep) |
 | 04 (compositional) | dim 4 (matched-scale) | 5 |
 | 06 (data efficiency) | dim 6 (fixed) | 3 |
 
 **Proposed standard** (confirm before the next round of reruns): dims **4
 and 6** as the paper's stable sizes (drop dim=10 from new work -- keep the
 existing dim=10 result in #1 for capacity-cliff breadth, don't extend it
-elsewhere), **5 seeds** everywhere. #1 is fully backfilled; this now mainly
-means #2's dim=6 and #06, once rerun/completed.
+elsewhere), **5 seeds** everywhere, and (for the hypernetwork specifically)
+the matched-scale sizing #2's dim=4 now uses rather than a fixed-width
+encoder. #1 is fully backfilled, #2's dim=4 is now matched-scale/5-seed;
+this now mainly means #2's dim=6 (resize + rerun to match dim=4) and #06,
+once completed.
 
 ## Ablation axes
 
@@ -284,11 +288,11 @@ scripts, and the two datamodules (`arc1d_meta_padded_multiclass`,
 
 ## Open TODOs
 
-- 10K-scale rerun: #2's own `matched-scale` point (still 1 seed) -- #1's
-  dim=14 (9,508/9,688 params, Individual/Joint w/ td/Joint w/o td, 5 seeds
-  each) is done.
-- Confirm the architecture/seed standard above, then backfill #2 and #6 to
-  5 seeds.
-- Pick #2's best seed once its 10K rerun lands → unblocks #3.
+- #2's dim=6 resize + rerun to the matched-scale recipe (dim=4 is done: 5
+  seeds, both arms, checkpoints -- see its README's "Dim=4 rerun").
+- Confirm the architecture/seed standard above, then backfill #6 to 5 seeds.
+- #3: build the formal leave-one-out reusability eval against #2's dim=4
+  matched-scale checkpoints (all 5 seeds, not a cherry-picked "best" one --
+  see #2's own checkpoints, now real and at the right scale).
 - Design #5's 13-of-14 leave-one-out training configs.
 - Complete #6's data-efficiency sweep across all 7 levels.

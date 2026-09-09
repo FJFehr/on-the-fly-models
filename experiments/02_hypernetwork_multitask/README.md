@@ -14,19 +14,29 @@ capacity-cliff motivation for this experiment).
 
 ## The finding
 
-**With a task-identity signal, a ~200-338K-param hypernetwork matches
-individual training's per-task ceiling almost exactly — closing the
-capacity cliff Experiment 2 exposed. Without one, the hypernetwork still
-helps enormously over direct joint training, but a well-understood, specific
-failure mode (move-family conflation) accounts for most of the remaining
-gap.**
+**With a task-identity signal, a hypernetwork closes most of the capacity
+cliff Experiment 2 exposed — even shrunk all the way down to match the
+size of the tiny target model it generates (~11.4K params at dim=4, ~20x
+smaller than the fixed-width ~200K recipe this grid used to run at).
+Without one, the hypernetwork still helps enormously over direct joint
+training, but a well-understood, specific failure mode (move-family
+conflation) accounts for most of the remaining gap — and at the smallest,
+matched scale that failure mode starts to bite `frozen_td` too, not just
+`notd`.**
 
-| Config | test exact match (3 seeds) | mean | linear probe accuracy |
+dim=6 still runs the original fixed-width hypernetwork encoder (`hidden_dim=32,
+num_heads=4, num_layers=2, output_dim=64`, `bottleneck_dim=128` — see
+"Method" below); dim=4 has been resized to the proportionally-sized
+"matched-scale" recipe (every pipeline dimension set to match the dim=4
+target itself) that used to be a separate exploratory aside — that is now
+the standard sizing for dim=4, not an alternative:
+
+| Config | test exact match | mean | linear probe accuracy |
 |---|---|---:|---:|
-| **dim6, `frozen_td`** | 0.986 / 0.986 / 0.986 | **98.6%** | 100% |
-| dim6, `notd` | 0.729 / 0.686 / 0.614 | 67.6% | 81-87% |
-| **dim4, `frozen_td`** | 0.943 / 0.957 / 0.971 | **95.7%** | 100% |
-| dim4, `notd` | 0.714 / 0.743 / 0.671 | 71.0% | 79-81% |
+| **dim6, `frozen_td`** (3 seeds, ~338K params) | 0.986 / 0.986 / 0.986 | **98.6%** | 100% |
+| dim6, `notd` (3 seeds, ~337K params) | 0.729 / 0.686 / 0.614 | 67.6% | 81-87% |
+| **dim4, `frozen_td`** (5 seeds, ~11.4K params, matched-scale) | 0.936/0.922/0.949/0.955/0.889 | **93.0%** | 92.9-100% |
+| dim4, `notd` (5 seeds, ~11.4K params, matched-scale) | 0.541/0.531/0.551/0.671/0.575 | 57.4% | 54.5-68.1% |
 
 Reading this against the two experiments it sits between:
 
@@ -34,40 +44,55 @@ Reading this against the two experiments it sits between:
 |---|---:|---:|---:|
 | dim=6, with task ID | 98.9% | 74.0% | **98.6%** |
 | dim=6, no task ID | - | 40.9% | 67.6% |
-| dim=4, with task ID | 94.6% | 19.7% | **95.7%** |
-| dim=4, no task ID | - | 12.0% | 71.0% |
+| dim=4, with task ID | 94.6% | 19.7% | **93.0%** |
+| dim=4, no task ID | - | 12.0% | 57.4% |
 
-`frozen_td` doesn't just improve on the joint-direct capacity cliff — it
-erases it, landing within noise of individual training at both sizes,
-remarkably stable across seeds (dim=6 landed on the *exact same* 0.9857
-all three runs). `notd` closes most of the direct-training gap (e.g. dim=4:
-12.0% -> 71.0%) but not all of it, and per-task breakdown shows exactly why:
+At dim=6's larger, fixed-width hypernetwork, `frozen_td` doesn't just
+improve on the joint-direct capacity cliff — it erases it, landing within
+noise of individual training, remarkably stable across seeds (the *exact
+same* 0.9857 all three runs). At dim=4's matched scale, `frozen_td` still
+closes most of the gap on average (93.0% vs. individual training's 94.6%)
+but no longer erases it cleanly — the per-task breakdown shows real
+softening on specific tasks, not just noise:
 
 ```
-dim6_notd per-task exact match (one seed):
-  1d_move_1p        0.0
-  1d_move_2p        0.0
-  1d_move_3p        0.0
-  1d_move_dp        0.8   (soft everywhere, not a notd-specific issue)
-  everything else   1.0
+dim4 (matched-scale) per-task exact match, mean across 5 seeds:
+  frozen_td                            notd
+  1d_move_dp        55.2               1d_move_1p         6.2
+  1d_mirror          73.6              1d_move_3p         8.4
+  1d_flip            80.0              1d_flip           13.2
+  1d_move_2p         94.4              1d_move_dp        21.2
+  everything else   99.8-100.0         1d_move_2p        23.8
+                                        1d_move_2p_dp     40.6
+                                        1d_mirror         41.6
+                                        1d_scale_dp       76.2
+                                        everything else   89.2-100.0
 ```
 
 Without a task-identity signal, the whole move family (`1d_move_1p/2p/3p`)
 collapses together — exactly the conflation mechanism `00_overview.md`
 section 3 already documented for direct training
 (`arc1d_hypermodel_disentanglement`'s original motivation for adding a
-descriptor at all). `frozen_td` fixes precisely this, matching the
-project's standing explanation rather than a new, unexplained failure mode.
-At dim=4 the same pattern holds but is more diffuse (`mirror`/`scale_dp`
-also soften alongside the move family), consistent with a smaller model
-having less slack to partially compensate.
+descriptor at all). `frozen_td` fixes most of this at dim=6's larger
+encoder, matching the project's standing explanation. At dim=4's genuinely
+matched scale, the same failure mode now shows through even *with*
+`frozen_td` on the hardest members of that family (`move_dp`, `mirror`,
+`flip`) — a real, new finding from shrinking the hypernetwork all the way
+down: a task-identity signal still helps enormously, but it's no longer
+enough on its own to fully paper over a hypernetwork with this little
+spare capacity.
 
-**Disentanglement matches the exact-match story.** Linear-probe accuracy
-(predicting task category from the hypernetwork's pooled task
-representation) is a clean 100% for every `frozen_td` run and 79-87% for
-every `notd` run — the representation is genuinely worse at separating
-tasks without an identity signal, not just harder to decode from. See `outputs/figures/02_hypernetwork_multitask/cluster_dim6_paired_tsne.png`
-(regenerate with `plot_embedding_clusters.py --projections t-SNE`).
+**Disentanglement mostly matches the exact-match story, with one new
+wrinkle.** At dim=6, linear-probe accuracy (predicting task category from
+the hypernetwork's pooled task representation) is a clean 100% for every
+`frozen_td` run and 81-87% for every `notd` run. At dim=4's matched scale,
+`frozen_td` is no longer *always* perfect (92.9-100% across the 5 seeds,
+mean 97.9%) and `notd` drops much further, to 54.5-68.1% (mean 60.9%) —
+consistent with the exact-match story: a hypernetwork this small has
+measurably less spare capacity to keep task representations cleanly
+separated once the identity signal is gone. See
+`outputs/figures/02_hypernetwork_multitask/seed1/cluster_dim4_paired_seed1_tsne.png`
+(regenerate with `plot_embedding_clusters.py --dim 4 --all-seeds`).
 
 ## Method
 
@@ -76,20 +101,28 @@ tasks without an identity signal, not just harder to decode from. See `outputs/f
   (secondary, 1,398 params) — flat (`n_loops=1`), single pass, identical to
   Experiment 1's recipe, now hypernetwork-generated instead of directly
   trained.
-- **Hypernetwork encoder**: `rope_canon_transformer` (plain, non-Zhu — no
-  RMSNorm/QK-norm/SwiGLU, architecturally identical to
+- **Hypernetwork encoder, dim=6**: `rope_canon_transformer` (plain, non-Zhu
+  — no RMSNorm/QK-norm/SwiGLU, architecturally identical to
   `rope_canon_zhu_transformer` with those three flags off), `hidden_dim=32,
-  num_heads=4, num_layers=2, output_dim=64`. Selected over the
-  historically-safer `hidden_dim=64` after a single-seed smoke test showed
-  it tracking at least as well (lower loss, higher train exact match at
-  matched step counts) — see `smoke_dim6_frozentd_enc32.yaml` /
-  `smoke_dim6_frozentd_enc64.yaml`.
+  num_heads=4, num_layers=2, output_dim=64`, `hyper_head.bottleneck_dim=128`.
+  Selected over the historically-safer `hidden_dim=64` after a single-seed
+  smoke test showed it tracking at least as well (lower loss, higher train
+  exact match at matched step counts) — see `smoke_dim6_frozentd_enc32.yaml`
+  / `smoke_dim6_frozentd_enc64.yaml`.
+- **Hypernetwork encoder, dim=4 ("matched-scale")**: every pipeline
+  dimension shrunk to match the dim=4 target it's generating, rather than
+  the fixed dim=6-sized width above — `task_encoding.embedding_dim=4`,
+  encoder `hidden_dim=4, num_heads=1, num_layers=1, output_dim=4`,
+  `hyper_head.bottleneck_dim=8`. This is the standard sizing for dim=4 now
+  (was originally a single-seed, `frozen_td`-only exploratory aside — see
+  "How small can the hypernetwork go?" below for how this was found).
 - **Descriptor arms**: `notd` (no task-identity signal) and `frozen_td`
   (one-hot task embedding, projected in at random init, never trained
   further) — `td` (learned) excluded per project precedent (historically
   bimodal/unstable on its one generalisation win).
-- **Hyper head**: `pooling: attention`, `bottleneck_dim: 128`, full weight
-  generation (`lora_adapter: false`, no LoRA).
+- **Hyper head**: `pooling: attention`, full weight generation
+  (`lora_adapter: false`, no LoRA); `bottleneck_dim` is 128 at dim=6, 8 at
+  dim=4 (see above).
 - **Optimizer**: Muon, `muon_lr=0.005, muon_momentum=0.95`, AdamW aux group
   `learning_rate=0.001, weight_decay=0.01, gradient_clip_val=10.0`,
   `batch_size=512`.
@@ -99,19 +132,21 @@ tasks without an identity signal, not just harder to decode from. See `outputs/f
 - **Data**: full recipe, no `variants_per_base_task` subsampling.
 - **Task set**: 14 categories, matching Experiments 1-3 exactly
   (`1d_recolor_cmp` excluded, deferred to a follow-up).
-- **Seeds**: 3 per config (main grid), 1 for the two encoder-size smoke
-  tests. `save_checkpoints: false` throughout (no checkpoint saved for any
-  run — retrieving one requires a rerun with the flag on).
-- 4 main-grid jobs x 3 seeds = 12 total, all finished cleanly, 0 failures.
+- **Seeds**: dim=6, 3 per config (original grid, unchanged); dim=4, 5 per
+  config (resized + rerun, see "Dim=4 rerun" below). `save_checkpoints:
+  true` for dim=4 (a checkpoint exists for every seed); dim=6 still has
+  none (`save_checkpoints: false` at the time it was run, not yet rerun).
 
-**Hypernetwork size** (dominated by the `hyper_projection` MLP
+**Hypernetwork size** (at dim=6, dominated by the `hyper_projection` MLP
 `hyper_output_dim(64) -> bottleneck_dim(128) -> total_target_params`, *not*
-the encoder — the encoder itself is only ~30K params, ~9-15% of the total):
+the encoder — the encoder itself is only ~30K params, ~9-15% of the total;
+at dim=4's matched scale every part of the pipeline is small, not just the
+projection):
 
 | Target | Total hypernetwork params | vs. every prior hypernetwork experiment (~1.58M) |
 |---|---:|---:|
 | dim=6 | 336,726 (`notd`) / 337,878 (`frozen_td`) | ~4.7x smaller |
-| dim=4 | 200,244 (`notd`) / 201,396 (`frozen_td`) | ~7.9x smaller |
+| dim=4 (matched-scale) | 11,360 (`notd`) / 11,432 (`frozen_td`) | ~139x smaller |
 
 ## How small can the hypernetwork go? (sizing sweep)
 
@@ -136,7 +171,15 @@ finally `task_encoding.embedding_dim` itself — each single-seed,
 | `bd8/nl2` | 52,998 | 100% |
 | `hd8_od32` (encoder shrunk too, on `bd16/nl1`) | 39,320 | 98.6% |
 | `bd16/nl1`, **dim=4 target** | 37,808 | 97.1% |
-| **`matched-scale`, dim=4 target** (`embedding_dim=4`, encoder `hidden_dim=4/output_dim=4/num_layers=1`, `bd8` — 3 seeds) | **10,156** | **95.7% mean (95.7/92.9/98.6)** |
+| **`matched-scale`, dim=4 target** (`embedding_dim=4`, encoder `hidden_dim=4/output_dim=4/num_layers=1`, `bd8` — original exploratory pass, 3 seeds) | **10,156 trainable** | **95.7% mean (95.7/92.9/98.6)** |
+
+This exploratory 3-seed, `frozen_td`-only, no-checkpoints pass is superseded
+by the formal one: `matched-scale` is now dim=4's standard sizing (both
+arms, 5 seeds, checkpoints) — see "The finding" above and "Dim=4 rerun"
+below for the current numbers (93.0% mean `frozen_td`, 57.4% mean `notd`).
+The trainable-param count matches exactly (10,156); "Total hypernetwork
+params" above and in "The finding" (11,360/11,432) additionally counts
+`frozen_td`'s frozen, non-trainable task-indicator projection.
 
 **Finding: essentially flat across a ~33x parameter range.** Every cut —
 `bottleneck_dim` 128->8, `num_layers` 2->1, encoder `hidden_dim`/`output_dim`
@@ -170,7 +213,7 @@ exploratory), `matched-scale` base (dim=4 target, `embedding_dim=4`, encoder
 
 | Rank | Params | test EM (5 seeds) | mean ± sd |
 |---:|---:|---|---:|
-| dense (no LoRA, reference) | 10,156 | 0.957 / 0.929 / 0.986 (3 seeds) | 95.7% |
+| dense (no LoRA, reference -- the original 3-seed exploratory number; see "Dim=4 rerun" below for the current formal 5-seed one, 93.0%) | 10,156 | 0.957 / 0.929 / 0.986 (3 seeds) | 95.7% |
 | 8 | 18,796 | *not run to completion — larger than dense, no point* | — |
 | 4 | 11,948 | *not run to completion — larger than dense, no point* | — |
 | 2 | 8,524 | 0.900 / 0.929 / 0.929 / 0.900 / 0.871 | 90.6% ± 2.1% |
@@ -214,32 +257,42 @@ CFG_DIR=experiments/02_hypernetwork_multitask CELL_GLOB="dim*.yaml" SEEDS_OVERRI
     bash scripts/run_config.sh
 ```
 
-## Dim=4 rerun, 5 seeds (checkpoints + per-seed clusters)
+## Dim=4 rerun: resized to matched-scale, 5 seeds, both arms, checkpoints
 
-The dim=4 pair (`dim4_notd.yaml`/`dim4_frozentd.yaml`) has since been rerun
-clean-slate at 5 seeds, with `save_checkpoints: true` (was `false`) so a
-checkpoint now exists for every seed (dim=6 still has none; that pair
-hasn't been rerun). This is the same size experiment 3's preliminary pass
-already used (one ad-hoc "freshly-checkpointed retrain" per condition,
-before this rerun existed) -- now real, multi-seed checkpoints instead, a
-genuine best-seed to pick from at that size. It does not by itself satisfy
-experiment 3's own stated formal-design blocker though: that calls for the
-smaller ~10K *matched-scale* point specifically (see "How small can the
-hypernetwork go?" above), a separate rerun not done here.
+The dim=4 pair (`dim4_notd.yaml`/`dim4_frozentd.yaml`) has been resized in
+place from the original fixed-width recipe (~200K params, the same encoder
+dim=6 still uses) to the matched-scale recipe (~11.4K params, every
+pipeline dimension sized to match the dim=4 target itself — see "Method"
+above) and rerun clean-slate: 5 seeds, both arms, `save_checkpoints: true`
+so a checkpoint exists for every seed (dim=6 still has none; that pair is
+unresized and unrerun -- see "Open follow-ups"). This is not a second
+variant living alongside the old ~200K dim=4 data -- dim=4 *is* this recipe
+now; the old data is archived, not deleted (`*_archive_200k` suffix,
+locally and on the cluster), for anyone who wants to compare against it.
 
-**Results.** `frozen_td`: 94.8% mean test exact match (95.5 / 94.9 / 92.3 /
-96.1 / 95.2), close to the original 3-seed 95.7%. `notd`: 65.3% mean (51.8 /
-68.6 / 67.7 / 65.1 / 73.5), a bit below the original 71.0% with wider seed
-variance -- consistent with the same failure mode already documented above
-(move-family conflation), not a new problem.
+Previously, this same rerun (before the resize) was the size experiment 3's
+preliminary pass used, and separately the matched-scale point had only ever
+been run exploratorily (`frozen_td`-only, 3 seeds, no checkpoints -- see
+"How small can the hypernetwork go?" above). This rerun replaces both: a
+real, 5-seed, both-arms, checkpointed result at the size that mattered.
+
+**Results.** `frozen_td`: 93.0% mean test exact match (93.6 / 92.2 / 94.9 /
+95.5 / 88.9), close to the original 3-seed exploratory number (95.7%).
+`notd`: 57.4% mean (54.1 / 53.1 / 55.1 / 67.1 / 57.5) -- this is the first
+time `notd` has ever been run at this scale (the exploratory sizing/LoRA
+sweeps only tested `frozen_td`). Per-task breakdown (see "The finding"
+above) shows `frozen_td` no longer uniformly near-100% at this size --
+`move_dp` (55.2%), `mirror` (73.6%), and `flip` (80.0%) show real
+degradation even with a task-identity signal, unlike the larger dim=6
+encoder's near-total closure of the capacity cliff.
 
 Linear-probe accuracy across all 5 seeds (mean +- 1 s.d.): `frozen_td`
-**100.00% +- 0.00pp** (perfectly consistent, matching the original
-single-seed 100%); `notd` **92.37% +- 2.34pp** (88.2 / 92.6 / 95.1 / 92.0 /
-94.0) -- notably higher than the original 3-seed run's 79-87% range, though
-both point at the same qualitative story (a real but partial
-disentanglement gap without a task-identity signal, well short of a total
-failure).
+**97.91% +- 2.83pp** (100.0 / 92.9 / 100.0 / 96.7 / 100.0) -- no longer a
+clean 100% every seed, unlike dim=6's encoder; `notd` **60.91% +- 4.89pp**
+(59.3 / 57.9 / 54.5 / 64.7 / 68.1) -- substantially lower than dim=6's
+81-87% range, consistent with a much smaller hypernetwork having
+measurably less spare capacity to keep task representations separated
+without an identity signal to lean on.
 
 **Reproducing.** One script to run, one to plot everything -- same pattern
 as experiment 1:
@@ -320,11 +373,16 @@ similarly for `smoke_*`/`lora_matched_*`) if you need to rerun one.
 
 ## Open follow-ups (not part of this experiment)
 
-- No true floor found below 10,156 params (dense) — haven't tried pushing
-  `bottleneck_dim` below 8, or a smaller `num_tasks`/pooling change.
-- `notd` hasn't been retested at any of the shrunk sizes — the sizing and
-  LoRA sweeps only used `frozen_td`.
+- **dim=6 still runs the older, larger, fixed-width hypernetwork
+  (~337K params) and is still 3 seeds with no checkpoints.** dim=4 is now
+  the standard matched-scale (~11.4K param) recipe; dim=6 hasn't been
+  resized or rerun to match -- a natural next step, not done here.
+- No true floor found below 10,156 trainable params (dense) — haven't
+  tried pushing `bottleneck_dim` below 8, or a smaller `num_tasks`/pooling
+  change.
+- The per-task softening `frozen_td` now shows at dim=4's matched scale
+  (`move_dp`/`mirror`/`flip`, see "The finding") hasn't been diagnosed
+  further -- is it purely a hypernetwork-capacity effect, or does it
+  interact with the target model's own tiny size (1,398 params)?
 - `1d_recolor_cmp` re-inclusion (deferred from this 14-task run).
 - A low-data cut for the joint hypernetwork case (this run used full data).
-- dim=6 still has no checkpoints and is still 3 seeds (the dim=4 rerun above
-  resolved both for dim=4 only, deliberately -- see "Dim=4 rerun").

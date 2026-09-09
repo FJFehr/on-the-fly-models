@@ -38,12 +38,18 @@ CONDITIONS = ("frozentd", "notd")
 DIMS = (4, 6)
 SEEDS = (1, 2, 3, 4, 5)
 
-# Total hypernetwork params (encoder + hyper_projection), measured directly --
-# see "Hypernetwork size" in this experiment's README. Fixed per (dim, condition),
-# not something a rescan can recompute from results.txt/linear_probe_summary.txt.
+# Total params (trainable + the frozen task-indicator projection for frozentd), read
+# directly from each condition's own model.txt -- see "Hypernetwork size" in this
+# experiment's README. Fixed per (dim, condition), not something a rescan can
+# recompute from results.txt/linear_probe_summary.txt. dim=4 is the matched-scale
+# recipe (task_encoding.embedding_dim/hyper_model/hyper_head all sized to the dim=4
+# target it generates -- 10,156 trainable params, identical for both conditions since
+# the frozen projection isn't trainable; the 72-param notd/frozentd delta below is
+# entirely that non-trainable projection). dim=6 is still the older, larger, fixed-width
+# hypernetwork (not yet resized to match -- see README's "Open follow-ups").
 PARAMS = {
-    (4, "notd"): 200244,
-    (4, "frozentd"): 201396,
+    (4, "notd"): 11360,
+    (4, "frozentd"): 11432,
     (6, "notd"): 336726,
     (6, "frozentd"): 337878,
 }
