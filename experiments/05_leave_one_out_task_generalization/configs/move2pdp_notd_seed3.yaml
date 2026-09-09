@@ -1,0 +1,35 @@
+_base_: experiments/05_leave_one_out_task_generalization/configs/base.yaml
+experiment_name: move2pdp_notd_seed3
+seed: 3
+task_categories:
+- 1d_denoising_1c
+- 1d_denoising_mc
+- 1d_fill
+- 1d_flip
+- 1d_hollow
+- 1d_mirror
+- 1d_move_1p
+- 1d_move_2p
+- 1d_move_3p
+- 1d_move_dp
+- 1d_pcopy_1c
+- 1d_pcopy_mc
+- 1d_scale_dp
+val_task_categories:
+- 1d_denoising_1c
+- 1d_denoising_mc
+- 1d_fill
+- 1d_flip
+- 1d_hollow
+- 1d_mirror
+- 1d_move_1p
+- 1d_move_2p
+- 1d_move_2p_dp
+- 1d_move_3p
+- 1d_move_dp
+- 1d_pcopy_1c
+- 1d_pcopy_mc
+- 1d_scale_dp
+hyper_head:
+  num_tasks: null
+  freeze_task_indicator: false

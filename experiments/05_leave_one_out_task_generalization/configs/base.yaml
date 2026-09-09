@@ -1,0 +1,161 @@
+# Leave-one-out task generalisation: train a hypernetwork on 13 of the 14 base ARC-1D task
+# categories, then read the 14th (held-out) category's zero-shot score straight out of the same
+# run's own validation breakdown -- no separate eval script, unlike experiment 4's compositional
+# holdout, because the held-out category already exists in data/arc_1d_looped_augmented's
+# dev/test splits with a stable global TASK_CATEGORY_INDEX entry
+# (models/hypermodel_lightning.py), so it needs nothing beyond val_task_categories including it.
+#
+# Architecture is the identical "matched-scale" dim=4 recipe experiments 2-4 already use
+# (10,156 trainable hypernetwork params, built around the dim=4 target model -- 1,398 params):
+# see experiments/02_hypernetwork_multitask/configs/dim4_notd.yaml/dim4_frozentd.yaml. Not the
+# larger dim=6/fixed-width recipe.
+#
+# hyper_head.num_tasks stays at 18 for frozen_td regardless of which/how many categories are
+# held out -- it's sized off the fixed global 18-category TASK_CATEGORY_INDEX registry, not off
+# how many categories any given leaf actually trains on (models/hypermodel_lightning.py:222,
+# models/hypermodel.py:279-281).
+#
+# Precedent: legacy/configs/experiments/arc1d_v2_generalization ran this exact question at this
+# exact architecture, 3 seeds, on a curated 5-category subset -- notd beat frozen_td on token
+# accuracy in 5/5 held-out categories (0.813 vs. 0.691 mean), exact match a uniform 0 across all
+# 30 cells. This experiment extends that to all 14 base categories at 5 seeds; see gen_configs.py.
+#
+# task_categories/val_task_categories below are placeholders (the full 14-category list) --
+# every leaf gen_configs.py writes overrides both: task_categories to the 13 categories that
+# keep this held-out one out, val_task_categories always stays the full 14 so results.txt's
+# automatic per-category breakdown reports the held-out category's zero-shot score alongside the
+# 13 in-distribution ones from the same run.
+#
+# save_checkpoints: false (matching the legacy precedent) -- nothing downstream needs a
+# checkpoint, the held-out score is read directly from results.txt.
+#
+# Self-contained (no _base_ of its own), matching every sibling base.yaml, because the config
+# loader only resolves one level of _base_ inheritance (training/config.py's load_config).
+project_name: 05_leave_one_out_task_generalization
+entity: fjfehr
+output_dir: outputs
+seed: 42
+experiment_name: leave_one_out
+output_path: ${output_dir}/${project_name}/${experiment_name}
+
+data: arc_1d_meta_multiclass
+data_dir: data/arc_1d_looped_augmented
+model: hyper_model
+primary_metric: val_loss
+num_workers: 0
+
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_scale_dp
+task_ids: null
+val_task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_scale_dp
+train_split: train
+val_split: val
+test_split: test
+overfit_single_batch: false
+
+accelerator: auto
+float32_matmul_precision: medium
+precision: bf16-mixed
+devices: 1
+save_checkpoints: false
+
+optimizer: Muon
+muon_lr: 0.005
+muon_momentum: 0.95
+batch_size: 512
+learning_rate: 0.001
+weight_decay: 0.01
+gradient_clip_val: 10.0
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: ${max_steps}
+    eta_min: 0.0001
+max_steps: 8000
+warmup_steps: 800
+N_supervision: 1
+
+log_task_examples: true
+log_task_examples_every_n_epochs: 100
+num_periodic_train_task_examples: 100
+num_periodic_val_task_examples: 100
+# false here, unlike experiments 2/4's true -- this experiment's analysis is the per-category
+# val breakdown in results.txt, not task-representation cluster plots, and skipping the dump
+# saves overhead across the 140-job sweep.
+log_embedding_clusters: false
+
+prediction_task: multiclass
+num_classes: 10
+padding_idx: 10
+stop_on_perfect_val_exact_match: false
+
+task_encoding:
+  embedding_dim: 4
+  value_vocab_size: 11
+  use_sinusoidal_pe: false
+
+target_model:
+  name: rope_canon_looped_transformer
+  params:
+    hidden_dim: 4
+    num_heads: 1
+    inner_dim: 4
+    inner_num_heads: 1
+    n_loops: 1
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_block_skip: false
+    use_loop_skip: false
+
+hyper_model:
+  name: rope_canon_transformer
+  params:
+    hidden_dim: 4
+    num_heads: 1
+    num_layers: 1
+    output_dim: 4
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    block_size: 2048
+
+# Placeholder default: notd. Overridden per leaf for frozen_td by gen_configs.py.
+hyper_head:
+  pooling: attention
+  bottleneck_dim: 8
+  num_tasks: null
+  freeze_task_indicator: false
+  lora_adapter: false
