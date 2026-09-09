@@ -27,13 +27,13 @@ paper, start here.
    its own README's "Dim=4 rerun" for the numbers). dim=6 still at the
    original 3 seeds, larger fixed-width recipe, no checkpoints -- not
    resized this round. TODO: dim=6's own resize + rerun to match.
-3. **`03_reusability_generate_once_execute_many/`** — reusability: cache a
-   support-set embedding once, and ask whether that single cached embedding
-   generalises to *other instances* of the same task type at inference time
-   ("generate once, execute many"), with and without td. **Status: not yet
-   built.** #2's dim=4 matched-scale checkpoints (5 seeds, both arms) now
-   exist and are the right scale to evaluate against — no longer blocked on
-   a rerun or a best-seed pick (use all 5 seeds directly).
+3. **[`03_reusability_generate_once_execute_many/`](03_reusability_generate_once_execute_many/)**
+   — reusability: does one generated weight set, from one support-set instance, solve *other*
+   instances of the same task type at inference time ("generate once, execute many"), with and
+   without td? **Status: done**, 5 seeds, both arms, no cherry-picked seed — against #2's own
+   dim=4 matched-scale checkpoints. Reuse holds almost everywhere (own→cross degradation
+   under 5pp for 12/14 categories, both arms); `mirror` is a sharp, category-specific
+   exception for both.
 4. **[`04_compositional_generalization/`](04_compositional_generalization/)**
    — zero-shot generalisation to *chained-skill* tasks the model never saw
    combined during training (e.g. denoise-then-shift), using #2's 14-task
@@ -247,6 +247,7 @@ Sizes and seed counts have grown organically and aren't yet uniform:
 |---|---|---|
 | 01 (multitask capacity) | dim 4, 6, 10, 14 (~10K) all done -- Joint, Individual, and both ablations (Canon, optimizer), all four dims | 5 throughout |
 | 02 (hypernetwork) | dim 4 (matched-scale, ~11.4K), dim 6 (fixed-width, ~337K) | dim=4: 5, checkpoints saved; dim=6: 3, no checkpoints (original grid, not resized/rerun). 1 (smoke/sizing checks), 5 (LoRA rank sweep) |
+| 03 (reusability) | dim 4 (matched-scale, reuses #2's own checkpoints) | 5, both arms |
 | 04 (compositional) | dim 4 (matched-scale) | 5 |
 | 06 (data efficiency) | dim 6 (fixed) | 3 |
 
@@ -265,7 +266,7 @@ once completed.
 |---|---|---|
 | 01 | yes | yes (dims 4/6/10/14) |
 | 02 | yes (`notd` / `frozen_td`) | — |
-| 03 | yes (planned) | — |
+| 03 | yes (`notd` / `frozen_td`) | — |
 | 04 | yes (`notd` / `frozen_td`) | — |
 | 05 | yes (planned) | — |
 | 06 | — (fixed `frozen_td`, data amount is the axis under test) | — |
@@ -291,8 +292,7 @@ scripts, and the two datamodules (`arc1d_meta_padded_multiclass`,
 - #2's dim=6 resize + rerun to the matched-scale recipe (dim=4 is done: 5
   seeds, both arms, checkpoints -- see its README's "Dim=4 rerun").
 - Confirm the architecture/seed standard above, then backfill #6 to 5 seeds.
-- #3: build the formal leave-one-out reusability eval against #2's dim=4
-  matched-scale checkpoints (all 5 seeds, not a cherry-picked "best" one --
-  see #2's own checkpoints, now real and at the right scale).
+- #3's `mirror`-category own/loo drop isn't diagnosed further (see its own
+  "Open follow-ups") -- worth a closer look before generalising.
 - Design #5's 13-of-14 leave-one-out training configs.
 - Complete #6's data-efficiency sweep across all 7 levels.
