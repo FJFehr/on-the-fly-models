@@ -75,33 +75,83 @@ uv run python train.py --config experiments/05_leave_one_out_task_generalization
 
 # Then the full 140-job sweep, round-robin across a torrnode's free GPUs
 GPU_LIST="0 1 2 3 4 5 6 7" bash experiments/05_leave_one_out_task_generalization/run.sh
+
+# Pull results.txt back (no checkpoints needed, save_checkpoints: false), then aggregate + plot
+REMOTE_HOST=<node> bash scripts/fetch_experiments.sh 05_leave_one_out_task_generalization
+uv run python experiments/05_leave_one_out_task_generalization/plot_leave_one_out.py --outputs-dir outputs
 ```
 
 Resume-safe: skips any leaf whose `results.txt` already exists, so it's always safe to rerun
 after an interruption or to backfill.
 
-Reading results: pull `val_query_exact_match_by_task_<held_out_category>` and
-`val_query_accuracy_by_task_<held_out_category>` out of each leaf's
-`outputs/05_leave_one_out_task_generalization/<experiment_name>/results.txt`, across the 5 seeds
-per (held-out category, arm) cell.
+`plot_leave_one_out.py --outputs-dir outputs` rescans every leaf's `results.txt`, writes
+`results_holdout.csv` (the held-out category's own score) and `results_indist.csv` (mean over
+the other 13 categories, for context) under `outputs/results/
+05_leave_one_out_task_generalization/`, prints the macro-average summary in "Findings" below,
+and renders `per_category_holdout.png`. Without `--outputs-dir`, replots from the CSVs as
+committed.
 
 ## Status
 
-**Not yet run.** Configs generated (140 leaf configs, `gen_configs.py`), `run.sh` ready. Needs a
-torrnode launch (see the repo-root README's cluster section for the allowed node range) --
-smoke-test one leaf first per `run.sh`'s header before committing a node to the full sweep.
+**Done.** All 140 jobs ran on `torrnode12` (8-way parallel, ~24 min/job, ~7h15m total wall
+clock), 0 failures. Results pulled back and aggregated with `plot_leave_one_out.py`.
 
 ## Findings
 
-TBD -- fill in after the 140-job sweep completes and results are pulled back. Expect a
-plot/report script (following experiments 02/04's `plot_*.py --outputs-dir outputs` pattern) to
-aggregate the per-category breakdown into `outputs/results/05_leave_one_out_task_generalization/
-*.csv` before this section is written.
+**Confirmed, and more decisively than the legacy 5-category precedent: `notd` beats
+`frozen_td` on held-out zero-shot token accuracy in 13 of 14 categories (macro mean 81.9% vs.
+68.5%), while `frozen_td` dominates in-distribution (99.9% vs. 97.0% token accuracy; 97.0% vs.
+64.7% exact match) -- the same explicit-anchor tradeoff experiments 2 and 4 already found, now
+confirmed at full category-level coverage.**
+
+| | In-distribution (13 categories/leaf, macro) | Held-out zero-shot (14 categories) |
+|---|---:|---:|
+| `frozen_td` token accuracy | **99.9%** | 68.5% |
+| `notd` token accuracy | 97.0% | **81.9%** |
+| `frozen_td` exact match | **97.0%** | 0.29% |
+| `notd` exact match | 64.7% | 9.14% |
+
+(macro-average across categories, mean across 5 seeds each -- see
+`outputs/figures/05_leave_one_out_task_generalization/per_category_holdout.png`.)
+
+Per held-out category (token accuracy, mean across 5 seeds):
+
+| category | `notd` | `frozen_td` | diff |
+|---|---:|---:|---:|
+| `1d_denoising_mc` | 81.1% | 47.9% | **+33.2pp** |
+| `1d_scale_dp` | 86.9% | 57.1% | +29.8pp |
+| `1d_pcopy_mc` | 84.7% | 57.6% | +27.2pp |
+| `1d_move_3p` | 91.8% | 68.4% | +23.4pp |
+| `1d_pcopy_1c` | 99.5% | 77.3% | +22.2pp |
+| `1d_move_2p_dp` | 95.5% | 74.9% | +20.6pp |
+| `1d_mirror` | 68.1% | 59.0% | +9.1pp |
+| `1d_move_dp` | 86.1% | 77.0% | +9.1pp |
+| `1d_move_1p` | 92.0% | 84.0% | +8.0pp |
+| `1d_move_2p` | 91.2% | 84.6% | +6.5pp |
+| `1d_fill` | 69.2% | 62.8% | +6.4pp |
+| `1d_flip` | 83.6% | 78.2% | +5.5pp |
+| `1d_hollow` | 69.9% | 66.1% | +3.9pp |
+| `1d_denoising_1c` | 46.9% | 64.6% | **-17.7pp** |
+
+`notd` wins 13/14; `1d_denoising_1c` is the one exception, and the only category where
+`frozen_td` wins outright -- worth a closer look (see "Open follow-ups"). The overall direction
+and rough magnitude match the legacy 3-seed/5-category precedent closely: this run's macro mean
+for `notd` (81.9%) lands almost exactly on legacy's own 5-category macro mean (81.3%), a good
+cross-run consistency check despite the different (and larger) category coverage.
+
+Exact match on the held-out set is mostly 0 but not perfectly uniform like the legacy 5-category
+run -- `notd`'s macro exact-match mean is 9.14% (driven by a handful of categories, not all of
+them), `frozen_td`'s is 0.29%, essentially the null result legacy found, just not *quite* as
+clean at this larger category count.
 
 ## Open follow-ups
 
+- `1d_denoising_1c` is the one category where `frozen_td` beats `notd` on held-out token
+  accuracy -- not diagnosed further here. Worth checking whether it's something specific about
+  that category (e.g. an unusually strong or weak sibling remaining in training) or a genuine
+  seed-noise outlier (its `frozen_td` std is comparatively low, so probably not just noise).
 - A dim=6 version -- no spec exists; experiment 2's own dim=6 isn't resized to matched-scale yet
   either (see its README).
-- Whether the 9 categories beyond the legacy 5 (never run at this question before, at any scale)
-  follow the same `notd`-favouring direction, or surface a category where `frozen_td` actually
-  wins -- worth flagging in the Findings section rather than assuming the pattern is universal.
+- The non-uniform (if still small) `notd` exact-match rate on the held-out set, vs. legacy's
+  perfectly uniform 0 -- which categories actually land bit-perfect zero-shot answers, and is
+  there a pattern to which ones can?

@@ -48,13 +48,14 @@ paper, start here.
    — train on 13 of the 14 base task categories, 5 seeds, and test zero-shot
    on the held-out 14th category. With vs. without td. Distinct from #4:
    this holds out a whole *base* category, not a chained composition of
-   known ones. **Status: configs built, not yet launched** — 140 leaf
-   configs (14 categories x 2 arms x 5 seeds) at experiment 2's matched-scale
-   dim=4 recipe, `gen_configs.py`/`run.sh` ready. Extends
-   `legacy/configs/experiments/arc1d_v2_generalization`'s 3-seed,
-   5-category-subset precedent (`notd` beat `frozen_td` on token accuracy in
-   5/5 held-out categories there) to full 14-category coverage at 5 seeds.
-   Needs a torrnode launch next.
+   known ones. **Status: done** (5 seeds, both arms, all 14 base categories
+   held out in turn — 140 jobs at experiment 2's matched-scale dim=4
+   recipe). Extends `legacy/configs/experiments/arc1d_v2_generalization`'s
+   3-seed, 5-category-subset precedent to full 14-category coverage. `notd`
+   beats `frozen_td` on held-out zero-shot token accuracy in 13/14
+   categories (macro 81.9% vs. 68.5%), while `frozen_td` dominates
+   in-distribution — the same explicit-anchor tradeoff experiments 2 and 4
+   already found, now confirmed at full category-level coverage.
 6. **[`06_data_efficiency_ablation/`](06_data_efficiency_ablation/)** —
    hypernetwork (`hypernetwork/`) vs. individual per-task models
    (`individual/`) across shrinking training-data levels (1000→300→100→10→
@@ -264,7 +265,7 @@ Sizes and seed counts have grown organically and aren't yet uniform:
 | 02 (hypernetwork) | dim 4 (matched-scale, ~11.4K), dim 6 (fixed-width, ~337K) | dim=4: 5, checkpoints saved; dim=6: 3, no checkpoints (original grid, not resized/rerun). 1 (smoke/sizing checks), 5 (LoRA rank sweep) |
 | 03 (reusability) | dim 4 (matched-scale, reuses #2's own checkpoints) | 5, both arms |
 | 04 (compositional) | dim 4 (matched-scale) | 5 |
-| 05 (leave-one-out) | dim 4 (matched-scale, reuses #2's recipe) | 5, both arms -- configs built, not yet run |
+| 05 (leave-one-out) | dim 4 (matched-scale, reuses #2's recipe) | 5, both arms, all 14 categories -- done |
 | 06 (data efficiency) | dim 6 (fixed) | 3 |
 
 **Proposed standard** (confirm before the next round of reruns): dims **4
@@ -284,7 +285,7 @@ once completed.
 | 02 | yes (`notd` / `frozen_td`) | — |
 | 03 | yes (`notd` / `frozen_td`) | — |
 | 04 | yes (`notd` / `frozen_td`) | — |
-| 05 | yes (`notd` / `frozen_td`, configs built) | — |
+| 05 | yes (`notd` / `frozen_td`) | — |
 | 06 | — (fixed `frozen_td`, data amount is the axis under test) | — |
 
 `td` = a task-identity signal added to the model (a learned per-task
@@ -310,6 +311,6 @@ scripts, and the two datamodules (`arc1d_meta_padded_multiclass`,
 - Confirm the architecture/seed standard above, then backfill #6 to 5 seeds.
 - #3's `mirror`-category own/loo drop isn't diagnosed further (see its own
   "Open follow-ups") -- worth a closer look before generalising.
-- Launch #5's 140-job leave-one-out sweep on a torrnode (configs and `run.sh` are ready --
-  smoke-test one leaf first, see its README).
+- #5's `1d_denoising_1c` outlier (the one category where `frozen_td` beats `notd` on held-out
+  token accuracy) isn't diagnosed further -- see its own "Open follow-ups".
 - Complete #6's data-efficiency sweep across all 7 levels.
