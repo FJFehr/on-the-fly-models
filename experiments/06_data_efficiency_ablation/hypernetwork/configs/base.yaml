@@ -1,11 +1,19 @@
-# Base config for the low-data hypernetwork experiment. Fixed architecture, carried over
-# unchanged from arc1d_hypermodel_looped_rope_canon_muon's conclusions: Zhu block backbone
-# (RMSNorm + QK-norm + SwiGLU), frozen_td task-identity conditioning (hyper_head.num_tasks: 18,
-# freeze_task_indicator: true -- near-ceiling ~99% exact match vs ~68% for notd), Muon optimizer
-# at its already-validated stable muon_lr=0.005 (Keller Jordan's published default of 0.02
-# diverged to NaN at global_step ~915/4000 in this exact architecture -- not worth re-risking
-# across every cell of a new sweep). See arc1d_hypermodel_looped_rope_canon_muon/README.md for
-# the full prior analysis.
+# Base config for the low-data hypernetwork experiment. Fixed architecture: experiment 2's own
+# dim=4 matched-scale recipe (02_hypernetwork_multitask/configs/dim4_frozentd.yaml /
+# dim4_notd.yaml, ~11.4K/~11.3K total hypernetwork params), frozen_td vs. notd task-identity
+# conditioning (hyper_head.num_tasks/freeze_task_indicator are placeholders, overridden per
+# leaf -- see below), Muon optimizer at the same muon_lr=0.005 experiment 2 already validated
+# for this exact architecture.
+#
+# 2026-09-10: resized from the original scaffolding's inherited
+# arc1d_hypermodel_looped_rope_canon_muon recipe (Zhu backbone, dim=16 target, ~1.58M-param
+# hypernetwork) -- that recipe predated the 2026-09-09 dim=4-matched-scale unification and was
+# never reconciled with it; running data-efficiency at a ~139x-larger, incomparable scale wasn't
+# worth the extra compute. Also dropped 1d_recolor_cmp (14 categories now, matching 01/02/05,
+# not the original 15), and added notd as a second condition (originally frozentd-only,
+# reasoned as "not worth carrying into this axis" per experiment 2's full-data finding -- but
+# notd is exactly what pairs against ../joint/'s own notd arm, so it's needed for a like-for-like
+# comparison at every data level, not just at full data).
 #
 # This experiment's only axis: variants_per_base_task (train-side data reduction), via the
 # Arc1dMetaMulticlassDataModule.variants_per_base_task/data_seed parameters
@@ -24,7 +32,7 @@
 # Validation/test are NOT reduced -- variants_per_base_task only applies to the train split
 # (data_modules/arc1d_meta_multiclass.py's setup()), so every data level is evaluated on the
 # same fixed 100-examples-per-category dev/test split, in-distribution (task_categories ==
-# val_task_categories, full 15-task list, no held-out axis), matching the muon experiment.
+# val_task_categories, full 14-task list matching 01/02/05, no held-out axis).
 #
 # Self-contained (no _base_ of its own) -- the config loader only resolves one level of _base_
 # inheritance (training/config.py).
@@ -58,7 +66,6 @@ task_categories:
   - 1d_move_dp
   - 1d_pcopy_1c
   - 1d_pcopy_mc
-  - 1d_recolor_cmp
   - 1d_scale_dp
 task_ids: null
 val_task_categories:
@@ -75,14 +82,14 @@ val_task_categories:
   - 1d_move_dp
   - 1d_pcopy_1c
   - 1d_pcopy_mc
-  - 1d_recolor_cmp
   - 1d_scale_dp
 train_split: train
 val_split: val
 test_split: test
 overfit_single_batch: false
 
-# variants_per_base_task is a placeholder here, overridden per leaf (see cell_v*.yaml).
+# variants_per_base_task is a placeholder here, overridden per leaf (see
+# cell_{frozentd,notd}_v*.yaml).
 variants_per_base_task: null
 data_seed: 42
 
@@ -117,18 +124,18 @@ stop_on_perfect_val_exact_match: false
 N_supervision: 2
 
 task_encoding:
-  embedding_dim: 16
+  embedding_dim: 4
   value_vocab_size: 11
   use_sinusoidal_pe: false
 
 target_model:
   name: rope_canon_looped_transformer
   params:
-    hidden_dim: 16
-    num_heads: 2
-    inner_dim: 16
-    inner_num_heads: 2
-    n_loops: 4
+    hidden_dim: 4
+    num_heads: 1
+    inner_dim: 4
+    inner_num_heads: 1
+    n_loops: 1
     dropout: 0.1
     canon_set: ABCD
     canon_kernel: 5
@@ -139,27 +146,25 @@ target_model:
     use_loop_skip: false
 
 hyper_model:
-  name: rope_canon_zhu_transformer
+  name: rope_canon_transformer
   params:
-    hidden_dim: 64
-    num_heads: 4
-    num_layers: 8
-    output_dim: 64
+    hidden_dim: 4
+    num_heads: 1
+    num_layers: 1
+    output_dim: 4
     canon_set: ABCD
     canon_kernel: 5
     canon_activation: true
     canon_residual: true
     canon_causal: false
-    use_rmsnorm: true
-    use_qk_norm: true
-    use_swiglu: true
-    dropout: 0.1
+    block_size: 2048
 
+# num_tasks/freeze_task_indicator are placeholders here, overridden per leaf: 18/true
+# (frozentd) or null/false (notd) -- see cell_{frozentd,notd}_v*.yaml, matching
+# 02_hypernetwork_multitask/configs/dim4_frozentd.yaml / dim4_notd.yaml's own convention.
 hyper_head:
   pooling: attention
-  bottleneck_dim: 128
-  num_tasks: 18
-  freeze_task_indicator: true
-  lora_adapter: true
-  lora_adapter_rank: 8
-  lora_adapter_zero_backbone: false
+  bottleneck_dim: 8
+  num_tasks: null
+  freeze_task_indicator: null
+  lora_adapter: false

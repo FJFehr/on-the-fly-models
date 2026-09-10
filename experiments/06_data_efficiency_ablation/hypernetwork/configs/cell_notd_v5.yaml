@@ -1,3 +1,6 @@
 _base_: experiments/06_data_efficiency_ablation/hypernetwork/configs/base.yaml
-experiment_name: lowdata_v5
+experiment_name: lowdata_notd_v5
 variants_per_base_task: 5
+hyper_head:
+  num_tasks: null
+  freeze_task_indicator: false

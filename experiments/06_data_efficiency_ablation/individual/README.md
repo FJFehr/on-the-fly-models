@@ -18,25 +18,31 @@ hypernetwork to reach the same performance at a given category, that supports
 the cross-task-transfer hypothesis. If it needs about the same, the
 hypernetwork isn't buying data efficiency at these scales.
 
+**2026-09-10: resized alongside `arc1d_lowdata`'s own dim=4 rescale** — was
+`hidden_dim=16/n_loops=4` (the pre-unification legacy target this experiment's
+own "EXACT SAME target architecture" framing always required matching), now
+experiment 2's own dim=4 matched-scale target. Also dropped `1d_recolor_cmp`
+(14 categories now) and moved 3→5 seeds (135→210 jobs), then added a `full`
+level the same day alongside the other two arms' own `full` cells (210→280
+jobs — see "Levels this round" below).
+
 ## Fixed architecture (identical to arc1d_lowdata's target_model)
 
-- `rope_canon_looped_transformer` (`hidden_dim: 16, num_heads: 2, inner_dim: 16,
-  inner_num_heads: 2, n_loops: 4, dropout: 0.1`, same Canon settings), trained
-  directly via `LoopedSupervisedLightning` (`model: looped_supervised`) — no
-  task-identity conditioning of any kind, matching the already-validated
-  `arc1d_uniform_ablation/*/T5_dim16_looped.yaml` config for this exact
-  architecture.
+- `rope_canon_looped_transformer` (`hidden_dim: 4, num_heads: 1, inner_dim: 4,
+  inner_num_heads: 1, n_loops: 1, dropout: 0.1`, same Canon settings —
+  experiment 2's own dim=4 matched-scale target), trained directly via
+  `LoopedSupervisedLightning` (`model: looped_supervised`) — no
+  task-identity conditioning of any kind.
 - `optimizer: Muon, muon_lr: 0.005, muon_momentum: 0.95` — matches
   `arc1d_lowdata` exactly, to remove optimizer choice as a confound between
-  the two experiments. (The alternative, RAdam, was already proven for this
-  architecture in `arc1d_uniform_ablation`/`arc1d_recursion_ablation`, but
-  consistency with `arc1d_lowdata` was prioritised; this exact
-  Muon+direct-training combination is new, not previously validated here.)
+  the two experiments, and the same value experiment 1's own dim=4 optimizer
+  ablation already validated at this exact target architecture (the
+  alternative there, AdamW, is not re-tested here).
 - `max_steps: 2000, warmup_steps: 200, N_supervision: 2` — matches
   `arc1d_lowdata`'s compute budget exactly.
-- One model **per task category** (15 categories, same list as
-  `arc1d_lowdata/base.yaml` — not `arc1d_uniform_ablation`'s 17; the 2 extra
-  categories there are intentionally excluded here too).
+- One model **per task category** (14 categories, the paper's standard set —
+  same list as `arc1d_lowdata/base.yaml` and matching 01/02/05, not the
+  original 15 or `arc1d_uniform_ablation`'s 17).
 
 ## Data-reduction mechanism
 
@@ -54,9 +60,12 @@ and the same `data_seed=42`, **at a given level both experiments train on the
 identical underlying task-variant rows** — the data itself is matched, not
 just the count.
 
-**Levels this round**: `variants_per_base_task` ∈ {1, 2, 3} (≈40/80/120
-examples/category), matching `arc1d_lowdata`'s `cell_v1`/`cell_v2`/`cell_v3`.
-Levels 4/5/20 are out of scope for now.
+**Levels this round**: `variants_per_base_task` ∈ {1, 2, 3, full} (≈40/80/120/≈40,000
+examples/category), matching `arc1d_lowdata`'s `cell_{cond}_v1`/`v2`/`v3`/`full`. Levels
+4/5/20 are out of scope for now. `full` (no reduction, added 2026-09-10) runs at this
+experiment's own fixed `max_steps: 2000` budget, the same own-budget-anchor reasoning as
+the other two arms' own `full` cells — not a claim it should match experiment 1's own
+full-data individual-training numbers (`max_steps: 8000`).
 
 ## Known asymmetry (documented, not "fixed")
 
@@ -88,17 +97,18 @@ bash experiments/06_data_efficiency_ablation/individual/run.sh
 ```
 
 Split across nodes via `SEEDS_OVERRIDE`/`CATEGORY_GLOB` (see script header for
-examples). 135 jobs total (15 categories × 3 levels × 3 seeds), each tiny
-(≤360 raw training pairs) and single-GPU (`devices: 1`) — no benefit to
-claiming multiple GPUs per job here, unlike `arc1d_lowdata`.
+examples). 280 jobs total (14 categories × 4 levels × 5 seeds), each tiny
+(≤360 raw training pairs, or up to ≈40,000 rows at `full`) and single-GPU
+(`devices: 1`) — no benefit to claiming multiple GPUs per job here, unlike
+`arc1d_lowdata`.
 
 ## Reading results
 
 For each category and level, compare `val_query_exact_match`/
-`test_query_exact_match` (mean ± std across 3 seeds) against `arc1d_lowdata`'s
+`test_query_exact_match` (mean ± std across 5 seeds) against `arc1d_lowdata`'s
 per-category numbers at the same `variants_per_base_task` level (via its
 `val_query_exact_match_by_task_{category}` metrics). A much larger gap in
-favour of the hypernetwork at low levels (1/2) that narrows by level 3
-supports the cross-task-transfer hypothesis; a small gap at every level
-suggests the architecture itself, not the hypernetwork's weight sharing, is
-doing most of the work.
+favour of the hypernetwork at low levels (1/2) that narrows by level 3 or
+`full` supports the cross-task-transfer hypothesis; a small gap at every
+level suggests the architecture itself, not the hypernetwork's weight
+sharing, is doing most of the work.

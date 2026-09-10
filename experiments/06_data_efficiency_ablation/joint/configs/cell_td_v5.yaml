@@ -1,0 +1,5 @@
+_base_: experiments/06_data_efficiency_ablation/joint/configs/base.yaml
+experiment_name: lowdata_joint_td_v5
+variants_per_base_task: 5
+task_encoding:
+  use_task_embedding: true

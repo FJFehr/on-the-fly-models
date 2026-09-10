@@ -57,11 +57,24 @@ paper, start here.
    in-distribution — the same explicit-anchor tradeoff experiments 2 and 4
    already found, now confirmed at full category-level coverage.
 6. **[`06_data_efficiency_ablation/`](06_data_efficiency_ablation/)** —
-   hypernetwork (`hypernetwork/`) vs. individual per-task models
-   (`individual/`) across shrinking training-data levels (1000→300→100→10→
-   5→2→1 augmentations/task), testing whether the hypernetwork's
-   cross-task parameter sharing helps where individual models can't share
-   at all. **Status: in progress.**
+   hypernetwork (`hypernetwork/`, dim=4 matched-scale, `frozen_td`/`notd`) vs. joint direct
+   training with no weight generation (`joint/`, experiment 1's ~10K-param dim=14 scaffold —
+   sized to the hypernetwork's own param *budget*, not its dim=4 target — `td`/`notd`) vs.
+   fully-isolated per-task models (`individual/`, dim=4, no task-id axis) across shrinking
+   training-data levels (`variants_per_base_task` in {1,2,3,4,5,20,full}, `individual/`
+   restricted to {1,2,3,full}; `full` is each arm's own no-reduction cell at its own fixed
+   compute budget, a within-experiment full-data anchor rather than borrowed from 01/02's
+   differently-budgeted numbers), testing whether the hypernetwork's cross-task *weight
+   generation* specifically helps where a merely shared (`joint`) or fully isolated
+   (`individual`) model can't, at both ends of the task-identity axis. **Status: planned,
+   not yet launched** — resized 2026-09-10 from an inherited pre-unification recipe
+   (~1.58M params, dim=16, 15 categories, 3 seeds, `frozen_td`-only) to experiment 2's own
+   dim=4 matched-scale recipe, the paper's standard 14 categories, 5 seeds, and `notd` added
+   as a second hypernetwork condition; `joint/` added the same day (reuses experiment 1's
+   `direct_supervised` mechanism, not new code, despite `hypernetwork/`'s README previously
+   flagging it as unbuilt), sized to experiment 1's own dim=14 scaffold rather than dim=4 so
+   it isn't just a smaller-capacity strawman; `full` cells added across all three arms the
+   same day. 70 + 70 + 280 jobs across the three arms.
 
 Every experiment's own README has the full method, findings, and an exact
 "Running" command.
@@ -266,7 +279,7 @@ Sizes and seed counts have grown organically and aren't yet uniform:
 | 03 (reusability) | dim 4 (matched-scale, reuses #2's own checkpoints) | 5, both arms |
 | 04 (compositional) | dim 4 (matched-scale) | 5 |
 | 05 (leave-one-out) | dim 4 (matched-scale, reuses #2's recipe) | 5, both arms, all 14 categories -- done |
-| 06 (data efficiency) | dim 6 (fixed) | 3 |
+| 06 (data efficiency) | `hypernetwork/`/`individual/`: dim 4 (matched-scale, reuses #2's recipe). `joint/`: dim 14 (~10K-param scaffold, reuses #1's recipe -- sized to the hypernetwork's own param budget, not dim=4) | 5 throughout |
 
 **Proposed standard** (confirm before the next round of reruns): dims **4
 and 6** as the paper's stable sizes (drop dim=10 from new work -- keep the
@@ -286,7 +299,7 @@ once completed.
 | 03 | yes (`notd` / `frozen_td`) | — |
 | 04 | yes (`notd` / `frozen_td`) | — |
 | 05 | yes (`notd` / `frozen_td`) | — |
-| 06 | — (fixed `frozen_td`, data amount is the axis under test) | — |
+| 06 | `hypernetwork/` and `joint/` both have `frozen_td`(`td`)/`notd`, paired at every data level; `individual/` has no task-id axis at all (one task per model) — data amount is the primary axis under test throughout | — |
 
 `td` = a task-identity signal added to the model (a learned per-task
 embedding, or `hyper_head.freeze_task_indicator: true`'s frozen one-hot
@@ -307,10 +320,13 @@ scripts, and the two datamodules (`arc1d_meta_padded_multiclass`,
 ## Open TODOs
 
 - #2's dim=6 resize + rerun to the matched-scale recipe (dim=4 is done: 5
-  seeds, both arms, checkpoints -- see its README's "Dim=4 rerun").
-- Confirm the architecture/seed standard above, then backfill #6 to 5 seeds.
+  seeds, both arms, checkpoints -- see its README's "Dim=4 rerun"). Its raw
+  dim=6 run dirs are also currently missing from local `outputs/` entirely
+  (only dim=4's are present) -- not just unresized, unreconstructable locally
+  without a refetch or rerun.
+- #6 is planned (resized to dim=4 matched-scale/14 categories/5 seeds, `joint/`
+  arm added) but not yet launched -- see its own three READMEs before running.
 - #3's `mirror`-category own/loo drop isn't diagnosed further (see its own
   "Open follow-ups") -- worth a closer look before generalising.
 - #5's `1d_denoising_1c` outlier (the one category where `frozen_td` beats `notd` on held-out
   token accuracy) isn't diagnosed further -- see its own "Open follow-ups".
-- Complete #6's data-efficiency sweep across all 7 levels.

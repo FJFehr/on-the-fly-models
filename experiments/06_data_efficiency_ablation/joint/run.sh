@@ -1,38 +1,40 @@
 #!/usr/bin/env bash
-# Run all arc1d_lowdata_baseline cells: 14 task categories x 4 data levels
-# (variants_per_base_task in {1, 2, 3, full}, stratified/nested per base task
-# - see README.md) x 5 seeds each (280 jobs total). No hypernetwork -- one
-# LoopedSupervisedLightning model per (category, level, seed), trained
-# directly on rope_canon_looped_transformer (identical architecture to
-# arc1d_lowdata's target_model). Companion sweep to arc1d_lowdata: see its
-# README.md for the fairness/asymmetry discussion.
+# Run all arc1d_lowdata_joint cells: 7 data-reduction levels
+# (variants_per_base_task in {1, 2, 3, 4, 5, 20, full}, stratified/nested per
+# base task - see README.md) x 2 conditions (td/notd) x 5 seeds each (70 jobs
+# total). One direct_supervised model per (condition, level, seed), trained
+# jointly across all 14 task categories on rope_canon_looped_transformer, at
+# the hypernetwork's own ~10K-param scaffold size (not arc1d_lowdata/
+# arc1d_lowdata_baseline's dim=4 target -- see README.md) -- no hypernetwork,
+# no per-task isolation. Third arm alongside those two: see
+# README.md for what this isolates.
 #
-# Each job is tiny (<=360 raw training pairs, hidden_dim=16) and uses a single
-# GPU (devices: 1 in base.yaml). Set GPUS to a comma-separated list of GPU ids
-# to run that many jobs in parallel, one per GPU, each pinned via
-# CUDA_VISIBLE_DEVICES (e.g. GPUS="0,1,2" runs 3 at a time). Leave GPUS unset
-# to run sequentially instead. Skips already-completed runs (idempotent to
-# rerun).
+# Each job is small (dim=4 backbone, <=14*20 base-task variants at the
+# largest level) and single-GPU (devices: 1 in base.yaml). Set GPUS to a
+# comma-separated list of GPU ids to run that many jobs in parallel, one per
+# GPU, each pinned via CUDA_VISIBLE_DEVICES (e.g. GPUS="0,1,2" runs 3 at a
+# time). Leave GPUS unset to run sequentially instead. Skips already-
+# completed runs (idempotent to rerun).
 #
-# To split this across multiple nodes without clashing, override CATEGORY_GLOB
-# and/or SEEDS_OVERRIDE to give each node a disjoint slice, e.g. split by seed:
-#   node A: SEEDS_OVERRIDE="1 2 3" bash experiments/06_data_efficiency_ablation/individual/run.sh
-#   node B: SEEDS_OVERRIDE="4 5"   bash experiments/06_data_efficiency_ablation/individual/run.sh
-# or by category:
-#   node A: CATEGORY_GLOB="1d_denoising_1c" bash experiments/06_data_efficiency_ablation/individual/run.sh
-#   node B: CATEGORY_GLOB="1d_fill"         bash experiments/06_data_efficiency_ablation/individual/run.sh
+# To split this across multiple nodes without clashing, override CELL_GLOB
+# and/or SEEDS_OVERRIDE to give each node a disjoint slice, e.g. split by
+# condition:
+#   node A: CELL_GLOB="cell_td_*.yaml"   bash experiments/06_data_efficiency_ablation/joint/run.sh
+#   node B: CELL_GLOB="cell_notd_*.yaml" bash experiments/06_data_efficiency_ablation/joint/run.sh
+# or by seed:
+#   node A: SEEDS_OVERRIDE="1 2 3" bash experiments/06_data_efficiency_ablation/joint/run.sh
+#   node B: SEEDS_OVERRIDE="4 5"   bash experiments/06_data_efficiency_ablation/joint/run.sh
 #
 # Usage:
-#   bash experiments/06_data_efficiency_ablation/individual/run.sh                  # sequential, 1 GPU
-#   GPUS="0,1,2" bash experiments/06_data_efficiency_ablation/individual/run.sh      # 3-way parallel
+#   bash experiments/06_data_efficiency_ablation/joint/run.sh                  # sequential, 1 GPU
+#   GPUS="0,1,2" bash experiments/06_data_efficiency_ablation/joint/run.sh      # 3-way parallel
 
 set -uo pipefail
 
-PROJECT="arc1d_lowdata_baseline"
-LOG_DIR="logs/arc1d_lowdata_baseline"
-CFG_DIR="experiments/06_data_efficiency_ablation/individual/configs"
-CATEGORY_GLOB="${CATEGORY_GLOB:-*}"
-CELL_GLOB="${CELL_GLOB:-*.yaml}"
+PROJECT="arc1d_lowdata_joint"
+LOG_DIR="logs/arc1d_lowdata_joint"
+CFG_DIR="experiments/06_data_efficiency_ablation/joint/configs"
+CELL_GLOB="${CELL_GLOB:-cell_*.yaml}"
 FREE_GPUS_FLAG="${FREE_GPUS_FLAG:-}"
 SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1 2 3 4 5}"
 GPUS="${GPUS:-}"
@@ -53,7 +55,7 @@ for SEED in "${SEEDS[@]}"; do
             continue
         fi
         JOBS+=("${cfg}|${SEED}")
-    done < <(find "$CFG_DIR" -mindepth 2 -maxdepth 2 -path "*/${CATEGORY_GLOB}/${CELL_GLOB}" | sort)
+    done < <(find "$CFG_DIR" -maxdepth 1 -name "$CELL_GLOB" | sort)
 done
 
 N_JOBS=${#JOBS[@]}
@@ -70,7 +72,7 @@ else
     echo "Running $N_JOBS jobs sequentially (each using 1 GPU)"
 fi
 echo "Already complete: $SKIPPED (skipped)"
-echo "Project: $PROJECT  |  Logs: $LOG_DIR/  |  CATEGORY_GLOB: $CATEGORY_GLOB  |  CELL_GLOB: $CELL_GLOB  |  SEEDS: ${SEEDS[*]}"
+echo "Project: $PROJECT  |  Logs: $LOG_DIR/  |  CELL_GLOB: $CELL_GLOB  |  SEEDS: ${SEEDS[*]}"
 echo ""
 
 if [ "$N_JOBS" -eq 0 ]; then

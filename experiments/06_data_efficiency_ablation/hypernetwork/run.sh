@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Run all 6 arc1d_lowdata data-reduction levels (variants_per_base_task in
-# {1, 2, 3, 4, 5, 20}, stratified/nested per base task - see README.md), 3
-# seeds each (18 jobs total). Fixed architecture throughout (Zhu backbone,
-# frozen_td, Muon lr=0.005) - the only axis under test is training data
-# amount, on all 15 tasks in-distribution.
+# Run all 7 arc1d_lowdata data-reduction levels (variants_per_base_task in
+# {1, 2, 3, 4, 5, 20, full}, stratified/nested per base task - see README.md)
+# x 2 conditions (frozentd/notd), 5 seeds each (70 jobs total). Fixed architecture
+# throughout (experiment 2's own dim=4 matched-scale recipe, Muon lr=0.005) -
+# the primary axis under test is training data amount, on all 14 tasks
+# in-distribution; frozentd/notd is a secondary axis, added so this arm pairs
+# against ../joint/'s own td/notd split at every data level.
 # Validation/test are fixed at 100 examples/category regardless of data level.
 # See README.md for the hypothesis and how to read results.
 #
@@ -16,11 +18,11 @@
 #
 # To split this across multiple nodes without clashing, override CELL_GLOB
 # and/or SEEDS_OVERRIDE to give each node a disjoint slice, e.g. split by seed:
-#   node A: SEEDS_OVERRIDE="1 2" bash experiments/06_data_efficiency_ablation/hypernetwork/run.sh
-#   node B: SEEDS_OVERRIDE="3"   bash experiments/06_data_efficiency_ablation/hypernetwork/run.sh
-# or by data level:
-#   node A: CELL_GLOB="cell_v1.yaml"  bash experiments/06_data_efficiency_ablation/hypernetwork/run.sh
-#   node B: CELL_GLOB="cell_v20.yaml" bash experiments/06_data_efficiency_ablation/hypernetwork/run.sh
+#   node A: SEEDS_OVERRIDE="1 2 3" bash experiments/06_data_efficiency_ablation/hypernetwork/run.sh
+#   node B: SEEDS_OVERRIDE="4 5"   bash experiments/06_data_efficiency_ablation/hypernetwork/run.sh
+# or by condition:
+#   node A: CELL_GLOB="cell_frozentd_*.yaml" bash experiments/06_data_efficiency_ablation/hypernetwork/run.sh
+#   node B: CELL_GLOB="cell_notd_*.yaml"     bash experiments/06_data_efficiency_ablation/hypernetwork/run.sh
 #
 # Usage:
 #   bash experiments/06_data_efficiency_ablation/hypernetwork/run.sh
@@ -32,7 +34,7 @@ LOG_DIR="logs/arc1d_lowdata"
 CFG_DIR="experiments/06_data_efficiency_ablation/hypernetwork/configs"
 CELL_GLOB="${CELL_GLOB:-cell_*.yaml}"
 FREE_GPUS_FLAG="${FREE_GPUS_FLAG:-}"
-SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1 2 3}"
+SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1 2 3 4 5}"
 mkdir -p "$LOG_DIR"
 
 read -ra SEEDS <<< "$SEEDS_OVERRIDE"

@@ -1,0 +1,7 @@
+_base_: experiments/06_data_efficiency_ablation/individual/configs/base.yaml
+experiment_name: lowdata_baseline_1d_flip_full
+task_categories:
+- 1d_flip
+val_task_categories:
+- 1d_flip
+variants_per_base_task: null

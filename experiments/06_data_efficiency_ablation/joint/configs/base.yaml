@@ -1,0 +1,150 @@
+# Base config for the arc1d_lowdata "joint, no hypernetwork" baseline.
+#
+# Third arm alongside arc1d_lowdata (hypernetwork) and arc1d_lowdata_baseline
+# (fully-isolated per-task individual): one shared backbone trained jointly
+# across all 14 task categories -- direct_supervised, no weight generation --
+# with vs. without a task-identity embedding. Added 2026-09-10, reusing
+# experiment 1's own direct_supervised + task_encoding.use_task_embedding
+# mechanism verbatim (01_multitask_capacity/configs/td_dim4.yaml /
+# notd_dim4.yaml) -- this was flagged as a future "Phase 3, doesn't exist
+# yet" in arc1d_lowdata's README, but the mechanism already exists in
+# experiment 1, just not previously reused here.
+#
+# Purpose: isolate what the hypernetwork's weight *generation* buys over
+# plain task-id *conditioning* of a shared model, at each data level.
+# joint_td vs. hyper frozen_td is the sharpest pair -- same task signal,
+# differing only in generate-weights vs. condition-on-task-id. joint_notd is
+# the shared-but-signal-free floor (this is exactly experiment 1's own
+# capacity-cliff finding, now repeated across data levels instead of just at
+# full data).
+#
+# Architecture: 2026-09-10, sized to the hypernetwork's own total *parameter
+# budget* (~11.4K/~11.3K, frozen_td/notd) rather than matched to its dim=4
+# *target* -- the target's own params (a few hundred) aren't what a
+# no-hypernetwork baseline should be sized against, or the comparison
+# conflates "no weight generation" with "far less capacity." Uses
+# experiment 1's own already-validated dim=14 "~10K-param scaffold"
+# (rope_canon_looped_transformer, hidden_dim=14/n_loops=1, 9,508 (notd) /
+# 9,688 (td) params, task_encoding.embedding_dim=10) verbatim --
+# 01_multitask_capacity/configs/td_dim14.yaml / notd_dim14.yaml -- rather
+# than picking a new, unvalidated size.
+#
+# Data-reduction mechanism: identical stratified/nested variants_per_base_task
+# sampling as the other two arms (data_modules/arc1d_direct.py's
+# _stratified_variants_per_base_task, same data_seed=42, same
+# data/arc_1d_looped_augmented dataset) -- grouped per (category, base task),
+# so it extends naturally to this arm's multi-category task_categories list.
+#
+# Compute budget: max_steps=2000/warmup_steps=200, matching
+# arc1d_lowdata/arc1d_lowdata_baseline's own fixed budget (not experiment 1's
+# own max_steps=8000 -- that was calibrated for full-data joint training;
+# holding steps fixed across every arm in *this* experiment is what makes the
+# data-level comparison fair here).
+#
+# Self-contained (no _base_ of its own), matching every sibling base.yaml.
+project_name: arc1d_lowdata_joint
+entity: fjfehr
+output_dir: outputs
+seed: 42
+experiment_name: ${experiment_name}
+logging_name: ${experiment_name}
+output_path: ${output_dir}/${project_name}/${experiment_name}
+
+data: arc_1d_direct
+data_dir: data/arc_1d_looped_augmented
+model: direct_supervised
+primary_metric: val_loss
+stop_on_perfect_val_exact_match: false
+num_workers: 1
+save_checkpoints: false
+
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_scale_dp
+task_ids: null
+val_task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_scale_dp
+train_split: train
+val_split: dev
+test_split: test
+overfit_single_batch: false
+
+accelerator: auto
+float32_matmul_precision: medium
+devices: 1
+optimizer: Muon
+muon_lr: 0.005
+muon_momentum: 0.95
+batch_size: 256
+learning_rate: 0.001
+weight_decay: 0.01
+gradient_clip_val: 10.0
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: ${max_steps}
+    eta_min: 0.0
+max_steps: 2000
+warmup_steps: 200
+log_task_examples: true
+log_task_examples_every_n_epochs: 200
+non_background_loss_weight: 1.0
+
+prediction_task: multiclass
+num_classes: 10
+padding_idx: 10
+
+# variants_per_base_task is a placeholder here, overridden per leaf (see
+# cell_{td,notd}_v*.yaml).
+variants_per_base_task: null
+data_seed: 42
+
+# use_task_embedding is a placeholder here, overridden per leaf: true (td) /
+# false (notd).
+task_encoding:
+  embedding_dim: 10
+  value_vocab_size: 11
+  use_sinusoidal_pe: false
+  use_task_embedding: null
+
+backbone_model:
+  name: rope_canon_looped_transformer
+  params:
+    hidden_dim: 14
+    num_heads: 1
+    inner_dim: 14
+    inner_num_heads: 1
+    n_loops: 1
+    dropout: 0.1
+    canon_set: ABCD
+    canon_kernel: 5
+    canon_activation: true
+    canon_residual: true
+    canon_causal: false
+    use_block_skip: false
+    use_loop_skip: false

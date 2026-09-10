@@ -1,0 +1,6 @@
+_base_: experiments/06_data_efficiency_ablation/hypernetwork/configs/base.yaml
+experiment_name: lowdata_frozentd_v1
+variants_per_base_task: 1
+hyper_head:
+  num_tasks: 18
+  freeze_task_indicator: true

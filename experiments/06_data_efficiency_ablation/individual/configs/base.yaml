@@ -1,13 +1,18 @@
 # Base config for the arc1d_lowdata "no hypernetwork" capacity baseline.
 #
 # Companion to arc1d_lowdata: trains the EXACT SAME target architecture
-# (rope_canon_looped_transformer, hidden_dim=16/n_loops=4/dropout=0.1, identical
-# Canon settings) directly via LoopedSupervisedLightning -- no hypernetwork, no
-# weight generation, no cross-task sharing at all. One model per task category,
-# per data level, per seed. This isolates whether arc1d_lowdata's data
-# efficiency (near-full performance at variants_per_base_task=2, ~80/category)
-# comes specifically from cross-task transfer through the shared hypernetwork
+# (rope_canon_looped_transformer, hidden_dim=4/n_loops=1/dropout=0.1, identical
+# Canon settings -- experiment 2's own dim=4 matched-scale target) directly via
+# LoopedSupervisedLightning -- no hypernetwork, no weight generation, no
+# cross-task sharing at all. One model per task category, per data level, per
+# seed. This isolates whether arc1d_lowdata's data efficiency comes
+# specifically from cross-task transfer through the shared hypernetwork
 # backbone, or whether a plain single-task model needs just as little data.
+#
+# 2026-09-10: resized alongside arc1d_lowdata's own dim=4 rescale -- was
+# hidden_dim=16/n_loops=4 (the pre-unification legacy target), now matches
+# arc1d_lowdata's target_model exactly, as this file's own "EXACT SAME target
+# architecture" comment always required.
 #
 # Data-reduction mechanism is the same stratified/nested variants_per_base_task
 # sampling as arc1d_lowdata (see data_modules/arc1d_direct.py's
@@ -25,10 +30,10 @@
 # conventions, not something changed for this comparison.
 #
 # Optimizer: Muon (lr=0.005), matching arc1d_lowdata exactly to remove
-# optimizer choice as a confound (the alternative, RAdam, was already
-# validated for this architecture in arc1d_uniform_ablation's
-# T5_dim16_looped.yaml/arc1d_recursion_ablation/base_ablation.yaml, but
-# consistency with arc1d_lowdata was prioritised).
+# optimizer choice as a confound -- the same muon_lr=0.005 experiment 1's own
+# dim=4 optimizer ablation (01_multitask_capacity) already validated at this
+# exact target architecture; consistency with arc1d_lowdata was prioritised
+# over re-testing the AdamW alternative here.
 #
 # Self-contained (no _base_ of its own) -- the config loader only resolves one
 # level of _base_ inheritance (training/config.py), so settings that would
@@ -88,18 +93,18 @@ variants_per_base_task: null
 data_seed: 42
 
 task_encoding:
-  embedding_dim: 16
+  embedding_dim: 4
   value_vocab_size: 11
   use_sinusoidal_pe: false
 
 backbone_model:
   name: rope_canon_looped_transformer
   params:
-    hidden_dim: 16
-    num_heads: 2
-    inner_dim: 16
-    inner_num_heads: 2
-    n_loops: 4
+    hidden_dim: 4
+    num_heads: 1
+    inner_dim: 4
+    inner_num_heads: 1
+    n_loops: 1
     dropout: 0.1
     canon_set: ABCD
     canon_kernel: 5

@@ -1,7 +1,7 @@
 _base_: experiments/06_data_efficiency_ablation/individual/configs/base.yaml
-experiment_name: lowdata_baseline_1d_recolor_cmp_v2
+experiment_name: lowdata_baseline_1d_pcopy_1c_full
 task_categories:
-- 1d_recolor_cmp
+- 1d_pcopy_1c
 val_task_categories:
-- 1d_recolor_cmp
-variants_per_base_task: 2
+- 1d_pcopy_1c
+variants_per_base_task: null
