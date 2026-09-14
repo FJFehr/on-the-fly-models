@@ -26,20 +26,45 @@ experiment 2's own dim=4 matched-scale target. Also dropped `1d_recolor_cmp`
 level the same day alongside the other two arms' own `full` cells (210→280
 jobs — see "Levels this round" below).
 
+**2026-09-14: unified onto experiment 1's own dim=4 Individual recipe exactly**
+(`01_multitask_capacity/configs/individual/*/dim4.yaml`), not just its
+architecture — this arm's own "exact same target architecture" claim had
+quietly stopped being true beyond the backbone: `model` was
+`looped_supervised` (now `direct_supervised`, matching 01 — `LoopedSupervised`'s
+`N_supervision: 2` doubled the real optimizer-step count per batch via
+`training/trainer.py`'s `Trainer(max_steps=max_steps*N_supervision)`, not
+something 01's own reference does at all), `max_steps` 2000→8000,
+`learning_rate` 0.001→0.0005, `gradient_clip_val: 10.0`→removed (01 has none,
+and switching to `direct_supervised`'s automatic optimization means
+Lightning's own automatic clipping would have newly activated here if left
+in), `task_encoding.embedding_dim` 4→10 (01 holds this fixed at 10 across its
+whole dim sweep — confirmed in code that it sizes the embedding tables
+feeding a `Linear(embedding_dim → hidden_dim)` projection into the backbone,
+real input capacity independent of `hidden_dim`, not something that should
+shrink with it). Caught because this arm's own `full`-level result (macro
+86.3%) didn't match 01's established dim=4 ceiling (92.6%) — `1d_move_dp`
+alone was 24% vs. 01's own ~65%. All 280 jobs from before this were
+invalidated and rerun.
+
 ## Fixed architecture (identical to arc1d_lowdata's target_model)
 
 - `rope_canon_looped_transformer` (`hidden_dim: 4, num_heads: 1, inner_dim: 4,
   inner_num_heads: 1, n_loops: 1, dropout: 0.1`, same Canon settings —
   experiment 2's own dim=4 matched-scale target), trained directly via
-  `LoopedSupervisedLightning` (`model: looped_supervised`) — no
-  task-identity conditioning of any kind.
+  `DirectSupervisedLightning` (`model: direct_supervised`, matching
+  experiment 1's own Individual arm exactly) — no task-identity conditioning
+  of any kind.
 - `optimizer: Muon, muon_lr: 0.005, muon_momentum: 0.95` — matches
   `arc1d_lowdata` exactly, to remove optimizer choice as a confound between
   the two experiments, and the same value experiment 1's own dim=4 optimizer
   ablation already validated at this exact target architecture (the
-  alternative there, AdamW, is not re-tested here).
-- `max_steps: 2000, warmup_steps: 200, N_supervision: 2` — matches
-  `arc1d_lowdata`'s compute budget exactly.
+  alternative there, AdamW, is not re-tested here). `learning_rate: 0.0005`
+  and `task_encoding.embedding_dim: 10` match experiment 1's own dim=4
+  Individual convention exactly (not `arc1d_lowdata`'s — the two references
+  differ here, and this arm now follows its own).
+- `max_steps: 8000, warmup_steps: 200` — matches experiment 1's own dim=4
+  Individual compute budget exactly, not `arc1d_lowdata`'s own (reduced)
+  budget.
 - One model **per task category** (14 categories, the paper's standard set —
   same list as `arc1d_lowdata/base.yaml` and matching 01/02/05, not the
   original 15 or `arc1d_uniform_ablation`'s 17).
@@ -62,10 +87,13 @@ just the count.
 
 **Levels this round**: `variants_per_base_task` ∈ {1, 2, 3, full} (≈40/80/120/≈40,000
 examples/category), matching `arc1d_lowdata`'s `cell_{cond}_v1`/`v2`/`v3`/`full`. Levels
-4/5/20 are out of scope for now. `full` (no reduction, added 2026-09-10) runs at this
-experiment's own fixed `max_steps: 2000` budget, the same own-budget-anchor reasoning as
-the other two arms' own `full` cells — not a claim it should match experiment 1's own
-full-data individual-training numbers (`max_steps: 8000`).
+4/5/20 are out of scope for now. `full` (no reduction, added 2026-09-10) runs at
+`max_steps: 8000` (since the 2026-09-14 unification, matching experiment 1's own dim=4
+Individual budget exactly) — so `full` here is now a genuine reproduction of experiment
+1's own full-data ceiling, not a separate own-budget anchor the way `../hypernetwork/`'s
+and `../joint/`'s `full` cells still are (they weren't part of this unification, since
+their own references are what they were already recalibrated to — see each's own
+README).
 
 ## Known asymmetry (documented, not "fixed")
 

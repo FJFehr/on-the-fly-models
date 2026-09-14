@@ -36,8 +36,16 @@ every data level, needed for a like-for-like comparison, not just at full data),
 - `optimizer: Muon, muon_lr: 0.005, muon_momentum: 0.95` — the same setting experiment 2's own
   dim=4 matched-scale recipe already validated at this exact architecture (not a separate,
   different-architecture ablation, unlike the original scaffolding's justification).
-- `max_steps: 2000, warmup_steps: 200`, `learning_rate: 0.001` (AdamW-aux group) — held fixed
-  across every data level so training compute stays matched; only the amount of *data* varies.
+- `max_steps: 8000, warmup_steps: 800, N_supervision: 1`, `learning_rate: 0.001` (AdamW-aux
+  group), `devices: 1` — matches experiment 2's own dim=4 recipe exactly (2026-09-14
+  unification; was `max_steps: 2000, warmup_steps: 200, N_supervision: 2, devices: auto` —
+  `N_supervision x max_steps` is the real optimizer-step budget, per `training/trainer.py`'s
+  `Trainer(max_steps=max_steps*N_supervision)` wiring, so that was half experiment 2's own
+  "Round 2 convention" budget, not the 4x-fewer it looked like from `max_steps` alone;
+  `devices: auto`'s 8-way DDP also silently gave `batch_size=512` an effective global batch of
+  4096, 8x experiment 2's own single-GPU 512, since nothing in this codebase rescales
+  `batch_size` for DDP). Held fixed across every data level so training compute stays matched;
+  only the amount of *data* varies.
 - 14 in-distribution task categories (the paper's standard set, matching 01/02/05 — not the
   original scaffolding's 15, which added `1d_recolor_cmp`), `task_categories ==
   val_task_categories` (no held-out axis).
@@ -108,10 +116,11 @@ Split across nodes via `SEEDS_OVERRIDE`/`CELL_GLOB` (see script header for examp
 
 For each data level and condition, compare `val_query_exact_match`/`test_query_exact_match`
 (mean ± std across 5 seeds) against this experiment's **own** `cell_{cond}_full` cell (the
-same fixed `max_steps: 2000` budget as every reduced level) — not experiment 2's own
-full-data numbers (`frozen_td` ~93.0%, `notd` ~57.4% test exact match, `max_steps: 8000`),
-which are a useful sanity check that `full` lands in the same ballpark, but the wrong
-reference for the actual data-level comparison since they used 4x the training steps.
+same fixed `max_steps: 8000, N_supervision: 1` budget as every reduced level, since the
+2026-09-14 unification, exactly matching experiment 2's own recipe) — `full` should now
+land close to experiment 2's own full-data numbers (`frozen_td` ~93.0%, `notd` ~57.4% test
+exact match) as a sanity check, since it's the same recipe at the same effective data
+volume; a real gap there would flag a remaining bug, not an expected budget difference.
 The headline questions: at what `variants_per_base_task` does performance start dropping
 off relative to this experiment's own `full` cell; does zero augmentation (`cell_{cond}_v1`,
 the raw original examples only) still let the hypernetwork solve every task via cross-task

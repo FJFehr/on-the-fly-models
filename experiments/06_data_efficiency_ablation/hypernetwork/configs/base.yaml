@@ -15,6 +15,21 @@
 # notd is exactly what pairs against ../joint/'s own notd arm, so it's needed for a like-for-like
 # comparison at every data level, not just at full data).
 #
+# 2026-09-14: unified onto experiment 2's own training regime exactly, not just its
+# architecture -- an earlier version of this file matched architecture/optimizer but silently
+# diverged on four things: N_supervision 2 -> 1 and max_steps 2000 -> 8000 (02's own comment
+# spells out the equivalence -- N_supervision x max_steps is the real optimizer-step budget via
+# training/trainer.py's Trainer(max_steps=max_steps*N_supervision) wiring, so this was running
+# at half 02's "Round 2 convention" budget, not the 4x-fewer it looked like from max_steps
+# alone), warmup_steps 200 -> 800 (same 10% fraction, scaled back up with max_steps), and
+# devices auto -> 1 (the big one: with no batch-size rescaling anywhere in this codebase --
+# checked data_modules/*.py -- devices: auto's 8-way DDP on a full node gave batch_size=512 an
+# effective global batch of 4096, 8x 02's own single-GPU 512; hypernetwork/run.sh moved to the
+# same GPUS=-parallel-slot pattern joint/individual already use, to not lose throughput now that
+# devices is back to 1). Caught while investigating why arc1d_lowdata_baseline's own `full`-level
+# result didn't match experiment 1's established ceiling -- see that arm's own base.yaml for the
+# individual-side half of this story. All 70 jobs from before this were invalidated and rerun.
+#
 # This experiment's only axis: variants_per_base_task (train-side data reduction), via the
 # Arc1dMetaMulticlassDataModule.variants_per_base_task/data_seed parameters
 # (data_modules/arc1d_meta_multiclass.py). Hypothesis: the hypernetwork needs less training
@@ -96,7 +111,7 @@ data_seed: 42
 accelerator: auto
 float32_matmul_precision: medium
 precision: bf16-mixed
-devices: auto
+devices: 1
 optimizer: Muon
 muon_lr: 0.005
 muon_momentum: 0.95
@@ -109,8 +124,8 @@ lr_scheduler:
   params:
     T_max: ${max_steps}
     eta_min: 0.0001
-max_steps: 2000
-warmup_steps: 200
+max_steps: 8000
+warmup_steps: 800
 log_task_examples: true
 log_task_examples_every_n_epochs: 100
 num_periodic_train_task_examples: 100
@@ -121,7 +136,7 @@ num_classes: 10
 padding_idx: 10
 stop_on_perfect_val_exact_match: false
 
-N_supervision: 2
+N_supervision: 1
 
 task_encoding:
   embedding_dim: 4

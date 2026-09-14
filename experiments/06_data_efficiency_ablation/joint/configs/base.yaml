@@ -35,11 +35,14 @@
 # data/arc_1d_looped_augmented dataset) -- grouped per (category, base task),
 # so it extends naturally to this arm's multi-category task_categories list.
 #
-# Compute budget: max_steps=2000/warmup_steps=200, matching
-# arc1d_lowdata/arc1d_lowdata_baseline's own fixed budget (not experiment 1's
-# own max_steps=8000 -- that was calibrated for full-data joint training;
-# holding steps fixed across every arm in *this* experiment is what makes the
-# data-level comparison fair here).
+# Compute budget: 2026-09-14, unified onto experiment 1's own td_dim14/notd_dim14 recipe
+# exactly -- max_steps=8000, learning_rate=0.0005, no gradient clipping (01 has none;
+# an earlier version of this file used max_steps=2000/learning_rate=0.001/
+# gradient_clip_val=10.0, matching arc1d_lowdata/arc1d_lowdata_baseline's own then-budget
+# instead of this arm's actual reference -- caught alongside the same discrepancy in
+# arc1d_lowdata_baseline's own base.yaml, see its "2026-09-14 unification" note). Compute
+# is still held fixed across every data level within this arm -- just recalibrated to 01's
+# own validated 8000-step recipe instead of an untested smaller one.
 #
 # Self-contained (no _base_ of its own), matching every sibling base.yaml.
 project_name: arc1d_lowdata_joint
@@ -101,15 +104,14 @@ optimizer: Muon
 muon_lr: 0.005
 muon_momentum: 0.95
 batch_size: 256
-learning_rate: 0.001
+learning_rate: 0.0005
 weight_decay: 0.01
-gradient_clip_val: 10.0
 lr_scheduler:
   name: CosineAnnealingLR
   params:
     T_max: ${max_steps}
     eta_min: 0.0
-max_steps: 2000
+max_steps: 8000
 warmup_steps: 200
 log_task_examples: true
 log_task_examples_every_n_epochs: 200

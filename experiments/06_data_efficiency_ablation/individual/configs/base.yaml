@@ -2,17 +2,34 @@
 #
 # Companion to arc1d_lowdata: trains the EXACT SAME target architecture
 # (rope_canon_looped_transformer, hidden_dim=4/n_loops=1/dropout=0.1, identical
-# Canon settings -- experiment 2's own dim=4 matched-scale target) directly via
-# LoopedSupervisedLightning -- no hypernetwork, no weight generation, no
-# cross-task sharing at all. One model per task category, per data level, per
-# seed. This isolates whether arc1d_lowdata's data efficiency comes
-# specifically from cross-task transfer through the shared hypernetwork
-# backbone, or whether a plain single-task model needs just as little data.
+# Canon settings -- experiment 2's own dim=4 matched-scale target), no
+# hypernetwork, no weight generation, no cross-task sharing at all. One model
+# per task category, per data level, per seed. This isolates whether
+# arc1d_lowdata's data efficiency comes specifically from cross-task transfer
+# through the shared hypernetwork backbone, or whether a plain single-task
+# model needs just as little data.
 #
-# 2026-09-10: resized alongside arc1d_lowdata's own dim=4 rescale -- was
-# hidden_dim=16/n_loops=4 (the pre-unification legacy target), now matches
-# arc1d_lowdata's target_model exactly, as this file's own "EXACT SAME target
-# architecture" comment always required.
+# 2026-09-14: unified onto experiment 1's own dim=4 Individual recipe exactly
+# (01_multitask_capacity/configs/individual/*/dim4.yaml), not just its
+# architecture -- an earlier version of this file matched the architecture
+# but silently diverged on the actual training regime: model:
+# looped_supervised (now direct_supervised, matching 01 -- LoopedSupervised's
+# own N_supervision=2 doubled the real optimizer-step count per batch, see
+# training/trainer.py's max_steps*N_supervision Trainer wiring, and isn't
+# what 01's own reference used at all), max_steps 2000 -> 8000, learning_rate
+# 0.001 -> 0.0005, gradient_clip_val 10.0 -> removed (01 has none, and
+# direct_supervised's automatic optimization means Lightning's own automatic
+# clipping would have newly activated here if left in), task_encoding.
+# embedding_dim 4 -> 10 (01 holds this fixed at 10 across its whole dim
+# sweep -- it sizes the value/example/role embedding tables feeding a
+# Linear(embedding_dim -> hidden_dim) projection into the backbone, confirmed
+# in models/task_token_embedder.py + direct_supervised_lightning.py, so it's
+# real input capacity independent of hidden_dim, not something that should
+# shrink with it here). This was caught by a discrepancy between this arm's
+# own `full`-level results (macro 86.3%) and 01's own established dim=4
+# Individual ceiling (92.6%) -- see experiments/06_data_efficiency_ablation/
+# individual/README.md's "2026-09-14 unification" note for the full story.
+# All 280 jobs from before this were invalidated and rerun.
 #
 # Data-reduction mechanism is the same stratified/nested variants_per_base_task
 # sampling as arc1d_lowdata (see data_modules/arc1d_direct.py's
@@ -49,7 +66,7 @@ output_path: ${output_dir}/${project_name}/${experiment_name}
 
 data: arc_1d_direct
 data_dir: data/arc_1d_looped_augmented
-model: looped_supervised
+model: direct_supervised
 primary_metric: val_loss
 stop_on_perfect_val_exact_match: false
 num_workers: 1
@@ -70,15 +87,14 @@ optimizer: Muon
 muon_lr: 0.005
 muon_momentum: 0.95
 batch_size: 256
-learning_rate: 0.001
+learning_rate: 0.0005
 weight_decay: 0.01
-gradient_clip_val: 10.0
 lr_scheduler:
   name: CosineAnnealingLR
   params:
     T_max: ${max_steps}
     eta_min: 0.0
-max_steps: 2000
+max_steps: 8000
 warmup_steps: 200
 log_task_examples: true
 log_task_examples_every_n_epochs: 200
@@ -93,7 +109,7 @@ variants_per_base_task: null
 data_seed: 42
 
 task_encoding:
-  embedding_dim: 4
+  embedding_dim: 10
   value_vocab_size: 11
   use_sinusoidal_pe: false
 
@@ -113,5 +129,3 @@ backbone_model:
     canon_causal: false
     use_block_skip: false
     use_loop_skip: false
-
-N_supervision: 2

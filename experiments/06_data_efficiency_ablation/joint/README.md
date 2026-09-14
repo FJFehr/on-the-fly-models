@@ -42,10 +42,14 @@ it's compared against, confounding "no weight generation" with "far less capacit
   (so the 9,508/9,688 param counts hold precisely, unlike the other two arms' own
   `embedding_dim: 4`).
 - `optimizer: Muon, muon_lr: 0.005, muon_momentum: 0.95` — matches every other arm.
-- `max_steps: 2000, warmup_steps: 200` — matches `arc1d_lowdata`/`arc1d_lowdata_baseline`'s
-  own fixed compute budget (not experiment 1's own `max_steps: 8000`, which was calibrated
-  for full-data joint training only; holding steps fixed across every arm here is what
-  makes the data-level comparison fair within this experiment).
+- `max_steps: 8000, warmup_steps: 200, learning_rate: 0.0005`, no gradient clipping — matches
+  experiment 1's own `td_dim14`/`notd_dim14` recipe exactly (2026-09-14 unification; was
+  `max_steps: 2000, learning_rate: 0.001, gradient_clip_val: 10.0`, matching
+  `arc1d_lowdata`/`arc1d_lowdata_baseline`'s own then-budget instead of this arm's actual
+  reference — caught alongside the same discrepancy in `arc1d_lowdata_baseline`'s own
+  README). Compute is still held fixed across every data level within this arm — just
+  recalibrated to experiment 1's own validated 8000-step recipe instead of an untested
+  smaller one.
 - All 14 in-distribution task categories trained jointly in one model per (condition,
   level, seed) — not per-category like `arc1d_lowdata_baseline`.
 
@@ -63,8 +67,9 @@ At a given level, all three arms train on the identical underlying task-variant 
 one model across all 14 categories, the same cost profile as a hypernetwork run, so
 there's no reason to restrict it the way the *per-category* individual baseline is
 (210→280 jobs already, without needing 4 more levels x 14 categories on top). "full" runs
-at this arm's own fixed `max_steps: 2000` budget, so it's a fair anchor *within* this
-experiment — not experiment 1's own full-data numbers, which used `max_steps: 8000`.
+at `max_steps: 8000` (since the 2026-09-14 unification, matching experiment 1's own
+`td_dim14`/`notd_dim14` budget exactly), so it should now land close to experiment 1's own
+full-data dim=14 numbers as a sanity check.
 
 7 levels × 2 conditions × 5 seeds = **70 jobs**.
 
