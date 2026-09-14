@@ -101,23 +101,50 @@ run_job() {
 }
 
 if [ "$N_PARALLEL" -gt 0 ]; then
-    declare -a SLOT_PIDS
-    for ((s = 0; s < N_PARALLEL; s++)); do SLOT_PIDS[s]=""; done
-
+    # Reacts to whichever job finishes first (wait -n), not a fixed slot
+    # order -- the previous round-robin version ("wait on slot i%N_PARALLEL's
+    # own previous job") blocked the *entire* dispatch loop on one slow job
+    # even while every other slot sat idle, once job durations stopped being
+    # short/uniform (2026-09-14 unification: max_steps 2000->8000 made every
+    # level take similarly long, so this went from a latent inefficiency to
+    # actually stalling most of a node's GPUs, most visibly on ../hypernetwork/'s
+    # own run). PID_TO_GPU tracks which GPU each in-flight job owns; wait -n
+    # unblocks as soon as *any* job exits, so a free GPU gets its next job
+    # immediately instead of waiting for its turn in a fixed rotation.
+    # n_running, not ${#PID_TO_GPU[@]}, gates both loops below -- bash (confirmed on
+    # both 5.1 and this cluster's 4.4.19) throws "unbound variable" on ${#assoc_arr[@]}
+    # under set -u when the array is genuinely empty (before the first insert, or
+    # after the last delete), even though key-iteration ("${!arr[@]}") over an empty
+    # one is fine. Caught by a standalone smoke test before deploying this.
+    declare -A PID_TO_GPU
     job_index=0
-    for job in "${JOBS[@]}"; do
-        IFS='|' read -r cfg seed <<< "$job"
-        slot=$((job_index % N_PARALLEL))
-        if [ -n "${SLOT_PIDS[$slot]:-}" ]; then
-            wait "${SLOT_PIDS[$slot]}" 2>/dev/null || true
-        fi
-        gpu_id="${GPU_IDS[$slot]}"
+    n_running=0
+
+    while [ "$job_index" -lt "$N_JOBS" ] && [ "$n_running" -lt "$N_PARALLEL" ]; do
+        IFS='|' read -r cfg seed <<< "${JOBS[$job_index]}"
+        gpu_id="${GPU_IDS[$n_running]}"
         run_job "$cfg" "$seed" "$gpu_id" &
-        SLOT_PIDS[$slot]=$!
+        PID_TO_GPU[$!]="$gpu_id"
         job_index=$((job_index + 1))
+        n_running=$((n_running + 1))
     done
-    for pid in "${SLOT_PIDS[@]}"; do
-        [ -n "$pid" ] && wait "$pid" 2>/dev/null
+
+    while [ "$n_running" -gt 0 ]; do
+        wait -n 2>/dev/null || true
+        for pid in "${!PID_TO_GPU[@]}"; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+                gpu_id="${PID_TO_GPU[$pid]}"
+                unset "PID_TO_GPU[$pid]"
+                n_running=$((n_running - 1))
+                if [ "$job_index" -lt "$N_JOBS" ]; then
+                    IFS='|' read -r cfg seed <<< "${JOBS[$job_index]}"
+                    run_job "$cfg" "$seed" "$gpu_id" &
+                    PID_TO_GPU[$!]="$gpu_id"
+                    job_index=$((job_index + 1))
+                    n_running=$((n_running + 1))
+                fi
+            fi
+        done
     done
 else
     for job in "${JOBS[@]}"; do
