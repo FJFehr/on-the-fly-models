@@ -91,6 +91,7 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
         test_split: str = "test",
         padding_value: int = PAD_IDX,
         variants_per_base_task: int | None = None,
+        base_tasks_per_category: int | None = None,
         data_seed: int = 42,
         **kwargs,
     ):
@@ -105,6 +106,7 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
         self.val_split = val_split
         self.test_split = test_split
         self.variants_per_base_task = variants_per_base_task
+        self.base_tasks_per_category = base_tasks_per_category
         self.data_seed = data_seed
         self.collator = Arc1dMetaPaddingCollator(padding_value=padding_value)
 
@@ -116,6 +118,50 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
             return aliased_split_name
         msg = f"Unknown ARC1D split {split_name!r}."
         raise ValueError(msg)
+
+    def _stratified_base_tasks_per_category(
+        self, tasks: list[dict], base_tasks_per_category: int
+    ) -> list[dict]:
+        """Keep rows from only up to base_tasks_per_category distinct base tasks per category.
+
+        One level up from _stratified_variants_per_base_task: that method
+        thins augmentation depth *within* every base task; this one instead
+        drops whole base tasks (all of their rows/variants together), to
+        reach data levels below the "every base task's original example"
+        floor (variants_per_base_task=1, ~40 base tasks/category).
+
+        Groups by task_category, collects the distinct base-task ids present
+        (task_id // 10000) per category in ascending sorted order (the same
+        natural, stable base-task ordering _stratified_variants_per_base_task
+        already relies on), shuffles that ordering with a local
+        data_seed-seeded RNG, and keeps every row belonging to the first
+        base_tasks_per_category ids in the shuffled order for that category.
+        Nested/cumulative across levels for a fixed data_seed (shuffle once,
+        take-prefix), same guarantee as the variants axis, one level up.
+
+        Uses its own fresh random.Random(self.data_seed) instance -- a
+        separate object from _stratified_variants_per_base_task's own RNG --
+        so the two axes' randomness never shares state and each is
+        independent of the other's value when both are set (verified by
+        tests/test_arc1d_meta_multiclass.py's own composability test).
+        Deterministic given self.data_seed, independent of the training seed,
+        same as the variants axis.
+        """
+        by_category: dict[str, set[int]] = {}
+        for task in tasks:
+            by_category.setdefault(task["task_category"], set()).add(
+                task["task_id"] // 10000
+            )
+
+        rng = random.Random(self.data_seed)
+        keep: dict[str, set[int]] = {}
+        for category in sorted(by_category):
+            base_task_ids = sorted(by_category[category])
+            rng.shuffle(base_task_ids)
+            n = min(base_tasks_per_category, len(base_task_ids))
+            keep[category] = set(base_task_ids[:n])
+
+        return [t for t in tasks if (t["task_id"] // 10000) in keep[t["task_category"]]]
 
     def _stratified_variants_per_base_task(
         self, tasks: list[dict], variants_per_base_task: int
@@ -157,6 +203,7 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
         split_name: str,
         task_categories: list[str] | None,
         variants_per_base_task: int | None = None,
+        base_tasks_per_category: int | None = None,
     ) -> Arc1dMetaTaskDataset:
         resolved_split_name = self.resolve_split_name(dataset_dict, split_name)
         filtered_tasks = filter_split(
@@ -167,6 +214,10 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
         if not filtered_tasks:
             msg = f"No ARC1D tasks matched the configured filters in split {split_name!r}."
             raise ValueError(msg)
+        if base_tasks_per_category is not None:
+            filtered_tasks = self._stratified_base_tasks_per_category(
+                filtered_tasks, base_tasks_per_category
+            )
         if variants_per_base_task is not None:
             filtered_tasks = self._stratified_variants_per_base_task(
                 filtered_tasks, variants_per_base_task
@@ -181,6 +232,7 @@ class Arc1dMetaMulticlassDataModule(pl.LightningDataModule):
             self.train_split,
             self.task_categories,
             variants_per_base_task=self.variants_per_base_task,
+            base_tasks_per_category=self.base_tasks_per_category,
         )
         self.val_dataset = self.build_dataset(dataset_dict, self.val_split, val_cats)
         self.test_dataset = self.build_dataset(dataset_dict, self.test_split, val_cats)

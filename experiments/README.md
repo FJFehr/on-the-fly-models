@@ -61,20 +61,23 @@ paper, start here.
    training with no weight generation (`joint/`, experiment 1's ~10K-param dim=14 scaffold —
    sized to the hypernetwork's own param *budget*, not its dim=4 target — `td`/`notd`) vs.
    fully-isolated per-task models (`individual/`, dim=4, no task-id axis) across shrinking
-   training-data levels (`variants_per_base_task` in {1,2,3,4,5,20,full}, `individual/`
-   restricted to {1,2,3,full}; `full` is each arm's own no-reduction cell at its own fixed
-   compute budget, a within-experiment full-data anchor rather than borrowed from 01/02's
-   differently-budgeted numbers), testing whether the hypernetwork's cross-task *weight
-   generation* specifically helps where a merely shared (`joint`) or fully isolated
-   (`individual`) model can't, at both ends of the task-identity axis. **Status: planned,
-   not yet launched** — resized 2026-09-10 from an inherited pre-unification recipe
-   (~1.58M params, dim=16, 15 categories, 3 seeds, `frozen_td`-only) to experiment 2's own
-   dim=4 matched-scale recipe, the paper's standard 14 categories, 5 seeds, and `notd` added
-   as a second hypernetwork condition; `joint/` added the same day (reuses experiment 1's
-   `direct_supervised` mechanism, not new code, despite `hypernetwork/`'s README previously
-   flagging it as unbuilt), sized to experiment 1's own dim=14 scaffold rather than dim=4 so
-   it isn't just a smaller-capacity strawman; `full` cells added across all three arms the
-   same day. 70 + 70 + 280 jobs across the three arms.
+   training-data levels: `variants_per_base_task` in {1,2,3,4,5,20,full} at a fixed ~40
+   base-tasks/category (`individual/` restricted to {1,2,3,full}), plus (2026-09-15)
+   `base_tasks_per_category` in {1,3,5,10,20} at a fixed `variants_per_base_task=1` — a second,
+   independent axis reducing task *diversity* rather than augmentation *depth*, reaching below
+   the 40-row/category floor to test the paper's cross-task-sharing hypothesis at its sharpest
+   (at `t1`, `individual` trains on a single base task's 3 support pairs for an entire
+   category, while `hypernetwork`/`joint` still pool 14x that across categories). `full` is
+   each arm's own no-reduction cell at its own fixed compute budget, a within-experiment
+   full-data anchor. **Status: `v*`/`full` family (420 jobs) run and unified 2026-09-14** —
+   each arm's training regime (not just architecture) now matches its own reference recipe
+   exactly (01 for `individual`/`joint`, 02 for `hypernetwork`) after a first pass surfaced
+   several silent mismatches (wrong Lightning module, halved optimizer-step budget, an 8x
+   DDP-vs-single-GPU effective-batch-size gap, and more — see `individual/README.md`'s and
+   `hypernetwork/README.md`'s own "2026-09-14 unification" notes); confirmed via `individual`'s
+   `full` cell landing at 94.6%, matching 01's own 92.6% dim=4 ceiling. The `t*` family (450
+   more jobs, 870 total) is additive on top and does not touch or invalidate the `v*`/`full`
+   results.
 
 Every experiment's own README has the full method, findings, and an exact
 "Running" command.

@@ -2,7 +2,7 @@
 
 Companion sweep to arc1d_lowdata (experiments/06_data_efficiency_ablation/hypernetwork/gen_configs.py) testing the
 same variants_per_base_task data-reduction axis WITHOUT the hypernetwork: one
-LoopedSupervisedLightning model per task category, trained directly on
+direct_supervised model per task category, trained directly on
 rope_canon_looped_transformer (the exact same architecture as arc1d_lowdata's
 target_model), with no cross-task sharing at all.
 
@@ -10,17 +10,31 @@ variants_per_base_task in {1, 2, 3, full} this round (levels 4/5/20 from
 arc1d_lowdata are out of scope for now). "full" (variants_per_base_task left
 at None -- no reduction, the entire per-category train split) is a
 self-contained full-data anchor at this experiment's own fixed compute
-budget (max_steps=2000), added 2026-09-10 alongside the other two arms' own
-"full" cells, so all three arms have a same-budget full-data comparison
-point rather than borrowing experiment 1/2's own (max_steps=8000) numbers.
+budget (max_steps=8000, since the 2026-09-14 unification onto experiment 1's
+own dim=4 Individual recipe exactly), added 2026-09-10 alongside the other
+two arms' own "full" cells.
 
 Same 14 in-distribution task categories as arc1d_lowdata/base.yaml -- the
 paper's standard set (matching 01/02/05), not the original scaffolding's 15
 (dropped 1d_recolor_cmp, 2026-09-10, to match arc1d_lowdata's own resize).
 
-14 categories x 4 levels x 5 seeds (seed handled by the runner script, not
-baked into configs) = 280 jobs. Validation/test are untouched at every level
-(see base.yaml) - only train_dataset shrinks (or, at "full", doesn't).
+2026-09-15: added a second, independent data-reduction axis --
+base_tasks_per_category in {1, 3, 5, 10, 20}, always paired with
+variants_per_base_task=1 (zero additional augmentation) -- to go BELOW v1's
+~40-base-tasks/category floor by reducing task *diversity* rather than
+augmentation *depth*. This is the sharpest test of the paper's
+cross-task-sharing hypothesis: at t1, a single per-category model here trains
+on exactly one base task's 3 support pairs -- the isolated-model floor the
+hypothesis predicts hypernetwork/joint should pull ahead of. Tagged
+{category}/t{N}.yaml (distinct from {category}/v{N}.yaml) to avoid any
+naming collision. See data_modules/arc1d_direct.py's
+_stratified_base_tasks_per_category for the (separately data_seed-seeded,
+nested/reproducible) selection.
+
+14 categories x (4 v/full levels + 5 t levels) x 5 seeds (seed handled by the
+runner script, not baked into configs) = 630 jobs. Validation/test are
+untouched at every level (see base.yaml) - only train_dataset shrinks (or,
+at "full", doesn't).
 """
 
 from pathlib import Path
@@ -51,6 +65,9 @@ TASK_CATEGORIES = [
 # None ("full") means no reduction -- the entire per-category train split,
 # same as leaving variants_per_base_task unset.
 LEVELS = [1, 2, 3, None]
+# Sub-40-base-tasks-per-category axis (2026-09-15), always at
+# variants_per_base_task=1 (zero additional augmentation) -- see module docstring.
+TASK_COUNT_LEVELS = [20, 10, 5, 3, 1]
 
 n_written = 0
 for category in TASK_CATEGORIES:
@@ -66,6 +83,20 @@ for category in TASK_CATEGORIES:
             "variants_per_base_task": v,
         }
         out_path = category_dir / f"{level_tag}.yaml"
+        with open(out_path, "w") as f:
+            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+        n_written += 1
+
+    for t in TASK_COUNT_LEVELS:
+        cfg = {
+            "_base_": BASE_CFG,
+            "experiment_name": f"lowdata_baseline_{category}_t{t}",
+            "task_categories": [category],
+            "val_task_categories": [category],
+            "variants_per_base_task": 1,
+            "base_tasks_per_category": t,
+        }
+        out_path = category_dir / f"t{t}.yaml"
         with open(out_path, "w") as f:
             yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
         n_written += 1

@@ -90,6 +90,7 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
         overfit_single_batch: bool = False,
         padding_value: int = PAD_IDX,
         variants_per_base_task: int | None = None,
+        base_tasks_per_category: int | None = None,
         data_seed: int = 42,
         **kwargs,
     ):
@@ -106,6 +107,7 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
         self.test_split = test_split
         self.overfit_single_batch = overfit_single_batch
         self.variants_per_base_task = variants_per_base_task
+        self.base_tasks_per_category = base_tasks_per_category
         self.data_seed = data_seed
         self.collator = Arc1dDirectPaddingCollator(padding_value=padding_value)
         # binary tasks store values as float32; multiclass uses class indices (long)
@@ -119,6 +121,50 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
             return aliased
         msg = f"Unknown ARC1D split {split_name!r}."
         raise ValueError(msg)
+
+    def _stratified_base_tasks_per_category(
+        self, tasks: list[dict], base_tasks_per_category: int
+    ) -> list[dict]:
+        """Keep rows from only up to base_tasks_per_category distinct base tasks per category.
+
+        One level up from _stratified_variants_per_base_task: that method
+        thins augmentation depth *within* every base task; this one instead
+        drops whole base tasks (all of their rows/variants together), to
+        reach data levels below the "every base task's original example"
+        floor (variants_per_base_task=1, ~40 base tasks/category).
+
+        Groups by task_category, collects the distinct base-task ids present
+        (task_id // 10000) per category in ascending sorted order (the same
+        natural, stable base-task ordering _stratified_variants_per_base_task
+        already relies on), shuffles that ordering with a local
+        data_seed-seeded RNG, and keeps every row belonging to the first
+        base_tasks_per_category ids in the shuffled order for that category.
+        Nested/cumulative across levels for a fixed data_seed (shuffle once,
+        take-prefix), same guarantee as the variants axis, one level up.
+
+        Uses its own fresh random.Random(self.data_seed) instance -- a
+        separate object from _stratified_variants_per_base_task's own RNG --
+        so the two axes' randomness never shares state and each is
+        independent of the other's value when both are set (verified by
+        tests/test_arc1d_direct.py's own composability test). Deterministic
+        given self.data_seed, independent of the training seed, same as the
+        variants axis.
+        """
+        by_category: dict[str, set[int]] = {}
+        for task in tasks:
+            by_category.setdefault(task["task_category"], set()).add(
+                task["task_id"] // 10000
+            )
+
+        rng = random.Random(self.data_seed)
+        keep: dict[str, set[int]] = {}
+        for category in sorted(by_category):
+            base_task_ids = sorted(by_category[category])
+            rng.shuffle(base_task_ids)
+            n = min(base_tasks_per_category, len(base_task_ids))
+            keep[category] = set(base_task_ids[:n])
+
+        return [t for t in tasks if (t["task_id"] // 10000) in keep[t["task_category"]]]
 
     def _stratified_variants_per_base_task(
         self, tasks: list[dict], variants_per_base_task: int
@@ -162,6 +208,7 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
         *,
         use_support: bool,
         variants_per_base_task: int | None = None,
+        base_tasks_per_category: int | None = None,
     ) -> Arc1dDirectDataset:
         """Build a flat list of (input, output) pairs from a split.
 
@@ -174,12 +221,20 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
             variants_per_base_task: If set, subsample rows per base task
                 (stratified/nested, see _stratified_variants_per_base_task)
                 before unpacking into flat (input, output) pairs.
+            base_tasks_per_category: If set, subsample whole base tasks per
+                category (stratified/nested, see
+                _stratified_base_tasks_per_category) before the
+                variants_per_base_task step -- an independent, one-level-up
+                axis (which base tasks are present at all, not how many
+                variants of each).
         """
         resolved = self.resolve_split_name(dataset_dict, split_name)
         tasks = filter_split(dataset_dict[resolved], task_categories, self.task_ids)
         if not tasks:
             msg = f"No ARC1D tasks matched the configured filters in split {split_name!r}."
             raise ValueError(msg)
+        if base_tasks_per_category is not None:
+            tasks = self._stratified_base_tasks_per_category(tasks, base_tasks_per_category)
         if variants_per_base_task is not None:
             tasks = self._stratified_variants_per_base_task(tasks, variants_per_base_task)
 
@@ -218,6 +273,7 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
             self.task_categories,
             use_support=True,
             variants_per_base_task=self.variants_per_base_task,
+            base_tasks_per_category=self.base_tasks_per_category,
         )
         self.val_dataset = self.build_flat_dataset(
             dataset_dict, self.val_split, val_cats, use_support=False
@@ -239,6 +295,14 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
+            # persistent_workers avoids respawning the worker every epoch --
+            # with a fixed max_steps (not max_epochs) stopping condition,
+            # a tiny train_dataset means many epoch boundaries per run, and
+            # without this each one paid a full worker-fork cost. Pure
+            # wall-clock fix, no effect on results (shuffling happens in the
+            # main-process sampler above, not inside workers). Requires
+            # num_workers > 0 (PyTorch raises otherwise).
+            persistent_workers=self.num_workers > 0,
             collate_fn=self.collator,
         )
 
@@ -247,6 +311,7 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
             self.val_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            persistent_workers=self.num_workers > 0,
             collate_fn=self.collator,
         )
 
@@ -255,5 +320,6 @@ class Arc1dDirectDataModule(pl.LightningDataModule):
             self.test_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            persistent_workers=self.num_workers > 0,
             collate_fn=self.collator,
         )

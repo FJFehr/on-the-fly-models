@@ -87,21 +87,38 @@ Most categories have exactly 40 base tasks, but a few have slightly more (e.g. `
 
 ## Data levels
 
-| Level | `variants_per_base_task` | ≈ total/category | Note |
-|---|---:|---:|---|
-| `cell_{cond}_v1` | 1 | 40 | original only, zero augmentation |
-| `cell_{cond}_v2` | 2 | 80 | +1 augmented variant |
-| `cell_{cond}_v3` | 3 | 120 | +2 |
-| `cell_{cond}_v4` | 4 | 160 | +3 |
-| `cell_{cond}_v5` | 5 | 200 | +4 |
-| `cell_{cond}_v20` | 20 | 800 | larger jump, further up the curve |
-| `cell_{cond}_full` | `null` (no reduction) | ≈40,000 | added 2026-09-10, own-budget full-data anchor |
+| Level | `variants_per_base_task` | `base_tasks_per_category` | ≈ total/category | Note |
+|---|---:|---:|---:|---|
+| `cell_{cond}_t1` | 1 | 1 | 1 | added 2026-09-15, extreme floor: a single base task |
+| `cell_{cond}_t3` | 1 | 3 | 3 | |
+| `cell_{cond}_t5` | 1 | 5 | 5 | |
+| `cell_{cond}_t10` | 1 | 10 | 10 | |
+| `cell_{cond}_t20` | 1 | 20 | 20 | |
+| `cell_{cond}_v1` | 1 | `null` (all ~40) | 40 | original only, zero augmentation |
+| `cell_{cond}_v2` | 2 | `null` | 80 | +1 augmented variant |
+| `cell_{cond}_v3` | 3 | `null` | 120 | +2 |
+| `cell_{cond}_v4` | 4 | `null` | 160 | +3 |
+| `cell_{cond}_v5` | 5 | `null` | 200 | +4 |
+| `cell_{cond}_v20` | 20 | `null` | 800 | larger jump, further up the curve |
+| `cell_{cond}_full` | `null` (no reduction) | `null` | ≈40,000 | added 2026-09-10, own-budget full-data anchor |
 
 `{cond}` is `frozentd` or `notd`. `full` runs at this experiment's own fixed `max_steps:
-2000` budget, unlike experiment 2's own full-data numbers (`max_steps: 8000`) — this is
-what makes it a fair anchor point *within* this experiment's own data-level comparison,
-not a claim that it should match experiment 2's numbers exactly. 7 levels × 2 conditions
-× 5 seeds = **70 jobs**.
+8000, N_supervision: 1` budget — since the 2026-09-14 unification this is the exact same
+recipe experiment 2's own full-data numbers use, so `full` is both a within-experiment
+anchor *and* expected to reproduce those numbers (see "Reading results" below).
+
+The `t{N}` levels (added 2026-09-15) are a second, independent data-reduction axis: they
+fix `variants_per_base_task=1` (zero additional augmentation) and instead reduce how many
+*distinct base tasks* per category are used, reaching below the `v1` floor's ~40
+base-tasks/category. This is the sharpest test of the paper's cross-task-sharing
+hypothesis — at `t1`, `../individual/`'s per-category model trains on a single base
+task's original example, while this arm and `../joint/` still pool 14 categories' worth
+(14x that) of task-instances. Selection is deterministic given `data_seed` (a separate RNG
+stream from the `v*` axis's own, so the two axes don't entangle — see
+`data_modules/arc1d_meta_multiclass.py`'s `_stratified_base_tasks_per_category` and its
+own test suite in `tests/test_arc1d_meta_multiclass.py`).
+
+7 v/full levels + 5 t levels (12 total) × 2 conditions × 5 seeds = **120 jobs**.
 
 ## Running
 
@@ -125,6 +142,12 @@ The headline questions: at what `variants_per_base_task` does performance start 
 off relative to this experiment's own `full` cell; does zero augmentation (`cell_{cond}_v1`,
 the raw original examples only) still let the hypernetwork solve every task via cross-task
 transfer; and does `frozen_td`'s advantage over `notd` hold, narrow, or widen as data shrinks?
+
+At the `t{N}` levels specifically: compare against `../individual/`'s own `t{N}` numbers
+(macro-averaged across categories) at the same `N`. This is the sharpest version of the
+question — does this arm's cross-task weight generation pull ahead of `individual`'s
+fully-isolated per-category models as `N` shrinks toward 1, where `individual` has almost
+no signal to learn a category's rule from at all?
 
 ## Companion arms
 

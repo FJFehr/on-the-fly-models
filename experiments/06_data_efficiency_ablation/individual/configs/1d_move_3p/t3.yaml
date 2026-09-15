@@ -1,0 +1,8 @@
+_base_: experiments/06_data_efficiency_ablation/individual/configs/base.yaml
+experiment_name: lowdata_baseline_1d_move_3p_t3
+task_categories:
+- 1d_move_3p
+val_task_categories:
+- 1d_move_3p
+variants_per_base_task: 1
+base_tasks_per_category: 3

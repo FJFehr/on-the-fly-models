@@ -89,11 +89,22 @@ just the count.
 examples/category), matching `arc1d_lowdata`'s `cell_{cond}_v1`/`v2`/`v3`/`full`. Levels
 4/5/20 are out of scope for now. `full` (no reduction, added 2026-09-10) runs at
 `max_steps: 8000` (since the 2026-09-14 unification, matching experiment 1's own dim=4
-Individual budget exactly) — so `full` here is now a genuine reproduction of experiment
-1's own full-data ceiling, not a separate own-budget anchor the way `../hypernetwork/`'s
-and `../joint/`'s `full` cells still are (they weren't part of this unification, since
-their own references are what they were already recalibrated to — see each's own
-README).
+Individual budget exactly) — so `full` here genuinely reproduces experiment 1's own
+full-data ceiling (94.6% here vs. 01's own 92.6%), the same as `../hypernetwork/`'s and
+`../joint/`'s own `full` cells now do against their own references, since all three arms
+went through this same unification together.
+
+**2026-09-15: added a second, independent data-reduction axis** —
+`base_tasks_per_category` in {1, 3, 5, 10, 20}, always at `variants_per_base_task=1` (zero
+additional augmentation), tagged `{category}/t{N}.yaml`. Reduces task *diversity* rather
+than augmentation *depth*, reaching below the `v1` floor's ~40 base-tasks/category. This
+is the extreme end of the isolated-model floor: at `t1`, a single per-category model here
+trains on exactly one base task's 3 support pairs — the sharpest test of whether
+`../hypernetwork/`'s and `../joint/`'s cross-task sharing (which still pool 14x that
+across categories at the same `N`) pulls ahead. Selection uses its own `data_seed`-seeded
+RNG stream, independent of the `v*` axis's own (see `data_modules/arc1d_direct.py`'s
+`_stratified_base_tasks_per_category`). 5 more levels × 14 categories × 5 seeds = **350
+more jobs**, total **630**.
 
 ## Known asymmetry (documented, not "fixed")
 
@@ -125,8 +136,9 @@ bash experiments/06_data_efficiency_ablation/individual/run.sh
 ```
 
 Split across nodes via `SEEDS_OVERRIDE`/`CATEGORY_GLOB` (see script header for
-examples). 280 jobs total (14 categories × 4 levels × 5 seeds), each tiny
-(≤360 raw training pairs, or up to ≈40,000 rows at `full`) and single-GPU
+examples). 630 jobs total (14 categories × 9 levels [4 v/full + 5 t] × 5
+seeds), each tiny (≤360 raw training pairs, or up to ≈40,000 rows at `full`,
+or as few as 3 at `t1`) and single-GPU
 (`devices: 1`) — no benefit to claiming multiple GPUs per job here, unlike
 `arc1d_lowdata`.
 

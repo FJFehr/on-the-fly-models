@@ -9,9 +9,10 @@ directory name (which encodes condition/level/category/seed), and writes:
   outputs/results/06_data_efficiency_ablation/results_joint.csv
   outputs/results/06_data_efficiency_ablation/results_individual.csv
   outputs/results/06_data_efficiency_ablation/results_combined.csv
-      (all three arms aligned on the levels they share: 1, 2, 3, full --
-      individual's per-category rows macro-averaged to one row/level/seed
-      first, since the other two arms are already single joint models)
+      (all three arms aligned on the levels they share: 1, 2, 3, full, and
+      (2026-09-15) t1/t3/t5/t10/t20 -- individual's per-category rows
+      macro-averaged to one row/level/seed first, since the other two arms
+      are already single joint models)
 
 Ignores the 18 old-naming hypernetwork orphans and the 135 (already-deleted)
 stale individual dirs from the pre-2026-09-10 scaffolding automatically --
@@ -32,8 +33,18 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO_ROOT / "outputs" / "results" / "06_data_efficiency_ablation"
 
 # Nested/cumulative levels -> a numeric sort key and total-rows-per-category label.
-LEVEL_ORDER = {"v1": 1, "v2": 2, "v3": 3, "v4": 4, "v5": 5, "v20": 20, "full": 10_000}
+# t{N} (added 2026-09-15) is a genuinely different axis from v{N} -- base task
+# *count* at fixed variants_per_base_task=1, not augmentation depth at fixed
+# ~40 base tasks -- so its sort keys sit strictly below v1's own (1), and its
+# label keeps the "t" prefix rather than being stripped to a bare number: a
+# bare "3" would collide with v3's own stripped label while meaning a
+# 40x-different row count (t3 = 3 rows/category, v3 = 120).
+LEVEL_ORDER = {
+    "t1": 0.01, "t3": 0.03, "t5": 0.05, "t10": 0.10, "t20": 0.20,
+    "v1": 1, "v2": 2, "v3": 3, "v4": 4, "v5": 5, "v20": 20, "full": 10_000,
+}
 LEVEL_LABEL = {
+    "t1": "t1", "t3": "t3", "t5": "t5", "t10": "t10", "t20": "t20",
     "v1": "1", "v2": "2", "v3": "3", "v4": "4", "v5": "5", "v20": "20", "full": "full",
 }
 
@@ -102,30 +113,32 @@ def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # --- hypernetwork: lowdata_{frozentd,notd}_{level}_seed{n} ---
-    hyper_re = re.compile(r"^lowdata_(?P<condition>frozentd|notd)_(?P<level>v\d+|full)_seed(?P<seed>\d+)$")
+    hyper_re = re.compile(r"^lowdata_(?P<condition>frozentd|notd)_(?P<level>v\d+|t\d+|full)_seed(?P<seed>\d+)$")
     hyper_rows = collect(REPO_ROOT / "outputs" / "arc1d_lowdata", hyper_re)
     hyper_df = pd.DataFrame(hyper_rows).sort_values(["condition", "level_n", "seed"])
     hyper_df.to_csv(OUT_DIR / "results_hypernetwork.csv", index=False)
 
     # --- joint: lowdata_joint_{td,notd}_{level}_seed{n} ---
-    joint_re = re.compile(r"^lowdata_joint_(?P<condition>td|notd)_(?P<level>v\d+|full)_seed(?P<seed>\d+)$")
+    joint_re = re.compile(r"^lowdata_joint_(?P<condition>td|notd)_(?P<level>v\d+|t\d+|full)_seed(?P<seed>\d+)$")
     joint_rows = collect(REPO_ROOT / "outputs" / "arc1d_lowdata_joint", joint_re)
     joint_df = pd.DataFrame(joint_rows).sort_values(["condition", "level_n", "seed"])
     joint_df.to_csv(OUT_DIR / "results_joint.csv", index=False)
 
     # --- individual: lowdata_baseline_{category}_{level}_seed{n} ---
     cat_alt = "|".join(re.escape(c) for c in CATEGORIES)
-    indiv_re = re.compile(rf"^lowdata_baseline_(?P<category>{cat_alt})_(?P<level>v\d+|full)_seed(?P<seed>\d+)$")
+    indiv_re = re.compile(rf"^lowdata_baseline_(?P<category>{cat_alt})_(?P<level>v\d+|t\d+|full)_seed(?P<seed>\d+)$")
     indiv_rows = collect(REPO_ROOT / "outputs" / "arc1d_lowdata_baseline", indiv_re)
     indiv_df = pd.DataFrame(indiv_rows).sort_values(["category", "level_n", "seed"])
     indiv_df.to_csv(OUT_DIR / "results_individual.csv", index=False)
 
-    print(f"hypernetwork: {len(hyper_df)} rows (expect 70)")
-    print(f"joint:        {len(joint_df)} rows (expect 70)")
-    print(f"individual:   {len(indiv_df)} rows (expect 280)")
+    print(f"hypernetwork: {len(hyper_df)} rows (expect 120)")
+    print(f"joint:        {len(joint_df)} rows (expect 120)")
+    print(f"individual:   {len(indiv_df)} rows (expect 630)")
 
-    # --- combined: aligned on the levels all three arms share (1, 2, 3, full) ---
-    shared_levels = {"1", "2", "3", "full"}
+    # --- combined: aligned on the levels all three arms share (1, 2, 3, full,
+    # plus the new sub-40 t1/t3/t5/t10/t20 family -- the sharpest 3-arm
+    # comparison this whole axis exists for) ---
+    shared_levels = {"1", "2", "3", "full", "t1", "t3", "t5", "t10", "t20"}
     combined = []
 
     for _, r in hyper_df[hyper_df["level"].isin(shared_levels)].iterrows():
@@ -162,7 +175,7 @@ def main() -> None:
 
     combined_df = pd.DataFrame(combined).sort_values(["arm", "condition", "level_n", "seed"])
     combined_df.to_csv(OUT_DIR / "results_combined.csv", index=False)
-    print(f"combined:     {len(combined_df)} rows (levels 1, 2, 3, full only)")
+    print(f"combined:     {len(combined_df)} rows (levels 1, 2, 3, full, t1, t3, t5, t10, t20)")
 
     # --- per-task long frames (hypernetwork/joint only -- individual is already single-task) ---
     hyper_long = per_task_long(hyper_df, ["condition", "level", "level_n", "seed"])

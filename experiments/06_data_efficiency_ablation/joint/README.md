@@ -73,6 +73,17 @@ full-data dim=14 numbers as a sanity check.
 
 7 levels × 2 conditions × 5 seeds = **70 jobs**.
 
+**2026-09-15: added a second, independent data-reduction axis** —
+`base_tasks_per_category` in {1, 3, 5, 10, 20}, always at `variants_per_base_task=1` (zero
+additional augmentation), tagged `cell_{cond}_t{N}.yaml`. Reduces task *diversity* rather
+than augmentation *depth*, reaching below the `v1` floor's ~40 base-tasks/category — the
+sharpest test of the cross-task-sharing hypothesis: at `t1`, this arm still pools 14
+categories' worth of single-base-task task-instances, while `arc1d_lowdata_baseline`'s
+per-category models each get only that one base task. Selection uses its own
+`data_seed`-seeded RNG stream, independent of the `v*` axis's own (see
+`data_modules/arc1d_direct.py`'s `_stratified_base_tasks_per_category`). 5 more levels × 2
+conditions × 5 seeds = **50 more jobs**, total **120**.
+
 ## Known asymmetry (same as `arc1d_lowdata_baseline`)
 
 `Arc1dDirectDataModule` unpacks each selected row into its 3 support pairs only (the

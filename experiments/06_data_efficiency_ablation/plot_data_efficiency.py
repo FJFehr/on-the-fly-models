@@ -18,11 +18,16 @@ conditioning, at a different model scale entirely, see
 making (does cross-task weight generation buy data efficiency over having no
 sharing at all).
 
-Individual only has 4 levels (v1/v2/v3/full -- see
+Individual only has 4 v/full levels (v1/v2/v3/full -- see
 06_data_efficiency_ablation/individual/README.md for why 4/5/20 are out of
 scope there); the hypernetwork conditions have all 7. Each series is plotted
 over whichever levels it actually has data for, same as capacity_cliff.py's
 per-condition `dims_present` handling.
+
+2026-09-15: added the sub-40-base-tasks-per-category axis (t1/t3/t5/t10/t20,
+always at variants_per_base_task=1 -- see hypernetwork/README.md's "Data
+levels" for the full story) to all three series, extending the primary axis
+below 40 rows/category down to 1.
 
 All raw per-seed records live in results.csv next to this script (one row =
 one seed's test_query_exact_match; "individual" rows are already averaged
@@ -67,8 +72,13 @@ CATEGORIES = [
 
 # variants_per_base_task -> rows/category (40 base tasks/category, per the
 # nested/cumulative design -- see hypernetwork/README.md's "Data levels").
-# "full" is ~1000 variants/base task -- 40,000 rows/category.
-LEVEL_ROWS = {"v1": 40, "v2": 80, "v3": 120, "v4": 160, "v5": 200, "v20": 800, "full": 40_000}
+# "full" is ~1000 variants/base task -- 40,000 rows/category. t{N} (2026-09-15)
+# is the sub-40-base-tasks-per-category axis -- N base tasks x 1 variant
+# (the original) each = N rows/category exactly, no approximation needed.
+LEVEL_ROWS = {
+    "t1": 1, "t3": 3, "t5": 5, "t10": 10, "t20": 20,
+    "v1": 40, "v2": 80, "v3": 120, "v4": 160, "v5": 200, "v20": 800, "full": 40_000,
+}
 
 # individual = khaki-brown baseline (same as 01/02's own "individual" role).
 # td/notd match 02_hypernetwork_multitask/plot_per_task_combined.py's own
@@ -113,7 +123,7 @@ def extract_records(outputs_dir: Path) -> list[dict]:
 
     # --- hypernetwork: lowdata_{frozentd,notd}_{level}_seed{n} ---
     cond_map = {"frozentd": "td", "notd": "notd"}
-    hyper_re = re.compile(r"^lowdata_(frozentd|notd)_(v\d+|full)_seed(\d+)$")
+    hyper_re = re.compile(r"^lowdata_(frozentd|notd)_(v\d+|t\d+|full)_seed(\d+)$")
     hyper_dir = outputs_dir / "arc1d_lowdata"
     for path in sorted(hyper_dir.glob("*/results.txt")):
         m = hyper_re.match(path.parent.name)
@@ -133,7 +143,7 @@ def extract_records(outputs_dir: Path) -> list[dict]:
     # mirroring 01_multitask_capacity's own "individual" rows (already
     # averaged across that seed's 14 separate per-task models).
     cat_alt = "|".join(re.escape(c) for c in CATEGORIES)
-    indiv_re = re.compile(rf"^lowdata_baseline_({cat_alt})_(v\d+|full)_seed(\d+)$")
+    indiv_re = re.compile(rf"^lowdata_baseline_({cat_alt})_(v\d+|t\d+|full)_seed(\d+)$")
     indiv_dir = outputs_dir / "arc1d_lowdata_baseline"
     indiv_raw: dict[tuple[str, int], list[float]] = {}
     for path in sorted(indiv_dir.glob("*/results.txt")):
@@ -213,7 +223,15 @@ def plot(series: dict[str, dict[int, dict]], out_path: Path) -> None:
             "pdf.fonttype": 42,
         }
     )
-    fig, ax = plt.subplots(figsize=(5.8, 5.8))
+    # Width matches 01_multitask_capacity/plot_capacity_cliff.py's own 5.8x5.8 square
+    # exactly; height is taller by the extra vertical space the second x-axis row
+    # (augmentations/example) below needs, so the *axes* (the actual plot rectangle,
+    # not the figure) end up the same physical size in both -- verified empirically:
+    # capacity_cliff's rendered axes are 4.34x4.81in; at 5.8x5.8 this file's own axes
+    # were only 4.34x3.56in (tight_layout gave the whole deficit to the bottom margin
+    # for the second axis row), so 5.8 + (4.81-3.56) = 7.05 recovers the same 4.81in
+    # axes height while keeping that same bottom margin for the second row.
+    fig, ax = plt.subplots(figsize=(5.8, 6.74))
 
     all_amounts = sorted({a for cond in series.values() for a in cond})
 
@@ -248,38 +266,42 @@ def plot(series: dict[str, dict[int, dict]], out_path: Path) -> None:
 
     ax.set_xscale("log")
     ax.xaxis.set_minor_locator(plt.NullLocator())
-    # Labelling every measured level (40/80/120/160/200/800/40,000) crowds
-    # five values into one log-decade and the tick labels collide. Label a
-    # well-spaced subset instead -- the markers themselves still show every
-    # measured point, labelled or not.
-    tick_values = [40, 200, 800, 40_000]
+    # Labelling every measured level crowds several values into one log-decade
+    # and the tick labels collide. Label a well-spaced subset instead -- the
+    # markers themselves still show every measured point, labelled or not.
+    tick_values = [1, 20, 40, 200, 800, 40_000]
     ax.set_xticks(tick_values)
     ax.set_xticklabels(
         [f"{v // 1000}K" if v >= 1000 else str(v) for v in tick_values]
     )
     ax.set_xlabel("Training rows / category (log scale)")
 
-    # Second x-axis row: augmentations/example (= variants_per_base_task).
-    # rows/category = 40 base tasks/category x variants_per_base_task exactly
-    # (41 for 1d_scale_dp, ignored here same as elsewhere -- "~40" throughout),
-    # so this is a genuine linear unit conversion, not a second, independent
-    # set of hand-placed labels -- secondary_xaxis keeps the two rows exactly
-    # aligned under the log-scale primary axis. Only 3 labelled (1/20/1000,
-    # matching v1/v20/full -- 3 of the 4 primary ticks) rather than all 7
-    # levels, for the same crowding reason as the primary row above.
-    secax = ax.secondary_xaxis(-0.28, functions=(lambda rows: rows / 40, lambda augs: augs * 40))
-    secax.set_xticks([1, 3, 5, 20, 1000])
-    secax.set_xticklabels(["1", "3", "5", "20", "1000"])
+    # Second x-axis row: augmentations/example. For the v{N}/full family this
+    # is a genuine linear function of rows/category (rows = 40 base
+    # tasks/category x variants_per_base_task). But the 2026-09-15 t{N} family
+    # varies base-task *count* at a fixed variants_per_base_task=1 -- multiple
+    # distinct primary-axis positions (1,3,5,10,20,40 rows -- t1..t20 and v1)
+    # all genuinely mean "0 additional augmentation", which no single
+    # computed function can express (it would need to be non-injective, and
+    # 0 augmentations has no defined position on a log axis via rows/40
+    # anyway). So this axis is now an *identity* secondary_xaxis (shares the
+    # primary axis's own rows/category coordinates exactly, keeping automatic
+    # pixel-alignment under resize/pan) with a hand-picked (position, label)
+    # table instead of a formula -- v1's own label deliberately changes from
+    # the old "1" to "0" here, so the whole zero-additional-augmentation
+    # family (t20/t10/t5/t3/t1/v1) reads consistently as "0", while
+    # v3/v5/v20/full keep their previously-correct labels. This is an
+    # intentional redefinition, not a bug.
+    secax = ax.secondary_xaxis(-0.18, functions=(lambda x: x, lambda x: x))
+    sec_tick_positions = [1, 3, 5, 10, 20, 40, 120, 200, 800, 40_000]
+    sec_tick_labels = ["0", "0", "0", "0", "0", "0", "3", "5", "20", "1000"]
+    secax.set_xticks(sec_tick_positions)
+    secax.set_xticklabels(sec_tick_labels)
     secax.set_xlabel("Augmentations / example")
     ax.set_ylabel("Test exact match accuracy")
     ax.set_ylim(0, 1.05)
     ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
     ax.grid(axis="y", alpha=0.3, linewidth=0.6)
-    # Thin reference line at 5 augmentations/example (200 rows/category) --
-    # lightened past 02_hypernetwork_multitask/plot_per_task_combined.py's
-    # own category-boundary grey (0.6) so it reads as background, not a
-    # foreground annotation competing with the data.
-    ax.axvline(200, color="0.85", linewidth=1.0, linestyle="--", zorder=0.5)
     ax.spines[["top", "right"]].set_visible(False)
     ax.legend(loc="lower right", frameon=False)
 

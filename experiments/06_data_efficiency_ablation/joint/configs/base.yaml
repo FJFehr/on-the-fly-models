@@ -124,6 +124,14 @@ padding_idx: 10
 # variants_per_base_task is a placeholder here, overridden per leaf (see
 # cell_{td,notd}_v*.yaml).
 variants_per_base_task: null
+# base_tasks_per_category is a placeholder here too, overridden per t{N} leaf
+# (added 2026-09-15 for the sub-40-base-tasks-per-category axis -- how many
+# distinct base tasks/category to use, at variants_per_base_task=1 always,
+# going below the v1 floor's ~40 base tasks; see
+# data_modules/arc1d_direct.py's _stratified_base_tasks_per_category). null =
+# no reduction (all ~40 base tasks/category), same as leaving it unset --
+# every existing cell_*_v*/full leaf above is unaffected by this addition.
+base_tasks_per_category: null
 data_seed: 42
 
 # use_task_embedding is a placeholder here, overridden per leaf: true (td) /

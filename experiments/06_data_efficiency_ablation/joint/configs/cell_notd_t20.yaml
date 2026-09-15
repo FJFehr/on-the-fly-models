@@ -1,0 +1,6 @@
+_base_: experiments/06_data_efficiency_ablation/joint/configs/base.yaml
+experiment_name: lowdata_joint_notd_t20
+variants_per_base_task: 1
+base_tasks_per_category: 20
+task_encoding:
+  use_task_embedding: false
