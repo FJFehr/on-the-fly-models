@@ -294,14 +294,20 @@ def plot(series: dict[str, dict[int, dict]], out_path: Path) -> None:
     # intentional redefinition, not a bug.
     secax = ax.secondary_xaxis(-0.18, functions=(lambda x: x, lambda x: x))
     # Only the first (1) and last (40) position of the zero-augmentation run
-    # (t1/t3/t5/t10/t20/v1) get a "0" tick, marking the span where every
-    # level means "zero additional augmentation" -- the v3/v5/v20/full
-    # augmentation counts (3/5/20/1000) weren't earning their keep as tick
-    # labels here, so this axis is just the two "0"s now.
-    sec_tick_positions = [1, 40]
-    sec_tick_labels = ["0", "0"]
+    # (t1/t3/t5/t10/t20/v1) get a "0" tick -- labelling all six crowded the
+    # axis with repeats of the same value. "3" (v3, row 120) is dropped too
+    # -- too close to "5" (v5, row 200) on the log scale to both need a
+    # label; the underlying markers are unaffected either way.
+    sec_tick_positions = [1, 40, 200, 800, 40_000]
+    sec_tick_labels = ["0", "0", "5", "20", "1000"]
     secax.set_xticks(sec_tick_positions)
     secax.set_xticklabels(sec_tick_labels)
+    # secax shares the primary axis's log scale, which comes with its own
+    # default minor ticks -- unlike ax (nulled above), this was never told
+    # to drop them, so unlabelled tick marks cluttered the row between the
+    # five labelled ones. Null them here too, matching ax's own single
+    # tick-per-label convention.
+    secax.xaxis.set_minor_locator(plt.NullLocator())
     secax.set_xlabel("Augmentations / example")
     ax.set_ylabel("Test exact match accuracy")
     ax.set_ylim(0, 1.05)
