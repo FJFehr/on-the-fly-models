@@ -269,7 +269,7 @@ def plot(series: dict[str, dict[int, dict]], out_path: Path) -> None:
     # Labelling every measured level crowds several values into one log-decade
     # and the tick labels collide. Label a well-spaced subset instead -- the
     # markers themselves still show every measured point, labelled or not.
-    tick_values = [1, 20, 40, 200, 800, 40_000]
+    tick_values = [1, 20, 200, 800, 40_000]
     ax.set_xticks(tick_values)
     ax.set_xticklabels(
         [f"{v // 1000}K" if v >= 1000 else str(v) for v in tick_values]
@@ -293,8 +293,12 @@ def plot(series: dict[str, dict[int, dict]], out_path: Path) -> None:
     # v3/v5/v20/full keep their previously-correct labels. This is an
     # intentional redefinition, not a bug.
     secax = ax.secondary_xaxis(-0.18, functions=(lambda x: x, lambda x: x))
-    sec_tick_positions = [1, 3, 5, 10, 20, 40, 120, 200, 800, 40_000]
-    sec_tick_labels = ["0", "0", "0", "0", "0", "0", "3", "5", "20", "1000"]
+    # Only the first (1) and last (40) position of the zero-augmentation run
+    # (t1/t3/t5/t10/t20/v1) get a "0" tick -- labelling all six crowded the
+    # axis with repeats of the same value. The intermediate t-levels are
+    # still plotted (markers at 3/5/10/20) -- just not tick-labelled here.
+    sec_tick_positions = [1, 40, 120, 200, 800, 40_000]
+    sec_tick_labels = ["0", "0", "3", "5", "20", "1000"]
     secax.set_xticks(sec_tick_positions)
     secax.set_xticklabels(sec_tick_labels)
     secax.set_xlabel("Augmentations / example")
