@@ -294,13 +294,12 @@ def plot(series: dict[str, dict[int, dict]], out_path: Path) -> None:
     # intentional redefinition, not a bug.
     secax = ax.secondary_xaxis(-0.18, functions=(lambda x: x, lambda x: x))
     # Only the first (1) and last (40) position of the zero-augmentation run
-    # (t1/t3/t5/t10/t20/v1) get a "0" tick -- labelling all six crowded the
-    # axis with repeats of the same value. The intermediate t-levels are
-    # still plotted (markers at 3/5/10/20) -- just not tick-labelled here.
-    # "3" (v3, row 120) is dropped too -- too close to "5" (v5, row 200) on
-    # the log scale to both need a label; the v3 marker itself still shows.
-    sec_tick_positions = [1, 40, 200, 800, 40_000]
-    sec_tick_labels = ["0", "0", "5", "20", "1000"]
+    # (t1/t3/t5/t10/t20/v1) get a "0" tick, marking the span where every
+    # level means "zero additional augmentation" -- the v3/v5/v20/full
+    # augmentation counts (3/5/20/1000) weren't earning their keep as tick
+    # labels here, so this axis is just the two "0"s now.
+    sec_tick_positions = [1, 40]
+    sec_tick_labels = ["0", "0"]
     secax.set_xticks(sec_tick_positions)
     secax.set_xticklabels(sec_tick_labels)
     secax.set_xlabel("Augmentations / example")
@@ -308,6 +307,13 @@ def plot(series: dict[str, dict[int, dict]], out_path: Path) -> None:
     ax.set_ylim(0, 1.05)
     ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
     ax.grid(axis="y", alpha=0.3, linewidth=0.6)
+    # Marks row=40 (v1) -- the last point on the primary axis, and the "0"
+    # on the secondary axis, where the zero-additional-augmentation family
+    # (t20..t1, right to left) meets the variants family (v1..full, left to
+    # right). Lightened past 02_hypernetwork_multitask/plot_per_task_combined.py's
+    # own category-boundary grey (0.6) so it reads as background, not a
+    # foreground annotation competing with the data.
+    ax.axvline(40, color="0.85", linewidth=1.0, linestyle="--", zorder=0.5)
     ax.spines[["top", "right"]].set_visible(False)
     ax.legend(loc="lower right", frameon=False)
 
