@@ -1,11 +1,18 @@
 """Hypernetwork: generates a target model's weights from a task's support examples.
 
 For each task in the batch:
-  1. the encoder (a Transformer) reads the serialised support examples,
-  2. an attention pooler turns its token outputs into one task representation,
-  3. optionally, a one-hot task-identity vector is projected and added to it,
-  4. a small MLP maps the task representation to a flat vector of every target weight,
-  5. the target model runs on the task's examples with those generated weights.
+
+  ENCODER (support set -> task representation)
+    1. `encoder`: a Transformer reads the serialised support examples,
+    2. `pooler`: attention pooling turns its token outputs into one task representation,
+    3. `task_indicator_proj` (optional): a one-hot task identity is projected and added.
+
+  WEIGHT DECODER (task representation -> target weights)
+    4. `projection`: an MLP maps the task representation to a flat vector holding every
+       weight of the target model.
+
+  TARGET (runs with the generated weights)
+    5. `target`: a Transformer runs on the task's examples using those generated weights.
 
 The target model's own parameters are never trained: they only provide the parameter
 names and shapes that the generated vector is cut into.
@@ -55,7 +62,14 @@ class Hypernetwork(nn.Module):
         freeze_task_indicator: bool = False,
     ):
         super().__init__()
+        # Layers are created in this order (encoder and target first, as they arrive
+        # already built) so a given seed reproduces the paper's initial weights.
+
+        # --- Encoder: Transformer over the support set --------------------------------
         self.encoder = encoder
+
+        # --- Target: the model whose weights are generated -----------------------------
+        # Frozen: its own weights are only a template of names and shapes.
         self.target = target
         for parameter in target.parameters():
             parameter.requires_grad_(False)
@@ -64,10 +78,10 @@ class Hypernetwork(nn.Module):
         for module in target.modules():
             if hasattr(module, "flash"):
                 module.flash = False
-
         self.target_shapes = [(name, p.shape) for name, p in target.named_parameters()]
         self.num_target_weights = sum(p.numel() for p in target.parameters())
 
+        # --- Encoder (continued): pool the tokens into one task representation --------
         self.pooler = AttentionPooler(encoder_dim)
         self.num_tasks = num_tasks
         self.task_indicator_proj = (
@@ -75,6 +89,9 @@ class Hypernetwork(nn.Module):
         )
         if self.task_indicator_proj is not None and freeze_task_indicator:
             self.task_indicator_proj.weight.requires_grad_(False)
+
+        # --- Weight decoder: task representation -> every target weight ---------------
+        # encoder_dim -> bottleneck_dim -> num_target_weights
         self.projection = nn.Sequential(
             nn.Linear(encoder_dim, bottleneck_dim, bias=False),
             nn.GELU(),
@@ -88,7 +105,7 @@ class Hypernetwork(nn.Module):
     def task_representation(
         self, context: torch.Tensor, task_ids: torch.Tensor | None = None
     ) -> torch.Tensor:
-        """(batch, context_len, embedding_dim) -> (batch, encoder_dim)."""
+        """Encoder: (batch, context_len, embedding_dim) -> (batch, encoder_dim)."""
         representation = self.pooler(self.encoder(context))
         if self.task_indicator_proj is not None and task_ids is not None:
             one_hot = F.one_hot(task_ids, num_classes=self.num_tasks).float()
@@ -99,7 +116,8 @@ class Hypernetwork(nn.Module):
     def generate_weights(
         self, context: torch.Tensor, task_ids: torch.Tensor | None = None
     ) -> torch.Tensor:
-        """(batch, context_len, embedding_dim) -> (batch, num_target_weights), in float32."""
+        """Encoder + weight decoder: (batch, context_len, embedding_dim) ->
+        (batch, num_target_weights), in float32."""
         return self.projection(self.task_representation(context, task_ids)).float()
 
     def split_weights(self, flat_weights: torch.Tensor) -> dict[str, torch.Tensor]:
@@ -113,7 +131,7 @@ class Hypernetwork(nn.Module):
         return weights
 
     def run_target(self, flat_weights: torch.Tensor, inputs: torch.Tensor) -> torch.Tensor:
-        """Run the target on each task's inputs with that task's generated weights.
+        """Target: run it on each task's inputs with that task's generated weights.
 
         flat_weights: (batch, num_target_weights)
         inputs: (batch, num_examples, seq_len, embedding_dim)
@@ -131,4 +149,13 @@ class Hypernetwork(nn.Module):
         target_inputs: torch.Tensor,
         task_ids: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        return self.run_target(self.generate_weights(context, task_ids), target_inputs)
+        """context: (batch, context_len, embedding_dim), the embedded support set.
+        target_inputs: (batch, num_examples, seq_len, embedding_dim).
+        Returns target logits (batch, num_examples, seq_len, target_output_dim).
+        """
+        # Encoder: support set -> one task representation per task.
+        representation = self.task_representation(context, task_ids)
+        # Weight decoder: task representation -> flat vector of all target weights.
+        flat_weights = self.projection(representation).float()
+        # Target: each task's examples run through the target with that task's weights.
+        return self.run_target(flat_weights, target_inputs)
