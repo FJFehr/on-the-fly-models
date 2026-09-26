@@ -26,6 +26,8 @@
 #   SEEDS_OVERRIDE  space-separated seeds to launch (default: "1")
 #   GPUS            comma-separated GPU ids for round-robin parallelism
 #                   (default: empty -> sequential, no CUDA_VISIBLE_DEVICES pin)
+#   SHARD           "k/N": run only every N-th (config, seed) pair, starting at the k-th
+#                   (0-based), to split one sweep across nodes (default: empty -> all)
 
 set -uo pipefail
 
@@ -35,14 +37,26 @@ LOG_DIR="${LOG_DIR:-logs/${PROJECT}}"
 CELL_GLOB="${CELL_GLOB:-*.yaml}"
 SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1}"
 GPUS="${GPUS:-}"
+SHARD="${SHARD:-}"
 mkdir -p "$LOG_DIR"
+
+SHARD_K=0
+SHARD_N=1
+if [ -n "$SHARD" ]; then
+    IFS='/' read -r SHARD_K SHARD_N <<< "$SHARD"
+fi
 
 read -ra SEEDS <<< "$SEEDS_OVERRIDE"
 
 JOBS=()
 SKIPPED=0
+PAIR_INDEX=-1
 for SEED in "${SEEDS[@]}"; do
     while IFS= read -r cfg; do
+        # Sharding counts every (config, seed) pair, finished or not, so a shard keeps
+        # the same jobs when it is relaunched.
+        PAIR_INDEX=$((PAIR_INDEX + 1))
+        (( PAIR_INDEX % SHARD_N == SHARD_K )) || continue
         logging_name=$(grep '^experiment_name:' "$cfg" | awk '{print $2}')
         exp_name="${logging_name}_seed${SEED}"
         results_file="outputs/${PROJECT}/${exp_name}/results.txt"
@@ -69,7 +83,7 @@ else
     echo "Running $N_JOBS jobs sequentially (each using 1 GPU)"
 fi
 echo "Already complete: $SKIPPED (skipped)"
-echo "Project: $PROJECT  |  Config dir: $CFG_DIR  |  Logs: $LOG_DIR/  |  CELL_GLOB: $CELL_GLOB  |  SEEDS: ${SEEDS[*]}"
+echo "Project: $PROJECT  |  Config dir: $CFG_DIR  |  Logs: $LOG_DIR/  |  CELL_GLOB: $CELL_GLOB  |  SEEDS: ${SEEDS[*]}  |  SHARD: ${SHARD:-all}"
 echo ""
 
 if [ "$N_JOBS" -eq 0 ]; then
