@@ -1,5 +1,0 @@
-# Shared baseline: hierarchical pooling, lora_adapter_rank=1, N_supervision=2, encoder
-# num_layers=2. Used as the reference point for all three pairwise comparisons in this
-# experiment (pooling, rank, N_supervision), not rerun per comparison.
-_base_: legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_followup/base.yaml
-experiment_name: looped_hyper_rope_canon_followup_default

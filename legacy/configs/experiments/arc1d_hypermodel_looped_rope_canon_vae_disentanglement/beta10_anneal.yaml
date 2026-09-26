@@ -1,9 +1,0 @@
-# Annealed counterpart to beta10.yaml (constant beta=10 collapsed val_query_exact_match to
-# 0%, probe accuracy at exact chance -- full posterior collapse). See beta1e-2_anneal.yaml
-# for the annealing rationale.
-_base_: legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement/base.yaml
-experiment_name: looped_hyper_rope_canon_vae_disentanglement_beta10_anneal
-
-kl_beta: 10.0
-kl_beta_anneal: cosine
-kl_beta_warmup_steps: 400

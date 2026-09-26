@@ -1,7 +1,0 @@
-_base_: legacy/configs/experiments/arc1d_hypermodel_disentanglement/base_disentanglement.yaml
-task: move_2p
-experiment_name: disentangle_move_2p_rnn
-task_categories:
-  - 1d_move_2p
-val_task_categories:
-  - 1d_move_2p

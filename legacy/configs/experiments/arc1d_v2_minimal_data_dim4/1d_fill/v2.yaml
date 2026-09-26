@@ -1,7 +1,0 @@
-_base_: legacy/configs/experiments/arc1d_v2_minimal_data_dim4/base.yaml
-experiment_name: v2_minimal_data_dim4_1d_fill_v2
-task_categories:
-- 1d_fill
-val_task_categories:
-- 1d_fill
-variants_per_base_task: 2

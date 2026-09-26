@@ -1,9 +1,0 @@
-# See beta1e-2_anneal.yaml for the annealing rationale. Extends the sweep three orders of
-# magnitude smaller -- close enough to zero regularization to check whether the bottleneck
-# adds anything at all once training is stabilized past the warmup window.
-_base_: legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement/base.yaml
-experiment_name: looped_hyper_rope_canon_vae_disentanglement_beta1e-5_anneal
-
-kl_beta: 0.00001
-kl_beta_anneal: cosine
-kl_beta_warmup_steps: 400

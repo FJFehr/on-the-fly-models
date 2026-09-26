@@ -4,10 +4,12 @@ Task-conditioned models that generate or adapt a small target model from a task'
 
 **→ For the paper's experiments, start at [`experiments/README.md`](experiments/README.md).**
 It names the 6 experiments, their status, and the exact commands to reproduce
-each figure. Everything below this point describes the original 1D-ARC
-capacity/binary/multiclass track that predates that work: still functional,
-but superseded as the active story. Its configs and scripts now live under
-`legacy/` (see [`legacy/README.md`](legacy/README.md)).
+each figure. The rest of this README covers the shared codebase (data prep,
+training/validation entry points, model classes, repository layout). The
+original 1D-ARC capacity/binary/multiclass track that predates the paper
+work has been removed (its configs and scripts, along with the exploratory
+`arc1d_*` runs that predated the current 6 experiments, are still recoverable
+from git history before this cleanup).
 
 ## Reproducing from a clean environment
 
@@ -93,10 +95,12 @@ The current codebase is a config-driven 1D ARC experimentation repo with two act
 
 ## Quick start
 
+For a full clean-slate rerun of the paper experiments, see "Reproducing from
+a clean environment" above. In general:
+
 ```bash
 uv sync --python 3.12 --managed-python
-uv run python scripts/build_arc_1d.py --padded-multiclass
-uv run python train.py --config legacy/configs/experiments/arc1d_multiclass/move_1p/hyper_model.yaml
+uv run python train.py --config <path/to/experiment_config>.yaml
 uv run python validate.py --config outputs/<run_name>/config.yaml --checkpoint best --mode both
 ```
 
@@ -225,83 +229,13 @@ Both `Arc1dDirectDataModule` (capacity track) and `Arc1dMetaDataModule`
 
 ## Training
 
-Training is config-driven. Each experiment YAML selects a registered model/data pair and overrides only the fields that differ from its inherited base configs.
-
-Hypermodel example:
-
-```bash
-uv run python train.py --config legacy/configs/experiments/arc1d_binary/overfit/hyper_model.yaml
-```
-
-Multiclass hypermodel example:
-
-```bash
-uv run python train.py --config legacy/configs/experiments/arc1d_multiclass/move_1p/hyper_model.yaml
-```
-
-Direct-supervised example:
-
-```bash
-uv run python train.py --config legacy/configs/experiments/arc1d_capacity_binary/1d_move_1p/rnn.yaml
-```
+Training is config-driven. Each experiment YAML selects a registered model/data pair and overrides only the fields that differ from its inherited base configs. See each experiment's own README under `experiments/` for its exact training commands.
 
 Supported model families are:
 
 - `binary_hyper_model` / `hyper_model` — both resolve to `HyperModelLightning`; hypernetwork and target template are selected via `hyper_model.name` and `target_model.name` in the experiment config
-- `direct_supervised` — resolves to `DirectSupervisedLightning`; trains a backbone (RNN, CNN, Transformer, MLP) directly on (input, output) pairs without a hypernetwork; see the capacity baselines under `legacy/configs/experiments/arc1d_capacity_*`
-
-### Experiment 1: Target Model Capacity (direct supervised)
-
-Run one binary direct-supervised baseline config for `1d_move_1p`:
-
-```bash
-uv run python train.py --config legacy/configs/experiments/arc1d_capacity_binary/1d_move_1p/rnn.yaml
-uv run python train.py --config legacy/configs/experiments/arc1d_capacity_binary/1d_move_1p/cnn.yaml
-uv run python train.py --config legacy/configs/experiments/arc1d_capacity_binary/1d_move_1p/transformer.yaml
-uv run python train.py --config legacy/configs/experiments/arc1d_capacity_binary/1d_move_1p/mlp.yaml
-```
-
-Capacity sweeps can be launched across multiple single-GPU workers and multiple
-seeds with:
-
-```bash
-uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_multiclass --gpus 0,1,2,3 --seeds 42,43,44
-```
-
-Variable-length multiclass sweep (18 tasks × CNN/RNN/Transformer, 3 seeds, 8 GPUs):
-
-```bash
-uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_variable_multiclass --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
-```
-
-Scaling experiment — small/medium/large capacity tiers (run each size independently):
-
-| Size | Params (CNN/RNN/TF) | Steps | WandB project |
-|------|---------------------|-------|---------------|
-| small | ~4K / 5.6K / 5.4K | 4 000 | `arc1d_capacity_small` |
-| medium | ~9K / 9.2K / 10.3K | 4 000 | `arc1d_capacity_medium` |
-| large | ~100K / 100K / 95K | 10 000 | `arc1d_capacity_large` |
-
-```bash
-uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_small --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
-uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_medium --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
-uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_large --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
-```
-
-Augmented capacity tiers mirror the small/medium/large model and training
-settings, but read train examples from `data/arc_1d_augmented`:
-
-```bash
-uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_augmented_small --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
-uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_augmented_medium --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
-uv run python legacy/scripts/run_arc1d_capacity.py --config-dir legacy/configs/experiments/arc1d_capacity_augmented_large --gpus 0,1,2,3,4,5,6,7 --seeds 0,1,2
-```
-
-The capacity plotter aggregates seeded runs under one output root:
-
-- `solved_per_model.png` uses the best seed per task/model cell
-- `heatmap_task_model.png` uses mean validation exact match with `mean±std`
-  shown inside each cell
+- `direct_supervised` — resolves to `DirectSupervisedLightning`; trains a backbone (RNN, CNN, Transformer, MLP) directly on (input, output) pairs without a hypernetwork
+- `looped_supervised` — resolves to `LoopedSupervisedLightning`; recursion-supervised training over `N_supervision` loop steps
 
 ## Validation
 
@@ -392,7 +326,6 @@ on-the-fly-models/
 │   ├── visualise_augmentation.py, measure_compute_efficiency.py, fetch_experiments.sh
 │
 ├── experiments/                    # the paper's 6 experiments -- see experiments/README.md
-├── legacy/                         # everything superseded, moved via git mv (history intact)
 ├── docs/arc1d_story/                # research-narrative writeups
 ├── tests/                          # pytest suite (testpaths); `slow`-marked tests need built data
 └── .agents/                        # operating contract for coding agents working in this repo

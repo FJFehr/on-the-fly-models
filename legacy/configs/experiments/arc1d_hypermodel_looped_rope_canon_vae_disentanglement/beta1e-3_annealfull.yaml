@@ -1,7 +1,0 @@
-# See beta1e-4_annealfull.yaml for the full-training-anneal rationale.
-_base_: legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement/base.yaml
-experiment_name: looped_hyper_rope_canon_vae_disentanglement_beta1e-3_annealfull
-
-kl_beta: 0.001
-kl_beta_anneal: cosine
-kl_beta_warmup_steps: 4000

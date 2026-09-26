@@ -1,4 +1,0 @@
-_base_: legacy/configs/experiments/arc1d_hypermodel_looped_lora_adapter/base_n2_loop4_noskip.yaml
-experiment_name: looped_hyper_lora_adapter_n2_loop4_noskip_r1
-hyper_head:
-  lora_adapter_rank: 1

@@ -1,6 +1,0 @@
-_base_: legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_capacity_baseline/base.yaml
-experiment_name: looped_hyper_rope_canon_capacity_baseline_layers8_td
-
-hyper_model:
-  params:
-    num_layers: 8

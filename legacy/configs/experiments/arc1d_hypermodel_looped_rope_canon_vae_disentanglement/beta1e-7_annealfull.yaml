@@ -1,8 +1,0 @@
-# See beta1e-4_annealfull.yaml for the full-training-anneal rationale, and beta1e-6_annealfull.yaml
-# for why the very-low end is worth checking as a near-zero-regularization control.
-_base_: legacy/configs/experiments/arc1d_hypermodel_looped_rope_canon_vae_disentanglement/base.yaml
-experiment_name: looped_hyper_rope_canon_vae_disentanglement_beta1e-7_annealfull
-
-kl_beta: 0.0000001
-kl_beta_anneal: cosine
-kl_beta_warmup_steps: 4000

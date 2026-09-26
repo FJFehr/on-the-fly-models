@@ -1,7 +1,0 @@
-_base_: legacy/configs/experiments/arc1d_v2_minimal_data_dim4/base.yaml
-experiment_name: v2_minimal_data_dim4_1d_pcopy_mc_v300
-task_categories:
-- 1d_pcopy_mc
-val_task_categories:
-- 1d_pcopy_mc
-variants_per_base_task: 300
