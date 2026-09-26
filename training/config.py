@@ -2,7 +2,7 @@
 
 This module owns the full config lifecycle:
 - loading YAML with `_base_` inheritance
-- normalizing grouped/aliased sections into the runtime shape
+- flattening it into the keyword arguments the model and data module receive
 - creating and saving run output directories
 """
 
@@ -26,66 +26,23 @@ def save_resolved_config(cfg) -> None:
     OmegaConf.save(cfg, os.path.join(cfg.output_path, "config.yaml"))
 
 
-def apply_grouped_config_aliases(cfg) -> None:
-    """Translate grouped experiment config sections into the runtime shape.
-
-    Some experiment files still use older or grouped naming conventions.
-    This helper normalizes them before runtime flattening happens.
-    """
-    if "name" in cfg and "model" not in cfg:
-        cfg["model"] = cfg["name"]
-
-
 def build_runtime_config_dict(cfg) -> dict:
-    """Flatten grouped config sections into the kwargs expected by the runtime.
+    """Resolve the config into the flat keyword arguments passed to the model and data module.
 
-    The training runtime passes one large `**kwargs` mapping into the selected
-    model and datamodule. This helper converts the human-friendly YAML shape
-    into that runtime shape while preserving backward compatibility.
+    Keys under an optional `training:` section are lifted to the top level. Model and data
+    module constructors take the keys they need and ignore the rest.
     """
-    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-
-    if not isinstance(cfg_dict, dict):
-        msg = "Resolved config must be a dictionary."
-        raise ValueError(msg)
-
-    runtime_cfg = dict(cfg_dict)
-
-    # Lift the grouped `training:` section to top-level runtime kwargs so model
-    # and datamodule constructors can continue receiving a flat config shape.
+    runtime_cfg = OmegaConf.to_container(cfg, resolve=True)
+    if not isinstance(runtime_cfg, dict):
+        raise ValueError("Resolved config must be a dictionary.")
     training_cfg = runtime_cfg.pop("training", None)
     if isinstance(training_cfg, dict):
         runtime_cfg.update(training_cfg)
-
-    if runtime_cfg.get("model") not in {"hyper_model", "binary_hyper_model"}:
-        # Older meta-model paths expect some grouped config values to be lifted
-        # into flat runtime keys. The simplified hypermodel path keeps its
-        # structured `hyper_model` / `target_model` sections intact.
-        hyper_model_cfg = runtime_cfg.pop("hyper_model", None)
-        if isinstance(hyper_model_cfg, dict):
-            runtime_cfg.update(hyper_model_cfg)
-
-        target_model_cfg = runtime_cfg.pop("target_model", None)
-        if isinstance(target_model_cfg, dict):
-            rnn_cfg = target_model_cfg.get("rnn")
-            if isinstance(rnn_cfg, dict):
-                runtime_cfg["target_rnn_hidden_dim"] = rnn_cfg["hidden_dim"]
-                runtime_cfg["target_rnn_bidirectional"] = rnn_cfg["bidirectional"]
-                runtime_cfg["target_rnn_num_layers"] = rnn_cfg["num_layers"]
-            cnn_cfg = target_model_cfg.get("cnn")
-            if isinstance(cnn_cfg, dict):
-                runtime_cfg["target_cnn_hidden_channels"] = cnn_cfg["hidden_channels"]
-                runtime_cfg["target_cnn_kernel_size"] = cnn_cfg.get("kernel_size", 3)
-                runtime_cfg["target_cnn_num_layers"] = cnn_cfg.get("num_layers", 1)
-                runtime_cfg["target_cnn_use_skip_connections"] = cnn_cfg.get(
-                    "use_skip_connections", False
-                )
-
     return runtime_cfg
 
 
 def load_config(config_path: str, overrides: list[str] | None = None):
-    """Load a config file, apply `_base_`, aliases, and interpolation resolution.
+    """Load a config file, apply `_base_` and command-line overrides, and resolve it.
 
     This is the single entry point for config loading so every run benefits
     from the same merge and normalization behavior.
@@ -101,6 +58,5 @@ def load_config(config_path: str, overrides: list[str] | None = None):
     if overrides:
         cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(overrides))
 
-    apply_grouped_config_aliases(cfg)
     OmegaConf.resolve(cfg)
     return cfg

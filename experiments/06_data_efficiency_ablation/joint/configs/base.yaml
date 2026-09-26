@@ -55,7 +55,7 @@ output_path: ${output_dir}/${project_name}/${experiment_name}
 
 data: arc_1d_direct
 data_dir: data/arc_1d_looped_augmented
-model: direct_supervised
+model: direct
 primary_metric: val_loss
 stop_on_perfect_val_exact_match: false
 num_workers: 1
@@ -138,23 +138,13 @@ data_seed: 42
 # false (notd).
 task_encoding:
   embedding_dim: 10
-  value_vocab_size: 11
   use_sinusoidal_pe: false
   use_task_embedding: null
 
-backbone_model:
-  name: rope_canon_looped_transformer
-  params:
-    hidden_dim: 14
-    num_heads: 1
-    inner_dim: 14
-    inner_num_heads: 1
-    n_loops: 1
-    dropout: 0.1
-    canon_set: ABCD
-    canon_kernel: 5
-    canon_activation: true
-    canon_residual: true
-    canon_causal: false
-    use_block_skip: false
-    use_loop_skip: false
+backbone:
+  hidden_dim: 14
+  num_layers: 3
+  num_heads: 1
+  dropout: 0.1
+  canon_set: ABCD
+  canon_kernel: 5

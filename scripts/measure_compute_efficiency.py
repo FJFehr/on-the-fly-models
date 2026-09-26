@@ -16,7 +16,7 @@ This script measures each term with real FLOP counts (torch.utils.flop_counter.F
 two routes cross over as a function of n_tasks.
 
 Terminology note: "eval_rows_per_task" is a task INSTANCE (3 support + 1 query examples,
-generated/applied together, see models/hypermodel.py's HyperModel.forward), not a single query
+generated/applied together, see models/hypernetwork.py's Hypernetwork.forward), not a single query
 example -- every dataset row in this repo already bundles its own support set, so there is no
 real data where several distinct query examples share one fixed, reusable support set to batch
 against. See Phase D below for the (synthetic, mechanics-only) check of that broadcast idea.
@@ -25,14 +25,12 @@ Five phases, independently runnable via --stage (A-D are synthetic/shape-only an
 against a freshly-initialized model; E needs real learned weights and real data):
   A. generation  -- one hypernetwork forward pass (encoder + pooling + projection head),
                     forward-only, per task-batch-row.
-  B. inference   -- target-model forward only, given already-generated weights (accounts for
-                    n_loops); reported for both routes to confirm it's identical (same target
+  B. inference   -- target-model forward only, given already-generated weights; reported
+                    for both routes to confirm it's identical (same target
                     architecture), so it's excluded from the crossover math as a common term.
   C. training    -- FLOP-count + time one real training_step() call (forward+backward+opt.step(),
-                    already including N_supervision internally -- see training/trainer.py's
-                    build_trainer for why N_supervision must not be double-counted) via a real
-                    (tiny) pl.Trainer.fit() call, then extrapolate by the config's own max_steps
-                    (which counts batches, i.e. training_step() calls, not opt.step() calls).
+                    one optimiser step per batch) via a real (tiny) pl.Trainer.fit() call,
+                    then extrapolate by the config's own max_steps.
                     Used for BOTH the hypernetwork's one-time training cost and the baseline's
                     per-task training cost, with the same function.
   D. broadcast   -- sanity check only, not a speed measurement: generate weights for one task
@@ -41,7 +39,7 @@ against a freshly-initialized model; E needs real learned weights and real data)
                     prediction from the normal vmap path bit-for-bit (modulo fp32 tolerance).
                     Confirms no hidden per-example coupling (dropout/batchnorm) breaks the
                     "one generated model, many predictions" assumption -- under model.eval(),
-                    RoPECanonLoopedTransformer has no such coupling (no BatchNorm; its only
+                    the target Transformer has no such coupling (no BatchNorm; its only
                     Dropout is zeroed in eval mode).
   E. generalization -- the SHARPER, real claim (opt-in only, not part of --stage all -- needs a
                     trained checkpoint via --hyper-checkpoint and real val/holdout data, unlike
@@ -68,7 +66,7 @@ Known confounds (see this script's README / the plan that produced it):
   - Generation batch size (hyper config, typically 512 rows/batch) differs from the baseline's
     training batch size (256) -- everything below is normalized to a PER-TASK-INSTANCE cost
     before combining, not raw per-batch cost.
-  - Forcing sdpa_kernel(MATH) for vmap correctness (already done in models/hypermodel.py) may
+  - Forcing sdpa_kernel(MATH) for vmap correctness (already done in models/hypernetwork.py) may
     make the generation/inference path artificially slower in wall-clock than a non-vmapped
     deployment would be -- FLOPs are unaffected (same math, different kernel), but don't read
     the wall-clock numbers here as production-deployment numbers.
@@ -100,13 +98,13 @@ from torch.utils.flop_counter import FlopCounterMode
 
 import lightning as pl
 from data_modules import DATA_REGISTRY
-from models import MODEL_REGISTRY
-from models.hypermodel_lightning import TASK_CATEGORY_INDEX
+from lightning_modules import MODEL_REGISTRY
+from models.embedding import TASK_CATEGORY_INDEX
 from training.config import build_runtime_config_dict, load_config
 from training.trainer import load_checkpoint_state, resolve_evaluation_checkpoint_path
 from visualisation.core.style import apply_latex_style
 
-DEFAULT_HYPER_CONFIG = "legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/notd.yaml"
+DEFAULT_HYPER_CONFIG = "experiments/04_compositional_generalization/configs/notd.yaml"
 DEFAULT_BASELINE_CONFIG = "experiments/06_data_efficiency_ablation/individual/configs/1d_fill/v3.yaml"
 DEFAULT_OUTPUT_DIR = "outputs/compute_efficiency"
 
@@ -119,6 +117,11 @@ N_TASKS_WITH_COMPOSITIONAL_HOLDOUT = 25  # + 10 held-out composite categories
 def log(*args, **kwargs) -> None:
     kwargs.setdefault("flush", True)
     print(*args, **kwargs)
+
+
+def single_weight_dict(hypernetwork, flat_weights: torch.Tensor) -> dict[str, torch.Tensor]:
+    """One task's generated weights (num_target_weights,) as {name: tensor} for the target."""
+    return {name: w[0] for name, w in hypernetwork.split_weights(flat_weights.unsqueeze(0)).items()}
 
 
 # ---------------------------------------------------------------------------
@@ -140,9 +143,7 @@ def build_synthetic_hyper_batch(
         "query_input": rand_seq(batch_size, seq_len),
         "query_output": rand_seq(batch_size, seq_len),
         "task_category": [categories[i % len(categories)] for i in range(batch_size)],
-        # A plain Python list of ints, matching Arc1dMetaPaddingCollator's real contract
-        # (models/hypermodel_lightning.py's _write_step_diagnostics JSON-serializes this
-        # directly, which a torch.Tensor here would break).
+        # A plain Python list of ints, matching Arc1dMetaPaddingCollator's real contract.
         "task_id": list(range(batch_size)),
     }
 
@@ -216,18 +217,13 @@ def measure_training_flops_and_time(
     accelerator: str,
 ) -> tuple[int, float]:
     """FLOP-count + time one real training_step() call (forward + backward + opt.step(),
-    N_supervision loop included) via a real (tiny) pl.Trainer.fit(), not a hand-rolled call --
+    one optimiser step) via a real (tiny) pl.Trainer.fit(), not a hand-rolled call --
     training_step() calls self.log(), which requires a real trainer attached.
+    limit_train_batches=n_batches counts batches directly, matching what a config's own
+    `max_steps` means.
 
-    limit_train_batches=n_batches (not max_steps) is used deliberately: under manual
-    optimization (this repo's HyperModelLightning/LoopedSupervisedLightning), Lightning's
-    global_step increments once per opt.step() call, i.e. N_supervision times per batch (see
-    training/trainer.py's build_trainer) -- limit_train_batches counts batches directly,
-    matching what a config's own `max_steps` means (see that same comment), with no risk of
-    off-by-N_supervision here.
-
-    Returns (flops_per_batch, wall_s_per_batch), where "per batch" already includes the full
-    N_supervision inner loop -- multiply by a config's own `max_steps` to get total cost.
+    Returns (flops_per_batch, wall_s_per_batch) -- multiply by a config's own `max_steps` to
+    get total cost.
     """
 
     def build_trainer(n_batches: int) -> pl.Trainer:
@@ -266,19 +262,13 @@ def measure_training_flops_and_time(
 
 def measure_generation_cost(hyper_lightning, batch: dict, n_warmup: int, n_iters: int, device: torch.device) -> dict:
     hyper_lightning.eval()
-    hypermodel = hyper_lightning.hypermodel
+    hypernetwork = hyper_lightning.hypernetwork
     with torch.no_grad():
-        task_features, _, _ = hyper_lightning.prepare_inputs(batch)
-    canonical_ids = None
-    if hypermodel.task_indicator_proj is not None:
-        canonical_ids = torch.tensor(
-            [TASK_CATEGORY_INDEX[c] for c in batch["task_category"]], device=task_features.device
-        )
+        task_features, _, _, task_ids = hyper_lightning.prepare_inputs(batch)
 
     def _generate():
         with torch.no_grad():
-            hyper_output = hypermodel.hypernetwork(task_features)
-            hypermodel.extract_parameter_vectors(hyper_output, canonical_ids)
+            hypernetwork.generate_weights(task_features, task_ids)
 
     flops, wall_s = measure_forward_flops_and_time(_generate, n_warmup, n_iters, device)
     batch_size = task_features.shape[0]
@@ -298,29 +288,14 @@ def measure_generation_cost(hyper_lightning, batch: dict, n_warmup: int, n_iters
 
 def measure_inference_cost(hyper_lightning, batch: dict, n_warmup: int, n_iters: int, device: torch.device) -> dict:
     hyper_lightning.eval()
-    hypermodel = hyper_lightning.hypermodel
+    hypernetwork = hyper_lightning.hypernetwork
     with torch.no_grad():
-        task_features, example_inputs, _ = hyper_lightning.prepare_inputs(batch)
-        canonical_ids = None
-        if hypermodel.task_indicator_proj is not None:
-            canonical_ids = torch.tensor(
-                [TASK_CATEGORY_INDEX[c] for c in batch["task_category"]], device=task_features.device
-            )
-        hyper_output = hypermodel.hypernetwork(task_features)
-        parameter_vectors = hypermodel.extract_parameter_vectors(hyper_output, canonical_ids).float()
+        task_features, example_inputs, _, task_ids = hyper_lightning.prepare_inputs(batch)
+        parameter_vectors = hypernetwork.generate_weights(task_features, task_ids)
 
     def _infer():
         with torch.no_grad():
-            if hypermodel._use_vmap:
-                params = hypermodel.build_batched_param_dict(parameter_vectors)
-                with sdpa_kernel(SDPBackend.MATH):
-                    torch.vmap(functional_call, in_dims=(None, 0, 0), randomness="different")(
-                        hypermodel.target_model, params, example_inputs
-                    )
-            else:
-                for i in range(parameter_vectors.shape[0]):
-                    params = hypermodel.build_param_dict(parameter_vectors[i])
-                    functional_call(hypermodel.target_model, params, example_inputs[i])
+            hypernetwork.run_target(parameter_vectors, example_inputs)
 
     flops, wall_s = measure_forward_flops_and_time(_infer, n_warmup, n_iters, device)
     batch_size = parameter_vectors.shape[0]
@@ -375,29 +350,21 @@ def measure_broadcast_validity(hyper_lightning, batch: dict, k_rows: int = 8, at
     the input's leading dim as an ordinary batch -- vmap is only needed when every row gets
     its OWN weights, which is the opposite of what's being tested here."""
     hyper_lightning.eval()
-    hypermodel = hyper_lightning.hypermodel
+    hypernetwork = hyper_lightning.hypernetwork
     with torch.no_grad():
-        task_features, example_inputs, _ = hyper_lightning.prepare_inputs(batch)
-        canonical_ids = None
-        if hypermodel.task_indicator_proj is not None:
-            # Must match hyper_lightning(batch)'s own canonical_ids below exactly (same
-            # task_category -> TASK_CATEGORY_INDEX lookup as HyperModelLightning.forward) --
-            # a task-ID-conditioned model (frozentd/td) generates different weights with vs.
-            # without its task signal, so ref_logits below would silently stop matching
-            # param_dict's weights otherwise.
-            canonical_ids = torch.tensor(
-                [TASK_CATEGORY_INDEX[c] for c in batch["task_category"][:1]], device=task_features.device
-            )
-        hyper_output = hypermodel.hypernetwork(task_features[:1])
-        parameter_vectors = hypermodel.extract_parameter_vectors(hyper_output, canonical_ids).float()
-        param_dict = hypermodel.build_param_dict(parameter_vectors[0])
+        # task_ids come from the same lookup as hyper_lightning(batch) below, so ref_logits
+        # and param_dict use identical generated weights for task-ID-conditioned models.
+        task_features, example_inputs, _, task_ids = hyper_lightning.prepare_inputs(batch)
+        task_ids = task_ids[:1] if task_ids is not None else None
+        parameter_vectors = hypernetwork.generate_weights(task_features[:1], task_ids)
+        param_dict = single_weight_dict(hypernetwork, parameter_vectors[0])
 
         # example_inputs: (batch, 4, seq_len, dim), examples ordered [support x3, query] (see
-        # HyperModelLightning.prepare_inputs) -- index -1 is row 0's own query example.
+        # HypernetworkLightning.prepare_inputs) -- index -1 is row 0's own query example.
         query_input_row0 = example_inputs[0, -1]  # (seq_len, dim)
         broadcast_inputs = query_input_row0.unsqueeze(0).expand(k_rows, -1, -1)  # (k_rows, seq_len, dim)
         with sdpa_kernel(SDPBackend.MATH):
-            out_broadcast = functional_call(hypermodel.target_model, param_dict, broadcast_inputs)
+            out_broadcast = functional_call(hypernetwork.target, param_dict, broadcast_inputs)
             if out_broadcast.shape[-1] == 1:
                 out_broadcast = out_broadcast.squeeze(-1)
 
@@ -445,8 +412,7 @@ def measure_cross_instance_generalization(
     padding_idx: int | None = None,
 ) -> dict[str, dict]:
     """padding_idx must be passed and matched against target sequences exactly as
-    HyperModelLightning._accumulate_query_exact_match_by_task_category does (models/
-    hypermodel_lightning.py): a padded position can never be "predicted" correctly by an
+    HypernetworkLightning.metric_totals does (lightning_modules/hypernetwork.py): a padded position can never be "predicted" correctly by an
     argmax over num_classes (padding_idx sits outside that range), so it must be treated as
     vacuously matched, not compared -- otherwise every batch with any padding at all (which is
     most of them, since Arc1dMetaPaddingCollator pads to each batch's own longest sequence)
@@ -458,7 +424,7 @@ def measure_cross_instance_generalization(
     every measured forward pass here by construction (a batch is always fully materialized
     before its rows are used)."""
     hyper_lightning.eval()
-    hypermodel = hyper_lightning.hypermodel
+    hypernetwork = hyper_lightning.hypernetwork
 
     # Per category: every instance seen, as (param_dict, embedded query input, query target).
     # NOTE: query inputs are stored already-embedded (not re-embedded from raw token ids), so
@@ -491,38 +457,11 @@ def measure_cross_instance_generalization(
                 key: (value.to(device) if isinstance(value, torch.Tensor) else value)
                 for key, value in batch.items()
             }
-            task_features, example_inputs, targets = hyper_lightning.prepare_inputs(tensor_batch)
-            canonical_ids = None
-            if hypermodel.task_indicator_proj is not None:
-                # A task-ID-conditioned model (frozentd/td) generates different weights with
-                # vs. without this signal -- must match HyperModelLightning.forward's own
-                # canonical_ids exactly, or "own" accuracy here would silently regress to the
-                # unconditioned generation path instead of what the checkpoint was actually
-                # trained/evaluated with (caught before running against a frozentd checkpoint,
-                # which is exactly the case this matters for).
-                canonical_ids = torch.tensor(
-                    [TASK_CATEGORY_INDEX[c] for c in batch["task_category"]], device=task_features.device
-                )
-            hyper_output = hypermodel.hypernetwork(task_features)
-            parameter_vectors = hypermodel.extract_parameter_vectors(hyper_output, canonical_ids).float()
-
-            if hypermodel._use_vmap:
-                params = hypermodel.build_batched_param_dict(parameter_vectors)
-                with sdpa_kernel(SDPBackend.MATH):
-                    own_logits = torch.vmap(
-                        functional_call, in_dims=(None, 0, 0), randomness="different"
-                    )(hypermodel.target_model, params, example_inputs)
-            else:
-                own_logits = torch.stack(
-                    [
-                        functional_call(
-                            hypermodel.target_model,
-                            hypermodel.build_param_dict(parameter_vectors[i]),
-                            example_inputs[i],
-                        )
-                        for i in range(parameter_vectors.shape[0])
-                    ]
-                )
+            # task_ids match HypernetworkLightning.forward, so task-ID-conditioned models
+            # (frozentd/td) generate the same weights they were trained and evaluated with.
+            task_features, example_inputs, targets, task_ids = hyper_lightning.prepare_inputs(tensor_batch)
+            parameter_vectors = hypernetwork.generate_weights(task_features, task_ids)
+            own_logits = hypernetwork.run_target(parameter_vectors, example_inputs)
 
             own_predictions = decode(own_logits)
             query_targets = targets[:, -1].long()
@@ -532,7 +471,7 @@ def measure_cross_instance_generalization(
                 own_correct[category].append(bool(own_matches[row_idx].item()))
                 instances[category].append(
                     (
-                        hypermodel.build_param_dict(parameter_vectors[row_idx]),
+                        single_weight_dict(hypernetwork, parameter_vectors[row_idx]),
                         example_inputs[row_idx, -1].detach(),  # (seq_len, dim)
                         query_targets[row_idx].detach(),  # (seq_len,)
                     )
@@ -574,7 +513,7 @@ def measure_cross_instance_generalization(
                 raise RuntimeError(msg) from exc
             other_targets = torch.stack([rows[j][2] for j in other_indices])  # (n-1, seq_len)
             with sdpa_kernel(SDPBackend.MATH):
-                logits = functional_call(hypermodel.target_model, rows[i][0], other_inputs)
+                logits = functional_call(hypernetwork.target, rows[i][0], other_inputs)
             matches = exact_match(decode(logits), other_targets).tolist()
             pooled_pairs.extend(matches)
             loo_accuracies.append(sum(matches) / len(matches))

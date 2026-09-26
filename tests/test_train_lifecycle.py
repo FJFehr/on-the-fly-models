@@ -18,7 +18,7 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 from data_modules import DATA_REGISTRY
-from models import MODEL_REGISTRY
+from lightning_modules import MODEL_REGISTRY
 from training.config import (
     build_runtime_config_dict,
     ensure_output_path,
@@ -42,7 +42,7 @@ project_name: test_lifecycle
 experiment_name: smoke
 output_path: {output_path}
 
-model: direct_supervised
+model: direct
 data: arc_1d_direct
 data_dir: {data_dir}
 primary_metric: val_query_exact_match
@@ -56,7 +56,8 @@ num_workers: 0
 accelerator: cpu
 devices: 1
 max_steps: 1
-optimizer: Adam
+optimizer: AdamW
+weight_decay: 0.01
 learning_rate: 0.001
 save_checkpoints: false
 
@@ -66,14 +67,11 @@ padding_idx: 10
 
 task_encoding:
   embedding_dim: 4
-  value_vocab_size: 11
 
-backbone_model:
-  name: transformer
-  params:
-    hidden_dim: 8
-    num_layers: 1
-    num_heads: 2
+backbone:
+  hidden_dim: 8
+  num_layers: 1
+  num_heads: 2
 """
     )
 

@@ -12,7 +12,7 @@ import numpy as np
 import torch
 from lightning.pytorch.loggers import WandbLogger
 
-from visualisation import figure_to_wandb_image, render_val_example_figure
+from visualisation import figure_to_wandb_image
 from visualisation.core.embedding_clusters import (
     DEFAULT_GROUP_STYLES,
     compute_linear_probe_accuracy,
@@ -74,130 +74,40 @@ def _format_parameter_count(num_parameters: int) -> str:
     return f"{num_parameters:,}"
 
 
-def _describe_hyper_projection(hypermodel) -> str:
-    from models.hypermodel import _describe_hyper_projection as _hp_repr
+def describe_model(model: torch.nn.Module) -> dict[str, int | str]:
+    """Print and return the model architecture with its parameter counts.
 
-    return _hp_repr(hypermodel)
-
-
-def _describe_hyper_pooling(hypermodel) -> str:
-    from models.hypermodel import _describe_hyper_pooling as _pool_repr
-
-    return _pool_repr(hypermodel)
-
-
-def _build_generic_model_summary(model: torch.nn.Module) -> dict[str, int | str]:
-    model_repr = str(model)
+    Lists trainable/total parameters for each top-level submodule (and, for the
+    hypernetwork, each of its own submodules), then the full module tree.
+    """
+    lines = ["Parameters (trainable / total):"]
+    for name, child in model.named_children():
+        children = [(name, child)]
+        if name == "hypernetwork":
+            children = [(f"{name}.{sub}", module) for sub, module in child.named_children()]
+        for child_name, module in children:
+            trainable = _format_parameter_count(count_parameters(module, trainable_only=True))
+            total = _format_parameter_count(count_parameters(module))
+            lines.append(f"  {child_name}: {trainable} / {total}")
     total_params = count_parameters(model)
     trainable_params = count_parameters(model, trainable_only=True)
+    model_repr = str(model)
     summary_text = "\n".join(
         [
-            "Model architecture:",
-            model_repr,
+            *lines,
+            f"Total trainable parameters: {_format_parameter_count(trainable_params)}",
             f"Total parameters: {_format_parameter_count(total_params)}",
-            f"Trainable parameters: {_format_parameter_count(trainable_params)}",
-        ]
-    )
-    return {
-        "model_repr": model_repr,
-        "summary_text": summary_text,
-        "total_parameters": total_params,
-        "trainable_parameters": trainable_params,
-    }
-
-
-def _build_hypermodel_summary(model: torch.nn.Module) -> dict[str, int | str]:
-    """Build a hypermodel-aware summary for the simplified binary HyperModel path."""
-    hypermodel = model.hypermodel
-    hypernetwork = hypermodel.hypernetwork
-    target_model = hypermodel.target_model
-    shared_task_token_embedder = getattr(model, "shared_task_token_embedder", None)
-
-    hypernetwork_backbone_params = count_parameters(hypernetwork, trainable_only=True)
-    shared_embedding_params = (
-        count_parameters(shared_task_token_embedder, trainable_only=True)
-        if shared_task_token_embedder is not None
-        else 0
-    )
-    target_trainable_params = count_parameters(target_model, trainable_only=True)
-    target_non_trainable_params = count_parameters(target_model, trainable_only=False)
-
-    # Everything else trainable in `hypermodel` is the weight-generation head: hyper_pooling
-    # plus whichever projection path is active (dense hyper_projection; low_rank_output's
-    # hyper_proj_a/hyper_proj_b; lora_adapter's hyper_proj_shared/lora_proj_b/lora_proj_a/
-    # lora_proj_other; task_indicator_proj when the task descriptor is on). Computed as a
-    # difference rather than a hardcoded list of submodule names, so this stays correct as
-    # weight-generation modes are added -- the bug this replaces summed only
-    # hyper_pooling + hyper_projection, which is an empty placeholder Sequential under
-    # low_rank_output/lora_adapter (their real heads live in different submodules), so
-    # "trainable_parameters" silently excluded them and stayed constant across e.g. a
-    # lora_adapter_rank sweep even though the real trainable count was growing with rank.
-    hyper_head_params = (
-        count_parameters(hypermodel, trainable_only=True)
-        - hypernetwork_backbone_params
-        - target_trainable_params
-    )
-
-    # Single source of truth for the headline number: a full recursive count, not a sum of
-    # the breakdown pieces above, so the two can't silently drift apart again.
-    trainable_params = count_parameters(model, trainable_only=True)
-    total_params = count_parameters(model)
-
-    model_repr = str(model)
-    summary_lines = [
-        "Model architecture:",
-        f"Hypernetwork: {hypernetwork!r}",
-        f"Hyper pooling: {_describe_hyper_pooling(hypermodel)}",
-        f"Hyper projection: {_describe_hyper_projection(hypermodel)}",
-        f"Target: {target_model!r}",
-    ]
-    if shared_task_token_embedder is not None:
-        summary_lines.append(f"Shared task embeddings: {shared_task_token_embedder!r}")
-    summary_lines.extend(
-        [
-            "Hypernetwork backbone trainable params: "
-            f"{_format_parameter_count(hypernetwork_backbone_params)}",
-            f"Hyper head trainable params: {_format_parameter_count(hyper_head_params)}",
-            "Shared embedding trainable params: "
-            f"{_format_parameter_count(shared_embedding_params)}",
-            f"Target non-trainable params: {_format_parameter_count(target_non_trainable_params)}",
-        ]
-    )
-    if target_trainable_params:
-        summary_lines.append(
-            "Target trainable params (lora_adapter_train_backbone): "
-            f"{_format_parameter_count(target_trainable_params)}"
-        )
-    summary_lines.extend(
-        [
-            f"Total trainable params: {_format_parameter_count(trainable_params)}",
-            f"Total params: {_format_parameter_count(total_params)}",
             "",
             model_repr,
         ]
     )
-    summary_text = "\n".join(summary_lines)
+    print(summary_text)
     return {
         "model_repr": model_repr,
         "summary_text": summary_text,
         "total_parameters": total_params,
         "trainable_parameters": trainable_params,
     }
-
-
-def describe_model(model: torch.nn.Module) -> dict[str, int | str]:
-    """Build and print a model summary for the current run.
-
-    The returned dictionary is reused for disk artefacts and W&B metadata so
-    we only compute parameter counts once.
-    """
-    if hasattr(model, "hypermodel") and hasattr(model.hypermodel, "hypernetwork"):
-        summary = _build_hypermodel_summary(model)
-    else:
-        summary = _build_generic_model_summary(model)
-
-    print(summary["summary_text"])
-    return summary
 
 
 def write_model_summary(output_path: str, model_summary: dict[str, int | str]) -> None:
@@ -313,99 +223,6 @@ def write_results_file(
 # ---------------------------------------------------------------------------
 
 
-def log_hard_val_examples(
-    model: pl.LightningModule,
-    datamodule,
-    output_path: str,
-    wandb_logger=None,
-    num_hard_examples: int = 3,
-    key_prefix: str = "val_hard_example",
-    snapshot_label: str | None = None,
-) -> None:
-    """Find the hardest validation failures for pair-based models and log them.
-
-    This path is only for pair-based models that expose canonical logits and
-    decoded predictions over `(batch, seq_len)`. Task-level models use their
-    own task-gallery path instead.
-    """
-    model.eval()
-    device = next(model.parameters()).device
-    wrong_examples = []
-
-    with torch.no_grad():
-        for batch in datamodule.val_dataloader():
-            inputs = batch["inputs"].to(device)
-            targets = batch["targets"].to(device)
-
-            logits = model.format_logits(model(inputs), targets)
-            predictions = model.decode_logits(logits)
-            targets_long = targets.long()
-            exact_matches = (predictions == targets_long).all(dim=1)
-            position_accuracies = (predictions == targets_long).float().mean(dim=1)
-
-            for index in range(inputs.size(0)):
-                if exact_matches[index]:
-                    continue
-                wrong_examples.append(
-                    {
-                        "input": inputs[index].cpu().long().tolist(),
-                        "target": targets_long[index].cpu().long().tolist(),
-                        "prediction": predictions[index].cpu().long().tolist(),
-                        "position_accuracy": position_accuracies[index].item(),
-                        "task_category": batch["task_category"][index],
-                        "task_id": batch["task_id"][index].item(),
-                    }
-                )
-
-    if not wrong_examples:
-        print("No wrong validation examples found - skipping hard example logging.")
-        return
-
-    wrong_examples.sort(key=lambda example: example["position_accuracy"])
-    hard_examples = wrong_examples[:num_hard_examples]
-    hard_dir = os.path.join(output_path, "hard_examples")
-    os.makedirs(hard_dir, exist_ok=True)
-    wandb_payload = {}
-
-    for index, example in enumerate(hard_examples):
-        num_wrong = sum(
-            1
-            for target_value, prediction_value in zip(
-                example["target"],
-                example["prediction"],
-                strict=True,
-            )
-            if target_value != prediction_value
-        )
-        sequence_length = len(example["target"])
-        caption = (
-            f"{example['task_category']}:{example['task_id']} | "
-            f"pos_acc={example['position_accuracy']:.2f} | "
-            f"{num_wrong}/{sequence_length} wrong"
-        )
-
-        figure = render_val_example_figure(
-            input_sequence=example["input"],
-            target_sequence=example["target"],
-            prediction_sequence=example["prediction"],
-        )
-        filename = (
-            f"hard_{index}_{example['task_category']}_{example['task_id']}"
-            f"_acc{example['position_accuracy']:.2f}.png"
-        )
-        figure.savefig(os.path.join(hard_dir, filename), dpi=150, bbox_inches="tight")
-        wandb_payload[f"{key_prefix}_{index}"] = figure_to_wandb_image(figure, caption=caption)
-
-    if snapshot_label is not None:
-        wandb_payload["hard_example_snapshot"] = snapshot_label
-    log_wandb_payload(wandb_logger, wandb_payload)
-
-    print(
-        f"Logged {len(hard_examples)} hard validation examples "
-        f"({len(wrong_examples)} total failures) to {hard_dir}"
-    )
-
-
 def _select_hard_task_records(
     model: pl.LightningModule,
     dataloader,
@@ -452,7 +269,6 @@ def export_hard_validation_examples(
     wandb_logger=None,
     num_hard_examples: int = 3,
     key_prefix: str = "val_hard_example",
-    snapshot_label: str | None = None,
     split: str = "val",
 ) -> None:
     """Export hard example artefacts for pair-based and task-based models.
@@ -465,8 +281,8 @@ def export_hard_validation_examples(
     stage = "test" if split == "test" else "validate"
     datamodule.setup(stage=stage)
 
-    # Models that implement their own hard-example export (e.g. DirectSupervisedLightning)
-    # take priority over the generic pair-based and task-gallery paths below.
+    # The direct model exports its own hard examples; the hypernetwork saves a gallery of
+    # its worst validation tasks instead.
     if hasattr(model, "export_hard_examples"):
         model.export_hard_examples(
             datamodule=datamodule,
@@ -478,47 +294,20 @@ def export_hard_validation_examples(
         )
         return
 
-    if getattr(model, "supports_hard_val_examples", True):
-        log_hard_val_examples(
-            model=model,
-            datamodule=datamodule,
-            output_path=output_path,
-            wandb_logger=wandb_logger,
-            num_hard_examples=num_hard_examples,
-            key_prefix=key_prefix,
-            snapshot_label=snapshot_label,
-        )
+    if not getattr(model, "log_task_examples", False):
         return
-
     dataloader = datamodule.test_dataloader() if split == "test" else datamodule.val_dataloader()
-    hard_task_records = _select_hard_task_records(
-        model,
-        dataloader,
-        limit=num_hard_examples,
-    )
+    hard_task_records = _select_hard_task_records(model, dataloader, limit=num_hard_examples)
     if not hard_task_records:
         print("No hard validation task examples found.")
         return
-
-    if getattr(model, "log_task_examples", False) and hasattr(model, "log_task_gallery"):
-        model.log_task_gallery(
-            split_name="val_hard_validate",
-            records=hard_task_records,
-            output_path=output_path,
-            wandb_logger=wandb_logger,
-            key_prefix=f"{key_prefix}_task",
-        )
-
-    if getattr(model, "log_task_attention", False) and hasattr(
-        model, "log_task_attention_gallery"
-    ):
-        model.log_task_attention_gallery(
-            split_name="val_hard_validate",
-            records=hard_task_records,
-            output_path=output_path,
-            wandb_logger=wandb_logger,
-            key_prefix=f"{key_prefix}_attention",
-        )
+    model.log_task_gallery(
+        split_name="val_hard_validate",
+        records=hard_task_records,
+        output_path=output_path,
+        wandb_logger=wandb_logger,
+        key_prefix=f"{key_prefix}_task",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -527,7 +316,7 @@ def export_hard_validation_examples(
 
 
 def log_final_task_visualizations(model, datamodule, output_path: str, wandb_logger=None) -> None:
-    """Emit final task galleries and attention plots for task-level models.
+    """Emit final task galleries for the hypernetwork.
 
     This runs after training so the run directory includes a stable final
     snapshot for representative train/val tasks and, when supported, a set of
@@ -566,7 +355,7 @@ def log_final_task_visualizations(model, datamodule, output_path: str, wandb_log
     val_hard_final_records = _select_hard_task_records(
         model,
         datamodule.val_dataloader(),
-        limit=getattr(model, "num_final_hard_val_task_examples", None),
+        limit=None,
         one_per_category=True,
     )
 
@@ -594,29 +383,6 @@ def log_final_task_visualizations(model, datamodule, output_path: str, wandb_log
                 key_prefix="val_hard_final_task",
             )
 
-    if getattr(model, "log_task_attention", False):
-        model.log_task_attention_gallery(
-            split_name="train_final",
-            records=train_final_records,
-            output_path=output_path,
-            wandb_logger=wandb_logger,
-            key_prefix="train_task_attention",
-        )
-        model.log_task_attention_gallery(
-            split_name="val_final",
-            records=val_final_records,
-            output_path=output_path,
-            wandb_logger=wandb_logger,
-            key_prefix="val_task_attention",
-        )
-        if val_hard_final_records:
-            model.log_task_attention_gallery(
-                split_name="val_hard_final",
-                records=val_hard_final_records,
-                output_path=output_path,
-                wandb_logger=wandb_logger,
-                key_prefix="val_hard_final_task_attention",
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -637,7 +403,7 @@ def log_embedding_cluster_plots(
 
     Validation-only, end-of-run diagnostic for whether the hypernetwork's pooled task
     representation is disentangled across task categories. Only runs for models exposing
-    `supports_embedding_visualization` (the hypermodel path) with `log_embedding_clusters`
+    `supports_embedding_visualization` (the hypernetwork) with `log_embedding_clusters`
     explicitly opted in.
 
     Pass `holdout_dataloader` (e.g. a zero-shot compositional-generalisation eval set) to

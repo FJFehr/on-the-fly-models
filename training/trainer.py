@@ -25,24 +25,6 @@ from training.logging import (
 # ---------------------------------------------------------------------------
 
 
-def _select_representative_task_ids(tasks: list[dict], limit: int) -> list[tuple[str, int]]:
-    """Select at most one (category, task_id) pair per category in dataset order."""
-    if limit < 1:
-        return []
-
-    seen_categories = set()
-    selected = []
-    for task in tasks:
-        task_category = task["task_category"]
-        if task_category in seen_categories:
-            continue
-        seen_categories.add(task_category)
-        selected.append((task_category, task["task_id"]))
-        if len(selected) >= limit:
-            break
-    return selected
-
-
 class StopOnMetricThreshold(Callback):
     """Stop training once a monitored validation metric reaches a threshold.
 
@@ -84,189 +66,60 @@ class StopOnMetricThreshold(Callback):
 
 
 class TaskVisualizationCallback(Callback):
-    """Shared task-visualisation callback for task-level models.
+    """Periodically save prediction figures for a fixed set of representative tasks.
 
-    The callback does not decide *how* to render a task — that remains model-
-    owned. Its job is only to decide *when* task examples/attention plots
-    should be emitted during training and to route the request to the model.
+    Only runs for modules with `supports_task_visualization` (the hypernetwork) and
+    `log_task_examples` enabled. The module renders the figures; this callback decides when:
+    once before training, then every `log_task_examples_every_n_epochs` epochs.
     """
 
     def __init__(self, output_path: str, wandb_logger=None):
         super().__init__()
         self.output_path = output_path
         self.wandb_logger = wandb_logger
-        self.has_logged_pretrain_snapshot = False
 
-    def _snapshot_split_name(self, split_name: str, epoch_index: int) -> str:
-        return f"{split_name}_epoch_{epoch_index:04d}"
-
-    def _resolve_task_ids(
-        self,
-        pl_module: pl.LightningModule,
-        dataset,
-        split_name: str,
-        limit: int,
-    ) -> list[int]:
-        selected_task_ids = getattr(pl_module, "selected_representative_task_ids", {}).get(
-            split_name,
-            [],
+    @staticmethod
+    def _enabled(trainer: pl.Trainer, pl_module: pl.LightningModule) -> bool:
+        return (
+            trainer.is_global_zero
+            and getattr(pl_module, "supports_task_visualization", False)
+            and getattr(pl_module, "log_task_examples", False)
         )
-        if selected_task_ids:
-            return selected_task_ids
 
-        if hasattr(pl_module, "select_representative_task_records_from_dataset"):
-            return pl_module.select_representative_task_records_from_dataset(
-                dataset,
-                split_name=split_name,
-                limit=limit,
-            )
+    def _task_ids(self, pl_module, dataset, split_name: str, limit: int) -> list:
+        selected = pl_module.selected_representative_task_ids.get(split_name)
+        return selected or pl_module.select_representative_task_records_from_dataset(
+            dataset, split_name=split_name, limit=limit
+        )
 
-        selected_task_ids = _select_representative_task_ids(getattr(dataset, "tasks", []), limit)
-        pl_module.selected_representative_task_ids[split_name] = selected_task_ids
-        return selected_task_ids
-
-    def emit_task_visualizations(
-        self,
-        pl_module: pl.LightningModule,
-        datamodule,
-        example_split_prefix: str,
-        attention_split_prefix: str,
-    ) -> None:
+    def emit_task_visualizations(self, pl_module, datamodule, epoch: int) -> None:
         try:
-            self._emit_task_visualizations_impl(
-                pl_module, datamodule, example_split_prefix, attention_split_prefix
-            )
-        except Exception as exc:
-            print(
-                f"[TaskVisualizationCallback] WARNING: skipping task viz — {exc}",
-                flush=True,
-            )
-
-    def _emit_task_visualizations_impl(
-        self,
-        pl_module: pl.LightningModule,
-        datamodule,
-        example_split_prefix: str,
-        attention_split_prefix: str,
-    ) -> None:
-        train_task_ids = self._resolve_task_ids(
-            pl_module,
-            datamodule.train_dataset,
-            split_name="train",
-            limit=pl_module.num_periodic_train_task_examples,
-        )
-        val_task_ids = self._resolve_task_ids(
-            pl_module,
-            datamodule.val_dataset,
-            split_name="val",
-            limit=pl_module.num_periodic_val_task_examples,
-        )
-        train_records = pl_module.collect_task_records_from_dataset_by_task_ids(
-            datamodule.train_dataset,
-            train_task_ids,
-        )
-        val_records = pl_module.collect_task_records_from_dataset_by_task_ids(
-            datamodule.val_dataset,
-            val_task_ids,
-        )
-
-        if getattr(pl_module, "log_task_examples", False):
-            train_example_split = example_split_prefix.format(split_name="train")
-            val_example_split = example_split_prefix.format(split_name="val")
-            pl_module.log_task_gallery(
-                split_name=train_example_split,
-                records=train_records,
-                output_path=self.output_path,
-                wandb_logger=self.wandb_logger,
-                key_prefix="train_task",
-            )
-            pl_module.log_task_gallery(
-                split_name=val_example_split,
-                records=val_records,
-                output_path=self.output_path,
-                wandb_logger=self.wandb_logger,
-                key_prefix="val_task",
-            )
-
-        if getattr(pl_module, "log_task_attention", False):
-            train_attention_split = attention_split_prefix.format(split_name="train")
-            val_attention_split = attention_split_prefix.format(split_name="val")
-            pl_module.log_task_attention_gallery(
-                split_name=train_attention_split,
-                records=train_records,
-                output_path=self.output_path,
-                wandb_logger=self.wandb_logger,
-                key_prefix="train_task_attention",
-            )
-            pl_module.log_task_attention_gallery(
-                split_name=val_attention_split,
-                records=val_records,
-                output_path=self.output_path,
-                wandb_logger=self.wandb_logger,
-                key_prefix="val_task_attention",
-            )
+            for split_name, dataset, limit in (
+                ("train", datamodule.train_dataset, pl_module.num_periodic_train_task_examples),
+                ("val", datamodule.val_dataset, pl_module.num_periodic_val_task_examples),
+            ):
+                ids = self._task_ids(pl_module, dataset, split_name, limit)
+                records = pl_module.collect_task_records_from_dataset_by_task_ids(dataset, ids)
+                pl_module.log_task_gallery(
+                    split_name=f"{split_name}_epoch_{epoch:04d}",
+                    records=records,
+                    output_path=self.output_path,
+                    wandb_logger=self.wandb_logger,
+                    key_prefix=f"{split_name}_task",
+                )
+        except Exception as exc:  # a figure failing must never stop training
+            print(f"[TaskVisualizationCallback] WARNING: skipping task figures: {exc}", flush=True)
 
     def on_fit_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        if not trainer.is_global_zero:
-            return
-        if self.has_logged_pretrain_snapshot:
-            return
-        if not getattr(pl_module, "supports_task_visualization", False):
-            return
-        if not (
-            getattr(pl_module, "log_task_examples", False)
-            or getattr(pl_module, "log_task_attention", False)
-        ):
-            return
-
-        self.emit_task_visualizations(
-            pl_module=pl_module,
-            datamodule=trainer.datamodule,
-            example_split_prefix=self._snapshot_split_name("{split_name}", 0),
-            attention_split_prefix=self._snapshot_split_name("{split_name}", 0),
-        )
-        self.has_logged_pretrain_snapshot = True
+        if self._enabled(trainer, pl_module):
+            self.emit_task_visualizations(pl_module, trainer.datamodule, epoch=0)
 
     def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        if not trainer.is_global_zero:
+        if trainer.sanity_checking or not self._enabled(trainer, pl_module):
             return
-        if trainer.sanity_checking:
-            return
-        if not getattr(pl_module, "supports_task_visualization", False):
-            return
-
         completed_epochs = trainer.current_epoch + 1
-        every_n_epochs = getattr(pl_module, "log_task_examples_every_n_epochs", 1)
-        should_log_examples = (
-            getattr(pl_module, "log_task_examples", False)
-            and every_n_epochs >= 1
-            and completed_epochs % every_n_epochs == 0
-        )
-        attention_every_n_epochs = getattr(
-            pl_module,
-            "log_task_attention_every_n_epochs",
-            every_n_epochs,
-        )
-        should_log_attention = (
-            getattr(pl_module, "log_task_attention", False)
-            and attention_every_n_epochs >= 1
-            and completed_epochs % attention_every_n_epochs == 0
-        )
-        if not should_log_examples and not should_log_attention:
-            return
-
-        self.emit_task_visualizations(
-            pl_module=pl_module,
-            datamodule=trainer.datamodule,
-            example_split_prefix=self._snapshot_split_name(
-                "{split_name}",
-                completed_epochs,
-            ),
-            attention_split_prefix=self._snapshot_split_name(
-                "{split_name}",
-                completed_epochs,
-            ),
-        )
+        if completed_epochs % pl_module.log_task_examples_every_n_epochs == 0:
+            self.emit_task_visualizations(pl_module, trainer.datamodule, epoch=completed_epochs)
 
 
 # ---------------------------------------------------------------------------
@@ -357,7 +210,7 @@ def build_trainer(
         trainer_kwargs["devices"] = 1
         return pl.Trainer(**trainer_kwargs)
 
-    # Under manual optimization (HyperModelLightning, LoopedSupervisedLightning), the
+    # Under manual optimization (HypernetworkLightning), the
     # model already applies gradient_clip_val itself inside training_step (it has to --
     # Lightning's automatic clipping isn't available when automatic_optimization=False,
     # and passing gradient_clip_val to the Trainer as well raises a MisconfigurationException:
@@ -370,19 +223,9 @@ def build_trainer(
     if runtime_cfg.get("precision") is not None:
         trainer_kwargs["precision"] = runtime_cfg["precision"]
 
-    # Under manual optimization (N_supervision > 1: LoopedSupervisedLightning,
-    # HyperModelLightning), Lightning's trainer.global_step increments once per
-    # opt.step() call, not once per training_step() call -- so a bare max_steps
-    # would stop training after max_steps / N_supervision batches instead of
-    # max_steps batches, starving both the run itself and any LR scheduler
-    # (warmup_steps/T_max are counted in batches, since the scheduler's own
-    # .step() is called once per training_step()). Scale max_steps by
-    # N_supervision so the config value keeps meaning "number of batches",
-    # matching every other runtime's semantics.
-    n_supervision = runtime_cfg.get("N_supervision") or 1
     return pl.Trainer(
         **trainer_kwargs,
-        max_steps=runtime_cfg["max_steps"] * n_supervision,
+        max_steps=runtime_cfg["max_steps"],
         overfit_batches=1 if cfg.get("overfit_single_batch", False) else 0,
         log_every_n_steps=1,
     )
@@ -487,7 +330,6 @@ def run_post_training_artifacts(
         wandb_logger=wandb_logger,
         num_hard_examples=cfg.get("num_hard_examples", 3),
         key_prefix="val_hard_validate",
-        snapshot_label="post_fit_validate",
     )
 
     val_results = trainer.validate(

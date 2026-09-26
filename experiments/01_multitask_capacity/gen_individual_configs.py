@@ -68,9 +68,6 @@ MUON_PARAMS = {
 CANON_PARAMS = {
     "canon_set": "ABCD",
     "canon_kernel": 5,
-    "canon_activation": True,
-    "canon_residual": True,
-    "canon_causal": False,
 }
 
 
@@ -81,29 +78,21 @@ def config_at(dim: int, category: str) -> dict:
         "project_name": "01_multitask_capacity",
         "task_categories": [category],
         "save_checkpoints": False,
-        "model": "direct_supervised",
+        "model": "direct",
         **MUON_PARAMS,
         "learning_rate": 0.0005,
         "max_steps": 8000,
         "task_encoding": {
             "embedding_dim": EMBEDDING_DIM,
-            "value_vocab_size": 11,
             "use_sinusoidal_pe": False,
             "use_task_embedding": False,
         },
-        "backbone_model": {
-            "name": "rope_canon_looped_transformer",
-            "params": {
-                "hidden_dim": dim,
-                "num_heads": HEADS,
-                "inner_dim": dim,
-                "inner_num_heads": HEADS,
-                "n_loops": 1,
-                "dropout": 0.1,
-                **CANON_PARAMS,
-                "use_block_skip": False,
-                "use_loop_skip": False,
-            },
+        "backbone": {
+            "hidden_dim": dim,
+            "num_layers": 3,
+            "num_heads": HEADS,
+            "dropout": 0.1,
+            **CANON_PARAMS,
         },
     }
 

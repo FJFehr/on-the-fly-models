@@ -10,17 +10,14 @@ experiment_name: hyper_multitask_dim4_notd
 task_encoding:
   embedding_dim: 4
 
-target_model:
-  params:
-    hidden_dim: 4
-    inner_dim: 4
+target:
+  hidden_dim: 4
 
-hyper_model:
-  params:
-    hidden_dim: 4
-    num_heads: 1
-    num_layers: 1
-    output_dim: 4
+encoder:
+  hidden_dim: 4
+  num_heads: 1
+  num_layers: 1
+  output_dim: 4
 
 hyper_head:
   bottleneck_dim: 8

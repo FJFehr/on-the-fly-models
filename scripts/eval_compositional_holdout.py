@@ -8,7 +8,7 @@ and this experiment's README.md for what those categories are and why).
 
 `td` is intentionally not supported here: its num_tasks=18 has no reserved indices for the
 composite categories, so a learned one-hot embedding for them is undefined (see README.md).
-Composite categories are registered into models.hypermodel_lightning.TASK_CATEGORY_INDEX at
+Composite categories are registered into models.embedding.TASK_CATEGORY_INDEX at
 indices 18..18+K-1 for the duration of this script only -- frozen_td's untrained projection
 matrix already has those extra rows (num_tasks=28 in frozen_td.yaml), they just need names.
 
@@ -32,14 +32,14 @@ from collections import defaultdict
 from pathlib import Path
 
 import torch
+from datasets import DatasetDict
 from torch.utils.data import DataLoader
 
 from data_modules import DATA_REGISTRY
 from data_modules.arc1d_compositional import COMPOSITE_TASK_SPECS
 from data_modules.arc1d_meta_multiclass import Arc1dMetaPaddingCollator, Arc1dMetaTaskDataset
-from datasets import DatasetDict
-from models import MODEL_REGISTRY
-from models.hypermodel_lightning import TASK_CATEGORY_INDEX
+from lightning_modules import MODEL_REGISTRY
+from models.embedding import TASK_CATEGORY_INDEX
 from training.config import build_runtime_config_dict, load_config
 from training.logging import log_embedding_cluster_plots
 from training.trainer import load_checkpoint_state, resolve_evaluation_checkpoint_path

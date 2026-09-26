@@ -41,9 +41,7 @@ class RoPE(nn.Module):
         self.register_buffer("cos_cache", cos)
         self.register_buffer("sin_cache", sin)
 
-    def forward(
-        self, q: torch.Tensor, k: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, q: torch.Tensor, k: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Apply rotary embeddings to query and key.
 
         Args:

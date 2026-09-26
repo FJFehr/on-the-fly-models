@@ -25,7 +25,7 @@ import lightning as pl
 import torch
 
 from data_modules import DATA_REGISTRY
-from models import MODEL_REGISTRY
+from lightning_modules import MODEL_REGISTRY
 from training.config import (
     build_runtime_config_dict,
     ensure_output_path,

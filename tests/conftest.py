@@ -92,63 +92,76 @@ def make_arc1d_dataset_dict(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Tiny real HyperModelLightning + a matching batch, shared by every
-# hypermodel-adjacent test (embeddings, variational, embedding-cluster
-# logging) that needs one.
+# Tiny real Lightning modules + matching batches, shared by the model tests.
 # ---------------------------------------------------------------------------
+
+TINY_TRAINING_CONFIG = {
+    "num_classes": 10,
+    "padding_idx": 10,
+    "optimizer": "AdamW",
+    "learning_rate": 1e-3,
+    "weight_decay": 0.01,
+}
 
 
 @pytest.fixture
-def build_hypermodel():
-    """Factory for a tiny real HyperModelLightning: transformer hyper_model, rnn
-    target, input_dim=4, task_encoding defaults to embedding_dim=8 (every existing
-    caller across the suite uses this exact value; override via the task_encoding
-    kwarg if a future test needs something else). hyper_head and any other
-    HyperModelLightning constructor kwarg pass straight through."""
+def build_direct():
+    """Factory for a tiny DirectLightning. Keyword arguments override the defaults."""
 
-    def _build(hyper_head: dict | None = None, task_encoding: dict | None = None, **kwargs):
-        from models.hypermodel_lightning import HyperModelLightning
+    def _build(task_encoding: dict | None = None, **overrides):
+        from lightning_modules.direct import DirectLightning
 
-        return HyperModelLightning(
-            hyper_model={
-                "name": "transformer",
-                "params": {"hidden_dim": 16, "num_layers": 1, "num_heads": 1, "output_dim": 8},
-            },
-            target_model={
-                "name": "rnn",
-                "params": {"hidden_dim": 8, "num_layers": 1, "bidirectional": True},
-            },
-            hyper_head=hyper_head,
-            task_encoding=task_encoding if task_encoding is not None else {"embedding_dim": 8},
-            input_dim=4,
-            **kwargs,
-        )
+        config = {
+            **TINY_TRAINING_CONFIG,
+            "backbone": {"hidden_dim": 4, "num_layers": 3, "num_heads": 1, "dropout": 0.1},
+            "task_encoding": task_encoding or {"embedding_dim": 4},
+            **overrides,
+        }
+        return DirectLightning(**config)
 
     return _build
 
 
 @pytest.fixture
-def make_hypermodel_batch():
-    """Factory for a single-example hypermodel batch: 3 support pairs + 1 query, all
-    4-length binary sequences. Pass task_category/task_id to also include those (needed
-    by the embedding-collection path); omitted by default since most callers don't need
-    them."""
+def build_hypernetwork():
+    """Factory for a tiny HypernetworkLightning. Keyword arguments override the defaults."""
 
-    def _make(task_category: str | None = None, task_id: int | None = None) -> dict:
-        batch = {
-            "support_inputs": torch.tensor(
-                [[[0, 1, 0, 1], [1, 0, 1, 0], [0, 0, 1, 1]]], dtype=torch.float32
-            ),
-            "support_outputs": torch.tensor(
-                [[[1, 1, 0, 0], [0, 1, 1, 0], [1, 0, 0, 1]]], dtype=torch.float32
-            ),
-            "query_input": torch.tensor([[1, 0, 0, 1]], dtype=torch.float32),
-            "query_output": torch.tensor([[0, 1, 1, 0]], dtype=torch.float32),
+    def _build(hyper_head: dict | None = None, **overrides):
+        from lightning_modules.hypernetwork import HypernetworkLightning
+
+        config = {
+            **TINY_TRAINING_CONFIG,
+            "encoder": {"hidden_dim": 8, "num_layers": 1, "num_heads": 1, "output_dim": 8},
+            "target": {"hidden_dim": 4, "num_layers": 3, "num_heads": 1, "dropout": 0.1},
+            "hyper_head": hyper_head or {"bottleneck_dim": 8},
+            "task_encoding": {"embedding_dim": 4},
+            **overrides,
         }
-        if task_category is not None:
-            batch["task_category"] = [task_category]
-        if task_id is not None:
-            batch["task_id"] = torch.tensor([task_id], dtype=torch.long)
-        return batch
+        return HypernetworkLightning(**config)
+
+    return _build
+
+
+@pytest.fixture
+def make_hypernetwork_batch():
+    """Factory for a batch of `n` tasks: 3 support pairs + 1 query, length-5 sequences whose
+    last position is padding (10)."""
+
+    def _make(n: int = 2, task_category: str = "1d_move_1p", task_id: int = 0) -> dict:
+        generator = torch.Generator().manual_seed(task_id)
+
+        def sequences(*shape):
+            values = torch.randint(0, 10, (*shape, 5), generator=generator)
+            values[..., -1] = 10
+            return values
+
+        return {
+            "support_inputs": sequences(n, 3),
+            "support_outputs": sequences(n, 3),
+            "query_input": sequences(n),
+            "query_output": sequences(n),
+            "task_category": [task_category] * n,
+            "task_id": torch.arange(task_id, task_id + n),
+        }
 
     return _make

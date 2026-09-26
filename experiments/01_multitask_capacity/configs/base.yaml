@@ -49,4 +49,3 @@ padding_idx: 10
 
 task_encoding:
   embedding_dim: 32
-  value_vocab_size: 11

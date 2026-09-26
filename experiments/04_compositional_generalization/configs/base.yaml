@@ -38,7 +38,7 @@ output_path: ${output_dir}/${project_name}/${experiment_name}
 
 data: arc_1d_meta_multiclass
 data_dir: data/arc_1d_looped_augmented
-model: hyper_model
+model: hypernetwork
 primary_metric: val_loss
 num_workers: 0
 
@@ -98,7 +98,6 @@ lr_scheduler:
     eta_min: 0.0001
 max_steps: 8000
 warmup_steps: 800
-N_supervision: 1
 
 log_task_examples: true
 log_task_examples_every_n_epochs: 100
@@ -113,49 +112,31 @@ stop_on_perfect_val_exact_match: false
 
 task_encoding:
   embedding_dim: 4
-  value_vocab_size: 11
   use_sinusoidal_pe: false
 
 # Flat (n_loops=1), matched to the "matched-scale" dim=4 target from
 # arc1d_v2_hypernetwork_multitask -- not the older recipe's looped (n_loops=4) hidden_dim=16
 # target.
-target_model:
-  name: rope_canon_looped_transformer
-  params:
-    hidden_dim: 4
-    num_heads: 1
-    inner_dim: 4
-    inner_num_heads: 1
-    n_loops: 1
-    dropout: 0.1
-    canon_set: ABCD
-    canon_kernel: 5
-    canon_activation: true
-    canon_residual: true
-    canon_causal: false
-    use_block_skip: false
-    use_loop_skip: false
+target:
+  hidden_dim: 4
+  num_layers: 3
+  num_heads: 1
+  dropout: 0.1
+  canon_set: ABCD
+  canon_kernel: 5
 
 # Plain (non-Zhu) rope_canon_transformer, matched-width to the dim=4 target -- not the older
 # recipe's rope_canon_zhu_transformer/hidden_dim=64/8-layer encoder.
-hyper_model:
-  name: rope_canon_transformer
-  params:
-    hidden_dim: 4
-    num_heads: 1
-    num_layers: 1
-    output_dim: 4
-    canon_set: ABCD
-    canon_kernel: 5
-    canon_activation: true
-    canon_residual: true
-    canon_causal: false
-    block_size: 2048
+encoder:
+  hidden_dim: 4
+  num_heads: 1
+  num_layers: 1
+  output_dim: 4
+  canon_set: ABCD
+  canon_kernel: 5
 
 # Placeholder default: notd (no task-identity signal). Overridden per leaf for frozen_td.
 hyper_head:
-  pooling: attention
   bottleneck_dim: 8
   num_tasks: null
   freeze_task_indicator: false
-  lora_adapter: false

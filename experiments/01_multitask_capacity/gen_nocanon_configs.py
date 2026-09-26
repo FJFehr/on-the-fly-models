@@ -8,7 +8,7 @@ already in this experiment (Joint notd/td and Individual, all 4 dims, 5
 seeds) so the two can be compared directly, size for size.
 
 Disabling Canon needs no code change and no new model: `canon_set: ''` on
-the same rope_canon_looped_transformer backbone instantiates none of the
+the same Transformer backbone instantiates none of the
 Canon positions (A/B/C/D), leaving pure RoPE -- the same mechanism already
 used by the legacy `R2_*_rope_only.yaml` ablation configs. Everything else
 (architecture width, optimizer, step budget, task set) is identical to the
@@ -69,22 +69,12 @@ MUON_PARAMS = {
 def backbone_at(dim: int) -> dict:
     """Same architecture as the canon configs, canon_set emptied."""
     return {
-        "name": "rope_canon_looped_transformer",
-        "params": {
-            "hidden_dim": dim,
-            "num_heads": HEADS,
-            "inner_dim": dim,
-            "inner_num_heads": HEADS,
-            "n_loops": 1,
-            "dropout": 0.1,
-            "canon_set": "",  # <- the ablation: no Canon positions, pure RoPE
-            "canon_kernel": 5,
-            "canon_activation": True,
-            "canon_residual": True,
-            "canon_causal": False,
-            "use_block_skip": False,
-            "use_loop_skip": False,
-        },
+        "hidden_dim": dim,
+        "num_layers": 3,
+        "num_heads": HEADS,
+        "dropout": 0.1,
+        "canon_set": "",  # <- the ablation: no Canon positions, pure RoPE
+        "canon_kernel": 5,
     }
 
 
@@ -93,11 +83,11 @@ def common_fields(dim: int) -> dict:
         "_base_": BASE_CFG,
         "project_name": "01_multitask_capacity",
         "save_checkpoints": False,
-        "model": "direct_supervised",
+        "model": "direct",
         **MUON_PARAMS,
         "learning_rate": 0.0005,
         "max_steps": 8000,
-        "backbone_model": backbone_at(dim),
+        "backbone": backbone_at(dim),
     }
 
 
@@ -113,7 +103,6 @@ def gen_joint() -> int:
                 "task_categories": list(TASK_CATEGORIES),
                 "task_encoding": {
                     "embedding_dim": EMBEDDING_DIM,
-                    "value_vocab_size": 11,
                     "use_sinusoidal_pe": False,
                     "use_task_embedding": use_task_embedding,
                 },
@@ -137,7 +126,6 @@ def gen_individual() -> int:
                 "task_categories": [category],
                 "task_encoding": {
                     "embedding_dim": EMBEDDING_DIM,
-                    "value_vocab_size": 11,
                     "use_sinusoidal_pe": False,
                     "use_task_embedding": False,
                 },

@@ -1,62 +1,49 @@
-"""Focused tests for the standalone simplified transformer module."""
+"""Tests for the Canon layer and the Transformer."""
 
 import pytest
 import torch
 
+from models.canon import CanonConv
 from models.transformer import Transformer
 
 
-def test_transformer_forward_keeps_expected_output_shape():
-    model = Transformer(
-        input_dim=5,
-        hidden_dim=16,
-        num_layers=2,
-        num_heads=2,
-        output_dim=7,
-        activation="silu",
-    )
-    inputs = torch.randn(3, 11, 5)
+def test_canon_conv_is_centred_over_kernel_width():
+    """A change at one position reaches exactly kernel_size // 2 neighbours on each side."""
+    torch.manual_seed(0)
+    conv = CanonConv(dim=3, kernel_size=5)
+    x = torch.zeros(1, 11, 3)
+    bumped = x.clone()
+    bumped[0, 5] = 1.0
 
-    outputs = model(inputs)
-
-    assert outputs.shape == (3, 11, 7)
+    changed = (conv(bumped) - conv(x)).abs().sum(dim=-1)[0] > 0
+    assert changed.nonzero().flatten().tolist() == [3, 4, 5, 6, 7]
 
 
-def test_transformer_forward_without_output_head_returns_hidden_states():
-    model = Transformer(
-        input_dim=5,
-        hidden_dim=16,
-        num_layers=3,
-        num_heads=4,
-        output_dim=7,
-        activation="silu",
-        use_output_head=False,
-    )
-    inputs = torch.randn(2, 9, 5)
-
-    outputs = model(inputs)
-
-    assert outputs.shape == (2, 9, 16)
+def test_transformer_output_shapes():
+    x = torch.randn(2, 7, 4)
+    with_head = Transformer(input_dim=4, hidden_dim=8, num_layers=3, num_heads=2, output_dim=10)
+    without_head = Transformer(input_dim=4, hidden_dim=8, num_layers=3, num_heads=2)
+    assert with_head(x).shape == (2, 7, 10)
+    assert without_head(x).shape == (2, 7, 8)
 
 
-def test_transformer_rejects_hidden_dim_not_divisible_by_num_heads():
-    with pytest.raises(ValueError, match="hidden_dim must be divisible by num_heads"):
-        Transformer(
-            input_dim=5,
-            hidden_dim=10,
-            num_layers=2,
-            num_heads=3,
-            output_dim=7,
-        )
+def test_empty_canon_set_has_no_canon_layers():
+    model = Transformer(input_dim=4, hidden_dim=4, num_layers=2, num_heads=1, canon_set="")
+    assert not any("canon" in name for name, _ in model.named_parameters())
 
 
-def test_transformer_rejects_unknown_activation():
-    with pytest.raises(ValueError, match="Unsupported activation"):
-        Transformer(
-            input_dim=5,
-            hidden_dim=16,
-            num_layers=2,
-            num_heads=4,
-            output_dim=7,
-            activation="bogus",
-        )
+def test_invalid_canon_set_is_rejected():
+    with pytest.raises(ValueError, match="canon_set"):
+        Transformer(input_dim=4, hidden_dim=4, num_layers=1, num_heads=1, canon_set="AX")
+
+
+def test_fused_and_manual_attention_agree():
+    """The hypernetwork switches the target to manual attention for vmap."""
+    torch.manual_seed(0)
+    model = Transformer(input_dim=4, hidden_dim=4, num_layers=2, num_heads=2, output_dim=3).eval()
+    x = torch.randn(2, 6, 4)
+    fused = model(x)
+    for module in model.modules():
+        if hasattr(module, "flash"):
+            module.flash = False
+    torch.testing.assert_close(model(x), fused)

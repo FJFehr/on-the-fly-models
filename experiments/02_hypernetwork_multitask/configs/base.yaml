@@ -44,7 +44,7 @@ output_path: ${output_dir}/${project_name}/${experiment_name}
 
 data: arc_1d_meta_multiclass
 data_dir: data/arc_1d_looped_augmented
-model: hyper_model
+model: hypernetwork
 primary_metric: val_loss
 num_workers: 0
 
@@ -104,7 +104,6 @@ lr_scheduler:
     eta_min: 0.0001
 max_steps: 8000
 warmup_steps: 800
-N_supervision: 1
 
 log_task_examples: true
 log_task_examples_every_n_epochs: 100
@@ -119,25 +118,15 @@ stop_on_perfect_val_exact_match: false
 
 task_encoding:
   embedding_dim: 16
-  value_vocab_size: 11
   use_sinusoidal_pe: false
 
-target_model:
-  name: rope_canon_looped_transformer
-  params:
-    hidden_dim: 6
-    num_heads: 1
-    inner_dim: 6
-    inner_num_heads: 1
-    n_loops: 1
-    dropout: 0.1
-    canon_set: ABCD
-    canon_kernel: 5
-    canon_activation: true
-    canon_residual: true
-    canon_causal: false
-    use_block_skip: false
-    use_loop_skip: false
+target:
+  hidden_dim: 6
+  num_layers: 3
+  num_heads: 1
+  dropout: 0.1
+  canon_set: ABCD
+  canon_kernel: 5
 
 # hidden_dim=32: smoke-tested against the hidden_dim=64 "safe" default and
 # selected for the main grid -- at matched step counts (~500-650 steps) it
@@ -145,24 +134,16 @@ target_model:
 # no reason to pay for the larger encoder. See
 # smoke_dim6_frozentd_enc64.yaml/smoke_dim6_frozentd_enc32.yaml for the two
 # smoke configs and docs/arc1d_story (Experiment 4 plan) for the comparison.
-hyper_model:
-  name: rope_canon_transformer
-  params:
-    hidden_dim: 32
-    num_heads: 4
-    num_layers: 2
-    output_dim: 64
-    canon_set: ABCD
-    canon_kernel: 5
-    canon_activation: true
-    canon_residual: true
-    canon_causal: false
-    block_size: 2048
+encoder:
+  hidden_dim: 32
+  num_heads: 4
+  num_layers: 2
+  output_dim: 64
+  canon_set: ABCD
+  canon_kernel: 5
 
 # Placeholder: notd. Overridden per leaf for frozen_td.
 hyper_head:
-  pooling: attention
   bottleneck_dim: 128
   num_tasks: null
   freeze_task_indicator: false
-  lora_adapter: false

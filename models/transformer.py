@@ -1,4 +1,19 @@
-"""Simple transformer used by the simplified hypermodel path."""
+"""Pre-norm transformer with rotary position embeddings and optional Canon layers.
+
+This one class is used everywhere in the paper: as the directly trained model, as the
+target model whose weights the hypernetwork generates, and as the hypernetwork's encoder.
+
+Canon layers (models/canon.py) can sit at four positions in each block, chosen by the
+letters in `canon_set` ("ABCD" for all four, "" for none):
+  A: on the normed input, before attention      (hidden_dim channels)
+  B: on the concatenated query/key/value         (3 * hidden_dim channels)
+  C: on the normed input, before the feed-forward (hidden_dim channels)
+  D: inside the feed-forward, before the GELU    (4 * hidden_dim channels)
+
+Attention is bidirectional and has no padding mask: padded positions reach the model as
+zero vectors (see the Lightning modules) and are ignored by the loss, but real tokens can
+still attend to them. Every paper result was produced this way.
+"""
 
 import math
 
@@ -6,179 +21,117 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-from models.activations import resolve_activation_fn
+from models.canon import CanonConv
+from models.rope import RoPE
 
 
 class LayerNorm(nn.Module):
-    """LayerNorm with an optional bias parameter."""
+    """LayerNorm with a learned scale and no bias."""
 
-    def __init__(self, hidden_dim: int, bias: bool):
+    def __init__(self, dim: int):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_dim))
-        self.bias = nn.Parameter(torch.zeros(hidden_dim)) if bias else None
+        self.weight = nn.Parameter(torch.ones(dim))
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        return F.layer_norm(inputs, self.weight.shape, self.weight, self.bias, 1e-5)
-
-
-class RMSNorm(nn.Module):
-    """RMSNorm (Zhang & Sennrich 2019): no bias, no mean-centering."""
-
-    def __init__(self, hidden_dim: int, eps: float = 1e-6):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_dim))
-        self.eps = eps
-
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        return F.rms_norm(inputs, self.weight.shape, self.weight, self.eps)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return F.layer_norm(x, self.weight.shape, self.weight, None, 1e-5)
 
 
 class SelfAttention(nn.Module):
-    """Multi-head self-attention over token features."""
+    """Multi-head self-attention with RoPE, and Canon B on the query/key/value."""
 
     def __init__(
-        self,
-        hidden_dim: int,
-        num_heads: int,
-        dropout: float,
-        bias: bool,
-        causal: bool,
-        block_size: int,
+        self, dim: int, num_heads: int, dropout: float, canon_set: str, canon_kernel: int
     ):
         super().__init__()
-        if hidden_dim % num_heads != 0:
-            msg = "hidden_dim must be divisible by num_heads."
-            raise ValueError(msg)
-
-        self.c_attn = nn.Linear(hidden_dim, 3 * hidden_dim, bias=bias)
-        self.c_proj = nn.Linear(hidden_dim, hidden_dim, bias=bias)
-        self.c_proj._is_residual_proj = True  # scaled down in _init_weights
+        if dim % num_heads != 0:
+            raise ValueError(f"hidden_dim={dim} must be divisible by num_heads={num_heads}.")
+        self.num_heads = num_heads
+        self.dropout = dropout
+        self.c_attn = nn.Linear(dim, 3 * dim, bias=False)
+        self.c_proj = nn.Linear(dim, dim, bias=False)
         self.attn_dropout = nn.Dropout(dropout)
         self.resid_dropout = nn.Dropout(dropout)
-        self.num_heads = num_heads
-        self.hidden_dim = hidden_dim
-        self.dropout = dropout
-        self.causal = causal
-        self.flash = hasattr(torch.nn.functional, "scaled_dot_product_attention")
+        self.canon_b = CanonConv(3 * dim, canon_kernel) if "B" in canon_set else None
+        self.rope = RoPE(head_dim=dim // num_heads)
+        # The hypernetwork sets this to False: the fused attention kernel's backward pass
+        # does not work under torch.vmap, while the plain matmul/softmax version does.
+        self.flash = True
 
-        if self.causal and not self.flash:
-            self.register_buffer(
-                "bias",
-                torch.tril(torch.ones(block_size, block_size)).view(1, 1, block_size, block_size),
-            )
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch, seq_len, dim = x.shape
+        head_dim = dim // self.num_heads
 
-    def forward(
-        self,
-        inputs: torch.Tensor,
-        return_attention_weights: bool = False,
-    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        batch_size, seq_len, hidden_dim = inputs.shape
+        qkv = self.c_attn(x)
+        if self.canon_b is not None:
+            qkv = self.canon_b(qkv)
+        query, key, value = (
+            t.view(batch, seq_len, self.num_heads, head_dim).transpose(1, 2)
+            for t in qkv.split(dim, dim=2)
+        )
+        query, key = self.rope(query, key)
 
-        # One projection produces query, key, and value for every token.
-        query, key, value = self.c_attn(inputs).split(self.hidden_dim, dim=2)
-
-        # Split the hidden dimension into attention heads before computing scores.
-        head_dim = hidden_dim // self.num_heads
-        key = key.view(batch_size, seq_len, self.num_heads, head_dim).transpose(1, 2)
-        query = query.view(batch_size, seq_len, self.num_heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, seq_len, self.num_heads, head_dim).transpose(1, 2)
-
-        attention_weights = None
-        if self.flash and not return_attention_weights:
-            attended = torch.nn.functional.scaled_dot_product_attention(
-                query,
-                key,
-                value,
-                attn_mask=None,
-                dropout_p=self.dropout if self.training else 0.0,
-                is_causal=self.causal,
-            )
+        if self.flash:
+            dropout_p = self.dropout if self.training else 0.0
+            out = F.scaled_dot_product_attention(query, key, value, dropout_p=dropout_p)
         else:
-            scores = (query @ key.transpose(-2, -1)) * (1.0 / math.sqrt(key.size(-1)))
-            if self.causal:
-                scores = scores.masked_fill(
-                    self.bias[:, :, :seq_len, :seq_len] == 0,
-                    float("-inf"),
-                )
-            attention_weights = F.softmax(scores, dim=-1)
-            attended = self.attn_dropout(attention_weights) @ value
+            scores = (query @ key.transpose(-2, -1)) / math.sqrt(head_dim)
+            out = self.attn_dropout(F.softmax(scores, dim=-1)) @ value
 
-        attended = attended.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_dim)
-        output = self.resid_dropout(self.c_proj(attended))
-        if return_attention_weights:
-            return output, attention_weights
-        return output
+        out = out.transpose(1, 2).contiguous().view(batch, seq_len, dim)
+        return self.resid_dropout(self.c_proj(out))
 
 
-class MLP(nn.Module):
-    """Position-wise feed-forward network inside each block."""
+class FeedForward(nn.Module):
+    """GELU feed-forward (4x expansion), with Canon D before the GELU."""
 
-    def __init__(self, hidden_dim: int, dropout: float, bias: bool):
+    def __init__(self, dim: int, dropout: float, canon_set: str, canon_kernel: int):
         super().__init__()
-        self.c_fc = nn.Linear(hidden_dim, 4 * hidden_dim, bias=bias)
+        self.c_fc = nn.Linear(dim, 4 * dim, bias=False)
         self.gelu = nn.GELU()
-        self.c_proj = nn.Linear(4 * hidden_dim, hidden_dim, bias=bias)
-        self.c_proj._is_residual_proj = True  # scaled down in _init_weights
+        self.c_proj = nn.Linear(4 * dim, dim, bias=False)
         self.dropout = nn.Dropout(dropout)
+        self.canon_d = CanonConv(4 * dim, canon_kernel) if "D" in canon_set else None
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.c_fc(inputs)
-        hidden_states = self.gelu(hidden_states)
-        hidden_states = self.c_proj(hidden_states)
-        return self.dropout(hidden_states)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.c_fc(x)
+        if self.canon_d is not None:
+            h = self.canon_d(h)
+        return self.dropout(self.c_proj(self.gelu(h)))
 
 
 class Block(nn.Module):
-    """Pre-norm transformer block with residual attention and MLP paths."""
+    """Pre-norm transformer block, with Canon A before attention and Canon C before the MLP."""
 
     def __init__(
-        self,
-        hidden_dim: int,
-        num_heads: int,
-        dropout: float,
-        bias: bool,
-        causal: bool,
-        block_size: int,
+        self, dim: int, num_heads: int, dropout: float, canon_set: str, canon_kernel: int
     ):
         super().__init__()
-        self.ln_1 = LayerNorm(hidden_dim, bias=bias)
-        self.attn = SelfAttention(
-            hidden_dim=hidden_dim,
-            num_heads=num_heads,
-            dropout=dropout,
-            bias=bias,
-            causal=causal,
-            block_size=block_size,
-        )
-        self.ln_2 = LayerNorm(hidden_dim, bias=bias)
-        self.mlp = MLP(hidden_dim=hidden_dim, dropout=dropout, bias=bias)
+        # Submodules are created in this order so a given seed gives the same initial
+        # weights as the models the paper results were first produced with.
+        self.ln_1 = LayerNorm(dim)
+        self.attn = SelfAttention(dim, num_heads, dropout, canon_set, canon_kernel)
+        self.ln_2 = LayerNorm(dim)
+        self.mlp = FeedForward(dim, dropout, canon_set, canon_kernel)
+        self.canon_a = CanonConv(dim, canon_kernel) if "A" in canon_set else None
+        self.canon_c = CanonConv(dim, canon_kernel) if "C" in canon_set else None
 
-    def forward(
-        self,
-        inputs: torch.Tensor,
-        return_attention_weights: bool = False,
-    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        attention_outputs = self.attn(
-            self.ln_1(inputs),
-            return_attention_weights=return_attention_weights,
-        )
-        if return_attention_weights:
-            attention_update, attention_weights = attention_outputs
-        else:
-            attention_update = attention_outputs
-            attention_weights = None
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.ln_1(x)
+        if self.canon_a is not None:
+            h = self.canon_a(h)
+        x = x + self.attn(h)
 
-        # Attention updates the token states first, then the MLP adds a second residual update.
-        hidden_states = inputs + attention_update
-        hidden_states = hidden_states + self.mlp(self.ln_2(hidden_states))
-
-        if return_attention_weights:
-            return hidden_states, attention_weights
-        return hidden_states
+        h = self.ln_2(x)
+        if self.canon_c is not None:
+            h = self.canon_c(h)
+        return x + self.mlp(h)
 
 
 class Transformer(nn.Module):
-    """Transformer encoder wrapper over dense per-token features."""
+    """input projection -> num_layers blocks -> final LayerNorm -> optional output head.
+
+    With `output_dim=None` there is no output head and the model returns hidden states.
+    """
 
     def __init__(
         self,
@@ -186,58 +139,31 @@ class Transformer(nn.Module):
         hidden_dim: int,
         num_layers: int,
         num_heads: int,
-        output_dim: int,
+        output_dim: int | None = None,
         dropout: float = 0.0,
-        activation: str = "relu",
-        bias: bool = False,
-        use_output_head: bool = True,
+        canon_set: str = "ABCD",
+        canon_kernel: int = 5,
     ):
         super().__init__()
-        if hidden_dim % num_heads != 0:
-            msg = "hidden_dim must be divisible by num_heads."
-            raise ValueError(msg)
-
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        self.num_layers = num_layers
-        self.num_heads = num_heads
-        self.output_dim = output_dim
-        self.dropout = dropout
-        self.activation = activation
-        self.use_output_head = use_output_head
-
-        self.input_projection = nn.Linear(input_dim, hidden_dim, bias=bias)
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=hidden_dim,
-            nhead=num_heads,
-            dim_feedforward=4 * hidden_dim,
-            dropout=dropout,
-            activation=resolve_activation_fn(activation),
-            batch_first=True,
-            norm_first=True,
-            bias=bias,
+        if set(canon_set) - set("ABCD"):
+            raise ValueError(
+                f"canon_set may only contain the letters A, B, C, D, got {canon_set!r}."
+            )
+        self.input_projection = nn.Linear(input_dim, hidden_dim, bias=False)
+        self.blocks = nn.ModuleList(
+            Block(hidden_dim, num_heads, dropout, canon_set, canon_kernel)
+            for _ in range(num_layers)
         )
-        self.encoder = nn.TransformerEncoder(
-            encoder_layer, num_layers=num_layers, norm=nn.LayerNorm(hidden_dim)
+        self.final_norm = nn.LayerNorm(hidden_dim)
+        self.output_head = (
+            nn.Linear(hidden_dim, output_dim, bias=False) if output_dim is not None else None
         )
-        if use_output_head:
-            self.output_head = nn.Linear(hidden_dim, output_dim, bias=False)
 
-    def forward(
-        self,
-        inputs: torch.Tensor,
-        src_key_padding_mask: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        # Project raw input features into the transformer hidden width.
-        hidden_states = self.input_projection(inputs)
-        hidden_states = self.encoder(hidden_states, src_key_padding_mask=src_key_padding_mask)
-        if self.use_output_head:
-            hidden_states = self.output_head(hidden_states)
-        return hidden_states
-
-    def __repr__(self) -> str:
-        return (
-            f"Transformer(input={self.input_dim}, hidden={self.hidden_dim}, "
-            f"layers={self.num_layers}, heads={self.num_heads}, output={self.output_dim}, "
-            f"activation={self.activation}, dropout={self.dropout})"
-        )
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.input_projection(x)
+        for block in self.blocks:
+            h = block(h)
+        h = self.final_norm(h)
+        if self.output_head is not None:
+            h = self.output_head(h)
+        return h

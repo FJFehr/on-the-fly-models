@@ -6,9 +6,9 @@ never evaluates on). scripts/eval_compositional_holdout.py needs num_tasks=28 (1
 slots, indices 18-27, one per composite category -- see that script's own module docstring)
 to build a model whose task_indicator_proj has rows to register those categories into.
 
-Since freeze_task_indicator=true means this whole hypermodel.task_indicator_proj --
-nn.Linear(num_tasks, hyper_output_dim, bias=False) -- is random-init and NEVER
-gradient-updated (models/hypermodel.py:280-289: requires_grad_(False) right after
+Since freeze_task_indicator=true means this whole hypernetwork.task_indicator_proj --
+nn.Linear(num_tasks, encoder_dim, bias=False) -- is random-init and NEVER
+gradient-updated (models/hypernetwork.py: requires_grad_(False) right after
 construction), padding it with 10 freshly-initialized columns is statistically identical to
 having trained with num_tasks=28 from the start: both the real 18 columns and the 10 padded
 ones are equally "untrained random values drawn from nn.Linear's default init," never touched
@@ -36,7 +36,7 @@ from pathlib import Path
 import torch
 from torch import nn
 
-KEY = "hypermodel.task_indicator_proj.weight"
+KEY = "hypernetwork.task_indicator_proj.weight"
 
 
 def parse_args() -> argparse.Namespace:

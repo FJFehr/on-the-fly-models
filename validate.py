@@ -6,7 +6,7 @@ from pathlib import Path
 import lightning as pl
 
 from data_modules import DATA_REGISTRY
-from models import MODEL_REGISTRY
+from lightning_modules import MODEL_REGISTRY
 from training.config import build_runtime_config_dict, ensure_output_path, load_config
 from training.logging import (
     create_wandb_logger,
@@ -108,7 +108,6 @@ def main() -> None:
                 wandb_logger=wandb_logger,
                 num_hard_examples=cli_args.num_hard_examples,
                 key_prefix="validate_hard_example",
-                snapshot_label="validate_cli",
                 split="val",
             )
         if cli_args.mode in {"test", "both"}:
@@ -119,7 +118,6 @@ def main() -> None:
                 wandb_logger=wandb_logger,
                 num_hard_examples=cli_args.num_hard_examples,
                 key_prefix="test_hard_example",
-                snapshot_label="test_cli",
                 split="test",
             )
 
