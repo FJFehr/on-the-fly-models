@@ -11,12 +11,14 @@ not model parameter count, and the three conditions compared are:
   2. Hyper, Task ID    -- the hypernetwork, frozen_td (arc1d_lowdata)
   3. Hyper, w/o Task ID -- the hypernetwork, notd (arc1d_lowdata)
 
-The joint (direct, no-hypernetwork) arm is deliberately left out of this
-figure -- it's a different comparison (weight generation vs. plain task-id
+The joint (direct, no-hypernetwork) arm is left out of the default figure
+-- it's a different comparison (weight generation vs. plain task-id
 conditioning, at a different model scale entirely, see
 06_data_efficiency_ablation/joint/README.md) from the one this figure is
 making (does cross-task weight generation buy data efficiency over having no
-sharing at all).
+sharing at all). Pass --with-joint for a second figure
+(data_efficiency_cliff_with_joint.{png,pdf}) that adds both joint conditions,
+read from aggregate_results.py's results_joint.csv.
 
 Individual only has 4 v/full levels (v1/v2/v3/full -- see
 06_data_efficiency_ablation/individual/README.md for why 4/5/20 are out of
@@ -45,6 +47,11 @@ Refresh results.csv from a live outputs/ directory, then plot:
 
     uv run python experiments/06_data_efficiency_ablation/plot_data_efficiency.py \\
         --outputs-dir outputs
+
+Also plot the joint arm (separate output file, default figure unchanged):
+
+    uv run python experiments/06_data_efficiency_ablation/plot_data_efficiency.py \\
+        --with-joint
 """
 
 import argparse
@@ -63,6 +70,10 @@ from visualisation.core.style import apply_latex_style
 HERE = Path(__file__).parent
 CSV_PATH = Path("outputs/results/06_data_efficiency_ablation/results_data_efficiency_cliff.csv")
 PLOT_PATH = Path("outputs/figures/06_data_efficiency_ablation/data_efficiency_cliff.png")
+JOINT_CSV_PATH = Path("outputs/results/06_data_efficiency_ablation/results_joint.csv")
+JOINT_PLOT_PATH = Path(
+    "outputs/figures/06_data_efficiency_ablation/data_efficiency_cliff_with_joint.png"
+)
 
 CATEGORIES = [
     "1d_denoising_1c", "1d_denoising_mc", "1d_fill", "1d_flip", "1d_hollow",
@@ -85,16 +96,25 @@ LEVEL_ROWS = {
 # hyper_td/hyper_notd colours exactly (plum / teal) -- not 01's joint-model
 # purple/slate-blue, since this figure's td/notd lines are the hypernetwork's,
 # the same condition 02 already colours this way.
+# joint_td/joint_notd reuse 01_multitask_capacity/plot_capacity_cliff.py's own
+# joint-model purple/slate-blue. Purple sits close to the hypernetwork's plum,
+# so the joint lines are also dashed to stay distinct.
 COLORS = {
     "individual": PAPER_COLORS[0],
     "notd": PAPER_COLORS[5],  # teal -- matches 02's hyper_notd
     "td": PAPER_COLORS[9],  # plum/pink -- matches 02's hyper_td
+    "joint_notd": PAPER_COLORS[6],  # slate blue -- matches 01's joint notd
+    "joint_td": PAPER_COLORS[8],  # purple -- matches 01's joint td
 }
-LINESTYLES = {"individual": ":", "notd": "-", "td": "-"}
+LINESTYLES = {
+    "individual": ":", "notd": "-", "td": "-", "joint_notd": "--", "joint_td": "--",
+}
 LABELS = {
     "individual": "Individual models",
     "td": "Hypernetwork, Task ID",
     "notd": "Hypernetwork, w/o Task ID",
+    "joint_td": "Joint model, Task ID",
+    "joint_notd": "Joint model, w/o Task ID",
 }
 CSV_FIELDS = ["condition", "level", "data_amount", "seed", "test_exact_match"]
 
@@ -194,15 +214,37 @@ def read_csv(path: Path) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
+def read_joint_csv(path: Path) -> list[dict]:
+    """Joint-arm records from aggregate_results.py's results_joint.csv.
+
+    That CSV labels the v{N} levels as bare "1".."20" (see aggregate_results.py's
+    LEVEL_LABEL), so map them back onto this file's own LEVEL_ROWS keys.
+    """
+    records = []
+    with open(path, newline="") as f:
+        for row in csv.DictReader(f):
+            level = row["level"]
+            if level.isdigit():
+                level = f"v{level}"
+            records.append({
+                "condition": f"joint_{row['condition']}",
+                "level": level,
+                "data_amount": LEVEL_ROWS[level],
+                "seed": int(row["seed"]),
+                "test_exact_match": float(row["test_query_exact_match"]),
+            })
+    return records
+
+
 def build_series(records: list[dict]) -> dict[str, dict[int, dict]]:
     """condition -> data_amount -> summary stats, ready for plotting."""
     by_key: dict[tuple[str, int], list[float]] = {}
     for r in records:
         by_key.setdefault((r["condition"], r["data_amount"]), []).append(r["test_exact_match"])
 
-    series: dict[str, dict[int, dict]] = {"individual": {}, "notd": {}, "td": {}}
+    series: dict[str, dict[int, dict]] = {}
     for (cond, amount), values in by_key.items():
-        series[cond][amount] = {
+        series.setdefault(cond, {})[amount] = {
             "mean": statistics.mean(values),
             "std": statistics.pstdev(values),
             "n": len(values),
@@ -235,7 +277,9 @@ def plot(series: dict[str, dict[int, dict]], out_path: Path) -> None:
 
     all_amounts = sorted({a for cond in series.values() for a in cond})
 
-    for cond in ("individual", "td", "notd"):
+    for cond in ("individual", "td", "notd", "joint_td", "joint_notd"):
+        if cond not in series:
+            continue
         amounts_present = sorted(a for a in all_amounts if a in series[cond])
         if len(amounts_present) < 2:
             continue
@@ -321,7 +365,13 @@ def plot(series: dict[str, dict[int, dict]], out_path: Path) -> None:
     # foreground annotation competing with the data.
     ax.axvline(40, color="0.85", linewidth=1.0, linestyle="--", zorder=0.5)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(loc="lower right", frameon=False)
+    # With the joint arm's two extra entries, the default-size legend reaches up
+    # into the joint notd line around 10-20 rows/category -- shrink it to keep
+    # the lower-right corner clear.
+    if len(series) > 3:
+        ax.legend(loc="lower right", frameon=False, fontsize=13, handlelength=1.6)
+    else:
+        ax.legend(loc="lower right", frameon=False)
 
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -339,6 +389,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="If given, rescan this outputs/ dir and refresh results.csv before plotting.",
     )
+    parser.add_argument(
+        "--with-joint",
+        action="store_true",
+        help="Also plot the joint arm, saved to a separate *_with_joint figure.",
+    )
     return parser.parse_args()
 
 
@@ -351,8 +406,13 @@ def main() -> None:
     else:
         records = read_csv(CSV_PATH)
 
+    plot_path = PLOT_PATH
+    if args.with_joint:
+        records = records + read_joint_csv(JOINT_CSV_PATH)
+        plot_path = JOINT_PLOT_PATH
+
     series = build_series(records)
-    for cond in ("individual", "notd", "td"):
+    for cond in series:
         for amount in sorted(series[cond]):
             s = series[cond][amount]
             print(
@@ -360,7 +420,7 @@ def main() -> None:
                 f"mean={s['mean']:.3f} std={s['std']:.3f} n={s['n']}"
             )
 
-    plot(series, PLOT_PATH)
+    plot(series, plot_path)
 
 
 if __name__ == "__main__":
