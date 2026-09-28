@@ -24,7 +24,9 @@ set -uo pipefail
 cd "$(dirname "$0")/../.."
 
 CFG_DIR=experiments/02_hypernetwork_multitask \
+PROJECT="${PROJECT:-02_hypernetwork_multitask}" \
 CELL_GLOB="dim4*.yaml" \
 SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1 2 3 4 5}" \
 GPUS="${GPUS:-}" \
+SHARD="${SHARD:-}" \
 bash scripts/run_config.sh
