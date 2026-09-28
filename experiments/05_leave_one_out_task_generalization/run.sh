@@ -36,14 +36,21 @@ if [ -z "$GPU_LIST" ]; then
     GPU_LIST=$(seq 0 $((N_GPUS_ARG - 1)))
 fi
 
-PROJECT="05_leave_one_out_task_generalization"
+# PROJECT sets the output/W&B project name; SHARD="k/N" runs only every N-th config
+# starting at the k-th (0-based), to split the sweep across nodes.
+PROJECT="${PROJECT:-05_leave_one_out_task_generalization}"
+SHARD="${SHARD:-0/1}"
+IFS=/ read -r SHARD_K SHARD_N <<< "$SHARD"
 LOG_DIR="logs/${PROJECT}"
 CFG_DIR="experiments/05_leave_one_out_task_generalization/configs"
 mkdir -p "$LOG_DIR"
 
 JOBS=()
 SKIPPED=0
+CFG_INDEX=-1
 while IFS= read -r cfg; do
+    CFG_INDEX=$((CFG_INDEX + 1))
+    (( CFG_INDEX % SHARD_N == SHARD_K )) || continue
     exp_name=$(grep '^experiment_name:' "$cfg" | awk '{print $2}')
     results_file="outputs/${PROJECT}/${exp_name}/results.txt"
     if [ -f "$results_file" ]; then
@@ -68,7 +75,7 @@ if [ "$N_JOBS" -gt 0 ]; then
                 exp_name=$(grep '^experiment_name:' "$cfg" | awk '{print $2}')
                 log="${LOG_DIR}/${exp_name}.log"
                 echo "[GPU $gpu] TRAIN  ${PROJECT} / ${exp_name}"
-                if .venv/bin/python train.py --config "$cfg" > "$log" 2>&1; then
+                if .venv/bin/python train.py --config "$cfg" project_name="$PROJECT" > "$log" 2>&1; then
                     echo "[GPU $gpu] DONE   ${PROJECT} / ${exp_name}"
                 else
                     echo "[GPU $gpu] FAILED ${PROJECT} / ${exp_name}  (see $log)"
