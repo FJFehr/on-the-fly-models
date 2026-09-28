@@ -27,9 +27,12 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 
-CKPT_DIR="outputs/02_hypernetwork_multitask"
-OUT_ROOT="outputs/compute_efficiency/04_compositional_generalization"
-PADDED_DIR="outputs/04_compositional_generalization/padded_checkpoints"
+# Override CKPT_DIR/OUT_ROOT to evaluate another run of experiment 2, and PYTHON to use a
+# specific interpreter instead of `uv run python`.
+PYTHON="${PYTHON:-uv run python}"
+CKPT_DIR="${CKPT_DIR:-outputs/02_hypernetwork_multitask}"
+OUT_ROOT="${OUT_ROOT:-outputs/compute_efficiency/04_compositional_generalization}"
+PADDED_DIR="${PADDED_DIR:-outputs/04_compositional_generalization/padded_checkpoints}"
 
 echo "== notd: direct eval against experiment 2's checkpoints =="
 for SEED in 1 2 3 4 5; do
@@ -47,7 +50,7 @@ for SEED in 1 2 3 4 5; do
     fi
 
     echo "RUN    ${CELL}"
-    if PYTHONPATH=. uv run python scripts/eval_compositional_holdout.py \
+    if PYTHONPATH=. $PYTHON scripts/eval_compositional_holdout.py \
         --config "${CKPT_CELL_DIR}/config.yaml" --checkpoint best --output-dir "${OUT_DIR}" \
         --num-qualitative 0; then
         echo "DONE   ${CELL}"
@@ -75,7 +78,7 @@ for SEED in 1 2 3 4 5; do
 
     if [ ! -f "${PADDED_CKPT}" ]; then
         echo "PAD    ${CELL}"
-        if ! PYTHONPATH=. uv run python experiments/04_compositional_generalization/pad_frozentd_checkpoint.py \
+        if ! PYTHONPATH=. $PYTHON experiments/04_compositional_generalization/pad_frozentd_checkpoint.py \
             --checkpoint "${CKPT_CELL_DIR}/best_model.ckpt" --num-tasks 28 --seed "${SEED}" \
             --out "${PADDED_CKPT}"; then
             echo "FAILED ${CELL} (pad)"
@@ -84,7 +87,7 @@ for SEED in 1 2 3 4 5; do
     fi
 
     echo "RUN    ${CELL}"
-    if PYTHONPATH=. uv run python scripts/eval_compositional_holdout.py \
+    if PYTHONPATH=. $PYTHON scripts/eval_compositional_holdout.py \
         --config experiments/04_compositional_generalization/configs/frozen_td.yaml \
         --checkpoint "${PADDED_CKPT}" --output-dir "${OUT_DIR}" --num-qualitative 0; then
         echo "DONE   ${CELL}"

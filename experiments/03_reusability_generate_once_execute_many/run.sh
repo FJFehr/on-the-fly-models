@@ -29,8 +29,11 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 
-CKPT_DIR="outputs/02_hypernetwork_multitask"
-OUT_ROOT="outputs/compute_efficiency/03_reusability_generate_once_execute_many"
+# Override CKPT_DIR/OUT_ROOT to evaluate another run of experiment 2, and PYTHON to use a
+# specific interpreter instead of `uv run python`.
+PYTHON="${PYTHON:-uv run python}"
+CKPT_DIR="${CKPT_DIR:-outputs/02_hypernetwork_multitask}"
+OUT_ROOT="${OUT_ROOT:-outputs/compute_efficiency/03_reusability_generate_once_execute_many}"
 SPLIT="${GENERALIZATION_SPLIT:-val,test}"
 
 for COND in notd frozentd; do
@@ -49,7 +52,7 @@ for COND in notd frozentd; do
         fi
 
         echo "RUN    ${CELL}"
-        if PYTHONPATH=. uv run python scripts/measure_compute_efficiency.py --stage generalization \
+        if PYTHONPATH=. $PYTHON scripts/measure_compute_efficiency.py --stage generalization \
             --hyper-config "${CKPT_CELL_DIR}/config.yaml" --hyper-checkpoint best \
             --generalization-split "${SPLIT}" --output-dir "${OUT_DIR}"; then
             echo "DONE   ${CELL}"
