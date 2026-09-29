@@ -7,10 +7,13 @@ module targets LaTeX figures instead: softer, dustier colours and flush,
 rounded "pill" cells meant to sit directly on a white page.
 """
 
+from pathlib import Path
+
 import matplotlib
 
 matplotlib.use("Agg")
 
+from matplotlib import font_manager
 from matplotlib import pyplot as plt
 from matplotlib.patches import FancyBboxPatch
 
@@ -231,9 +234,11 @@ def draw_sequence_rounded(
         ax.set_title(
             label,
             fontsize=PAPER_FONT_SIZES["panel_label"],
-            fontweight="bold",
             color=PAPER_LABEL_COLOR,
             pad=40,
+            # Latin Modern (a Computer Modern clone) bold italic, via the
+            # "custom" mathtext fontset set up by use_label_fonts().
+            math_fontfamily="custom",
         )
 
 
@@ -265,9 +270,11 @@ def draw_masked_sequence_rounded(
         ax.set_title(
             label,
             fontsize=PAPER_FONT_SIZES["panel_label"],
-            fontweight="bold",
             color=PAPER_LABEL_COLOR,
             pad=40,
+            # Latin Modern (a Computer Modern clone) bold italic, via the
+            # "custom" mathtext fontset set up by use_label_fonts().
+            math_fontfamily="custom",
         )
 
 
@@ -290,11 +297,35 @@ def draw_io_arrow_rounded(ax: plt.Axes) -> None:
     )
 
 
-def render_task_figure_paper(task: dict, num_support: int | None = None) -> plt.Figure:
+FONTS_DIR = Path(__file__).parent / "fonts"
+
+
+def use_label_fonts() -> None:
+    """Point the "custom" mathtext fontset at the bundled Latin Modern fonts.
+
+    The x/y panel labels opt into this fontset per-text, so everything else
+    keeps whatever mathtext.fontset the caller configured. Call from a
+    script's main(), not at import, like apply_latex_style().
+    """
+    for name in ("lmroman10-regular.otf", "lmroman10-bolditalic.otf"):
+        font_manager.fontManager.addfont(FONTS_DIR / name)
+    plt.rcParams.update(
+        {
+            "mathtext.rm": "Latin Modern Roman",
+            "mathtext.it": "Latin Modern Roman:bold:italic",
+            "mathtext.bf": "Latin Modern Roman:bold:italic",
+        }
+    )
+
+
+def render_task_figure_paper(
+    task: dict, num_support: int | None = None, show_title: bool = True
+) -> plt.Figure:
     """Render a task's support examples + masked query as rounded, muted panels.
 
     ``num_support`` optionally truncates the number of support rows shown
     (useful for a compact paper figure); defaults to all support pairs.
+    ``show_title=False`` drops the task-name title and the space reserved for it.
     """
     support_inputs = task["support_inputs"]
     support_outputs = task["support_outputs"]
@@ -313,7 +344,8 @@ def render_task_figure_paper(task: dict, num_support: int | None = None) -> plt.
     # title pad, into the hspace gap, not into this height.
     row_height = CELL_TARGET * 1.08
     hspace = 2.0  # just enough room for the panel label between rows
-    top_margin, bottom_margin = 0.72, 0.03
+    # Without a title, only the first row's panel label needs room up top.
+    top_margin, bottom_margin = (0.72 if show_title else 0.87), 0.03
     # subplots_adjust below squeezes the grid into [bottom_margin, top_margin]
     # of the figure (to leave room for the suptitle) -- so a fig_height sized
     # for row_height at 100% usage actually gives each row only
@@ -342,18 +374,19 @@ def render_task_figure_paper(task: dict, num_support: int | None = None) -> plt.
         ax_in = fig.add_subplot(grid[row_index, 0])
         ax_arrow = fig.add_subplot(grid[row_index, 1])
         ax_out = fig.add_subplot(grid[row_index, 2])
-        draw_sequence_rounded(ax_in, support_input, f"S{row_index + 1} In", anchor="E")
-        draw_sequence_rounded(ax_out, support_output, f"S{row_index + 1} Out", anchor="W")
+        draw_sequence_rounded(ax_in, support_input, rf"$\mathit{{x}}_{{\mathrm{{{row_index + 1}}}}}$", anchor="E")
+        draw_sequence_rounded(ax_out, support_output, rf"$\mathit{{y}}_{{\mathrm{{{row_index + 1}}}}}$", anchor="W")
         draw_io_arrow_rounded(ax_arrow)
 
     ax_in = fig.add_subplot(grid[-1, 0])
     ax_arrow = fig.add_subplot(grid[-1, 1])
     ax_out = fig.add_subplot(grid[-1, 2])
-    draw_sequence_rounded(ax_in, query_input, "Query In", anchor="E")
-    draw_masked_sequence_rounded(ax_out, sequence_length, "Query Out", anchor="W")
+    draw_sequence_rounded(ax_in, query_input, r"$\mathit{x}'$", anchor="E")
+    draw_masked_sequence_rounded(ax_out, sequence_length, r"$\hat{\mathit{y}}'$", anchor="W")
     draw_io_arrow_rounded(ax_arrow)
 
-    task_title = shorten_task_label(format_task_category(task["task_category"]))
-    draw_task_title(fig, task_title, PAPER_FONT_SIZES["title"], PAPER_LABEL_COLOR, y=0.98)
+    if show_title:
+        task_title = shorten_task_label(format_task_category(task["task_category"]))
+        draw_task_title(fig, task_title, PAPER_FONT_SIZES["title"], PAPER_LABEL_COLOR, y=0.98)
     fig.subplots_adjust(left=0.03, right=0.99, top=top_margin, bottom=bottom_margin)
     return fig

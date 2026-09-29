@@ -52,6 +52,13 @@ Also plot the joint arm (separate output file, default figure unchanged):
 
     uv run python experiments/06_data_efficiency_ablation/plot_data_efficiency.py \\
         --with-joint
+
+Drop the intermediate augmentation levels (v2/v3/v4), keeping 0 and 5 as the
+only points between 40 and 800 episodes (separate *_no_mid_aug output file;
+combines with --with-joint):
+
+    uv run python experiments/06_data_efficiency_ablation/plot_data_efficiency.py \\
+        --drop-mid-augmentations
 """
 
 import argparse
@@ -74,6 +81,9 @@ JOINT_CSV_PATH = Path("outputs/results/06_data_efficiency_ablation/results_joint
 JOINT_PLOT_PATH = Path(
     "outputs/figures/06_data_efficiency_ablation/data_efficiency_cliff_with_joint.png"
 )
+# The augmentation levels between the "0" (v1) and "5" (v5) ticks on the
+# secondary axis, dropped by --drop-mid-augmentations.
+MID_AUGMENTATION_LEVELS = {"v2", "v3", "v4"}
 
 CATEGORIES = [
     "1d_denoising_1c", "1d_denoising_mc", "1d_fill", "1d_flip", "1d_hollow",
@@ -318,7 +328,7 @@ def plot(series: dict[str, dict[int, dict]], out_path: Path) -> None:
     ax.set_xticklabels(
         [f"{v // 1000}K" if v >= 1000 else str(v) for v in tick_values]
     )
-    ax.set_xlabel("Training rows / category (log scale)")
+    ax.set_xlabel("Training episodes (log scale)")
 
     # Second x-axis row: augmentations/example. For the v{N}/full family this
     # is a genuine linear function of rows/category (rows = 40 base
@@ -352,7 +362,7 @@ def plot(series: dict[str, dict[int, dict]], out_path: Path) -> None:
     # five labelled ones. Null them here too, matching ax's own single
     # tick-per-label convention.
     secax.xaxis.set_minor_locator(plt.NullLocator())
-    secax.set_xlabel("Augmentations / example")
+    secax.set_xlabel("Augmentations")
     ax.set_ylabel("Test exact match accuracy")
     ax.set_ylim(0, 1.05)
     ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
@@ -394,6 +404,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Also plot the joint arm, saved to a separate *_with_joint figure.",
     )
+    parser.add_argument(
+        "--drop-mid-augmentations",
+        action="store_true",
+        help="Leave out the v2/v3/v4 levels, saved to a separate *_no_mid_aug figure.",
+    )
     return parser.parse_args()
 
 
@@ -410,6 +425,9 @@ def main() -> None:
     if args.with_joint:
         records = records + read_joint_csv(JOINT_CSV_PATH)
         plot_path = JOINT_PLOT_PATH
+    if args.drop_mid_augmentations:
+        records = [r for r in records if r["level"] not in MID_AUGMENTATION_LEVELS]
+        plot_path = plot_path.with_stem(plot_path.stem + "_no_mid_aug")
 
     series = build_series(records)
     for cond in series:

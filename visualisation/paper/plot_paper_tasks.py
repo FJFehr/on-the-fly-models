@@ -12,7 +12,7 @@ from datasets import Dataset, DatasetDict
 from matplotlib import pyplot as plt
 
 from visualisation.core.style import apply_latex_style
-from visualisation.paper.arc_paper import render_task_figure_paper
+from visualisation.paper.arc_paper import render_task_figure_paper, use_label_fonts
 from visualisation.paper.plot_tasks import (
     filter_tasks,
     is_task_dataset,
@@ -84,6 +84,11 @@ def parse_args() -> argparse.Namespace:
         help="Truncate to this many support pairs (default: all).",
     )
     parser.add_argument(
+        "--no-title",
+        action="store_true",
+        help="Omit the task-name title above the panels.",
+    )
+    parser.add_argument(
         "--format",
         default="pdf",
         choices=["pdf", "png"],
@@ -92,8 +97,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def visualise_task(task: dict, save_path: Path, num_support: int | None) -> None:
-    fig = render_task_figure_paper(task, num_support=num_support)
+def visualise_task(
+    task: dict, save_path: Path, num_support: int | None, show_title: bool = True
+) -> None:
+    fig = render_task_figure_paper(task, num_support=num_support, show_title=show_title)
     # transparent=True drops the canvas fill entirely (PNG alpha channel /
     # no PDF background rect) rather than baking in a white rectangle --
     # works the same as white once placed on a white LaTeX page, but also
@@ -116,6 +123,7 @@ def main() -> None:
     # canvas size for any sequence shorter than the reference length. Put it
     # back to the literal figsize.
     plt.rcParams["savefig.bbox"] = None
+    use_label_fonts()
     args = parse_args()
     data_dir = COMPOSITIONAL_DATA_DIR if args.compositional else args.data_dir
     split = COMPOSITIONAL_SPLIT if args.compositional else args.split
@@ -146,7 +154,9 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for task in selected_tasks:
         output_path = build_output_path(args.output_dir, task, args.format)
-        visualise_task(task, output_path, num_support=args.num_support)
+        visualise_task(
+            task, output_path, num_support=args.num_support, show_title=not args.no_title
+        )
         print(f"Saved {output_path}")
 
 
