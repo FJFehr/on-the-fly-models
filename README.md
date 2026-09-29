@@ -1,5 +1,8 @@
 # on-the-fly-models
 
+Code for the paper *On-the-fly Weight Generation: A Hypernetwork Proof of Concept on ARC-1D*
+(link coming soon).
+
 **Can a network write the weights of a small model for a task it is shown, instead of us
 training one model per task?**
 
@@ -12,6 +15,18 @@ A **hypernetwork** reads the three examples and generates all the weights of a t
 Transformer (about 1,200 parameters), which then solves the query. We compare it with
 training one small model per task type and with one shared model trained on every task, and
 ask when generating weights helps.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/hypernetwork-dark.png">
+    <img src="docs/hypernetwork.png" alt="The hypernetwork encodes the three example pairs into a task vector, decodes it into the weights of a small Transformer, and that Transformer predicts the output for a new input.">
+  </picture>
+  <br>
+  <em>An encoder φ<sub>ω</sub> reads the three examples Z<sub>ℰ</sub> and summarises the task
+  as a vector z<sub>ℰ</sub>. A decoder ψ<sub>ρ</sub> turns z<sub>ℰ</sub> into every weight
+  w<sub>ℰ</sub> of a small Transformer f. Once generated, f needs no examples: given only a
+  new input x′, it predicts the output ŷ′.</em>
+</p>
 
 ## Reproduce
 
@@ -41,14 +56,26 @@ By default `run.sh` runs one job at a time on your GPU. The models are tiny (a j
 
 ## Experiments
 
-| | Question | Finding |
+### Capacity and proof of concept
+
+| | Hypothesis | Finding |
 |---|---|---|
-| [1](experiments/01_multitask_capacity/README.md) | Can one small model learn all 14 tasks at once? | No: it solves each alone but not all together |
-| [2](experiments/02_hypernetwork_multitask/README.md) | Does generating weights close that gap? | Yes, with the task's identity: 93% vs 92.6% for per-task models |
-| [3](experiments/03_reusability_generate_once_execute_many/README.md) | Do weights generated from one example set work for other instances? | Yes, losing about 2 points |
-| [4](experiments/04_compositional_generalization/README.md) | Unseen combinations of known rules? | Better without the task's identity (75.5% vs 67.7%) |
-| [5](experiments/05_leave_one_out_task_generalization/README.md) | A task type never seen in training? | Better without the task's identity, 13 of 14 types |
-| [6](experiments/06_data_efficiency_ablation/README.md) | How much training data is needed? | Sharing across tasks helps at moderate data sizes |
+| [1](experiments/01_multitask_capacity/README.md) | A tiny model (1.4K parameters) can learn any one task type; can it learn all 14 at once? | No: trained on one type at a time it solves every type, but trained on all 14 together it fails. A larger joint model (9.5K parameters) closes the gap. So can we generate a tiny, fast, deployable model for each task instead? |
+| [2](experiments/02_hypernetwork_multitask/README.md) | Can a hypernetwork generate the weights of a model that solves all 14 task types? | Yes, with task identity: one shared hypernetwork matches one model per type (93.0% vs 92.6%) |
+
+### Generalisation
+
+| | Hypothesis | Finding |
+|---|---|---|
+| [3](experiments/03_reusability_generate_once_execute_many/README.md) | Do generated weights capture the task's rule, or only the instance they were generated from? | The rule: reused on other instances of the same type, they lose about 2 points (94.0% to 91.8%), with or without task identity |
+| [4](experiments/04_compositional_generalization/README.md) | Can a hypernetwork generalise to unseen combinations of known rules, and does task identity help? | Partly, and better without task identity. Token accuracy 75.5% vs 67.7%, ahead in 8 of 10 types. Exact match stays near zero: 1.0% vs 0.05%, ahead in 3 types, behind in 1, both 0% in 6 |
+| [5](experiments/05_leave_one_out_task_generalization/README.md) | Can a hypernetwork generalise to a task type unseen in training, and does task identity help? | Partly, and better without task identity. Token accuracy 81.6% vs 67.5%, ahead in 13 of 14 types. Exact match 10.2% vs 0.4%, ahead in 6 types, behind in 1, both 0% in 7 |
+
+### Data efficiency
+
+| | Hypothesis | Finding |
+|---|---|---|
+| [6](experiments/06_data_efficiency_ablation/README.md) | Does sharing parameters across tasks give the hypernetwork an advantage when training data is scarce? | Not at this scale: with task identity, it stays within a few points of one model per type at every data size |
 
 Run experiment 2 before 3 and 4, which evaluate its models. Each experiment's README has the
 full setup, commands, figures and results; [`experiments/README.md`](experiments/README.md)
