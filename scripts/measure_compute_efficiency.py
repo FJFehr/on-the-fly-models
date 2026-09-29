@@ -109,7 +109,7 @@ DEFAULT_OUTPUT_DIR = "outputs/compute_efficiency"
 
 # Real scale already run in this repo's experiments (see README context), used as vertical
 # reference lines on the crossover plot.
-N_TASKS_IN_DISTRIBUTION = 15  # arc1d_lowdata_baseline / arc1d_hypermodel_compositional_generalization's train categories
+N_TASKS_IN_DISTRIBUTION = 15  # 06_data_efficiency_ablation_individual / arc1d_hypermodel_compositional_generalization's train categories
 N_TASKS_WITH_COMPOSITIONAL_HOLDOUT = 25  # + 10 held-out composite categories
 
 

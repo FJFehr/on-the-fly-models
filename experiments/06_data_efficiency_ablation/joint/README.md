@@ -1,11 +1,11 @@
-# arc1d_lowdata_joint
+# 06_data_efficiency_ablation_joint
 
-Third arm of the data-efficiency study, alongside `arc1d_lowdata` (hypernetwork) and
-`arc1d_lowdata_baseline` (fully-isolated per-task individual). Added 2026-09-10.
+Third arm of the data-efficiency study, alongside `06_data_efficiency_ablation_hypernetwork` (hypernetwork) and
+`06_data_efficiency_ablation_individual` (fully-isolated per-task individual). Added 2026-09-10.
 
 ## Goal
 
-`arc1d_lowdata_baseline`'s per-task individual models can't share anything across
+`06_data_efficiency_ablation_individual`'s per-task individual models can't share anything across
 categories by construction, so a gap between it and the hypernetwork can't tell you
 *why* the hypernetwork needs less data — cross-task weight generation, or just having a
 shared backbone at all. This arm isolates that: one backbone, trained **jointly** across
@@ -24,7 +24,7 @@ of only at the top.
 
 ## Fixed architecture — sized to the hypernetwork's parameter *budget*, not its target
 
-Unlike `arc1d_lowdata`/`arc1d_lowdata_baseline` (both at experiment 2's dim=4 target,
+Unlike `06_data_efficiency_ablation_hypernetwork`/`06_data_efficiency_ablation_individual` (both at experiment 2's dim=4 target,
 a few hundred params on its own), this arm is deliberately **not** dim=4. The
 hypernetwork's own total parameter count (~11.4K `frozen_td` / ~11.3K `notd`) is what a
 no-hypernetwork baseline needs to match to isolate weight *generation* from mere extra
@@ -45,13 +45,13 @@ it's compared against, confounding "no weight generation" with "far less capacit
 - `max_steps: 8000, warmup_steps: 200, learning_rate: 0.0005`, no gradient clipping — matches
   experiment 1's own `td_dim14`/`notd_dim14` recipe exactly (2026-09-14 unification; was
   `max_steps: 2000, learning_rate: 0.001, gradient_clip_val: 10.0`, matching
-  `arc1d_lowdata`/`arc1d_lowdata_baseline`'s own then-budget instead of this arm's actual
-  reference — caught alongside the same discrepancy in `arc1d_lowdata_baseline`'s own
+  `06_data_efficiency_ablation_hypernetwork`/`06_data_efficiency_ablation_individual`'s own then-budget instead of this arm's actual
+  reference — caught alongside the same discrepancy in `06_data_efficiency_ablation_individual`'s own
   README). Compute is still held fixed across every data level within this arm — just
   recalibrated to experiment 1's own validated 8000-step recipe instead of an untested
   smaller one.
 - All 14 in-distribution task categories trained jointly in one model per (condition,
-  level, seed) — not per-category like `arc1d_lowdata_baseline`.
+  level, seed) — not per-category like `06_data_efficiency_ablation_individual`.
 
 ## Data-reduction mechanism
 
@@ -63,7 +63,7 @@ At a given level, all three arms train on the identical underlying task-variant 
 
 **Levels**: `variants_per_base_task` in {1, 2, 3, 4, 5, 20, full} — the full range plus a
 "full" cell (no reduction, the entire train split, added 2026-09-10), matching
-`arc1d_lowdata`, not `arc1d_lowdata_baseline`'s restricted {1, 2, 3, full}. A joint run is
+`06_data_efficiency_ablation_hypernetwork`, not `06_data_efficiency_ablation_individual`'s restricted {1, 2, 3, full}. A joint run is
 one model across all 14 categories, the same cost profile as a hypernetwork run, so
 there's no reason to restrict it the way the *per-category* individual baseline is
 (210→280 jobs already, without needing 4 more levels x 14 categories on top). "full" runs
@@ -78,18 +78,18 @@ full-data dim=14 numbers as a sanity check.
 additional augmentation), tagged `cell_{cond}_t{N}.yaml`. Reduces task *diversity* rather
 than augmentation *depth*, reaching below the `v1` floor's ~40 base-tasks/category — the
 sharpest test of the cross-task-sharing hypothesis: at `t1`, this arm still pools 14
-categories' worth of single-base-task task-instances, while `arc1d_lowdata_baseline`'s
+categories' worth of single-base-task task-instances, while `06_data_efficiency_ablation_individual`'s
 per-category models each get only that one base task. Selection uses its own
 `data_seed`-seeded RNG stream, independent of the `v*` axis's own (see
 `data_modules/arc1d_direct.py`'s `_stratified_base_tasks_per_category`). 5 more levels × 2
 conditions × 5 seeds = **50 more jobs**, total **120**.
 
-## Known asymmetry (same as `arc1d_lowdata_baseline`)
+## Known asymmetry (same as `06_data_efficiency_ablation_individual`)
 
 `Arc1dDirectDataModule` unpacks each selected row into its 3 support pairs only (the
-row's own query is held out for the separate dev/test splits), vs. `arc1d_lowdata`'s 4
+row's own query is held out for the separate dev/test splits), vs. `06_data_efficiency_ablation_hypernetwork`'s 4
 (3 support + the row's own query, supervised as part of the hypernetwork's training
-loss). Same inherent datamodule difference documented in `arc1d_lowdata_baseline`'s
+loss). Same inherent datamodule difference documented in `06_data_efficiency_ablation_individual`'s
 README — this arm shares it, not something new.
 
 ## Running
@@ -106,8 +106,8 @@ Split across nodes via `SEEDS_OVERRIDE`/`CELL_GLOB` (see script header for examp
 
 For each level and condition, compare `val_query_exact_match`/`test_query_exact_match`
 (mean ± std across 5 seeds) against the other two arms at the same level, same condition:
-`arc1d_lowdata`'s matching `frozen_td`/`notd` cell (hypernetwork) and
-`arc1d_lowdata_baseline`'s per-category numbers averaged to a macro mean (only defined at
+`06_data_efficiency_ablation_hypernetwork`'s matching `frozen_td`/`notd` cell (hypernetwork) and
+`06_data_efficiency_ablation_individual`'s per-category numbers averaged to a macro mean (only defined at
 levels 1, 2, 3, full — its restricted range, missing 4/5/20 — and with no task-id axis of
 its own to match against, one task per model there, so `notd` isn't a meaningful category
 for it). `joint_td`

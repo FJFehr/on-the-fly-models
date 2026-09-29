@@ -31,7 +31,7 @@ Raw per-(condition, seed, category) numbers live in results_generalization_loo_r
 this script's own per-(condition, category) macro-average is computed from
 results_generalization_loo.csv (itself averaged across seeds from the raw file) -- neither is
 committed, see "Figures and results" in experiments/README.md. --outputs-dir rescans
-outputs/compute_efficiency/03_reusability_generate_once_execute_many/ (written by run.sh) and
+outputs/03_reusability_generate_once_execute_many/ (written by run.sh) and
 refreshes both CSVs; without it, replots from results_generalization_loo.csv as committed.
 
 Usage
@@ -55,7 +55,7 @@ from matplotlib.patches import Patch
 from visualisation.core.style import apply_latex_style
 from visualisation.paper.arc_paper import PAPER_COLORS, PAPER_FILL_COLORS
 
-OUTPUTS_SUBDIR = "compute_efficiency/03_reusability_generate_once_execute_many"
+OUTPUTS_SUBDIR = "03_reusability_generate_once_execute_many"
 RAW_CSV_PATH = Path(
     "outputs/results/03_reusability_generate_once_execute_many/results_generalization_loo_raw.csv"
 )

@@ -1,13 +1,13 @@
-# Base config for the arc1d_lowdata "joint, no hypernetwork" baseline.
+# Base config for the 06_data_efficiency_ablation_hypernetwork "joint, no hypernetwork" baseline.
 #
-# Third arm alongside arc1d_lowdata (hypernetwork) and arc1d_lowdata_baseline
+# Third arm alongside 06_data_efficiency_ablation_hypernetwork (hypernetwork) and 06_data_efficiency_ablation_individual
 # (fully-isolated per-task individual): one shared backbone trained jointly
 # across all 14 task categories -- direct_supervised, no weight generation --
 # with vs. without a task-identity embedding. Added 2026-09-10, reusing
 # experiment 1's own direct_supervised + task_encoding.use_task_embedding
 # mechanism verbatim (01_multitask_capacity/configs/td_dim4.yaml /
 # notd_dim4.yaml) -- this was flagged as a future "Phase 3, doesn't exist
-# yet" in arc1d_lowdata's README, but the mechanism already exists in
+# yet" in 06_data_efficiency_ablation_hypernetwork's README, but the mechanism already exists in
 # experiment 1, just not previously reused here.
 #
 # Purpose: isolate what the hypernetwork's weight *generation* buys over
@@ -38,14 +38,14 @@
 # Compute budget: 2026-09-14, unified onto experiment 1's own td_dim14/notd_dim14 recipe
 # exactly -- max_steps=8000, learning_rate=0.0005, no gradient clipping (01 has none;
 # an earlier version of this file used max_steps=2000/learning_rate=0.001/
-# gradient_clip_val=10.0, matching arc1d_lowdata/arc1d_lowdata_baseline's own then-budget
+# gradient_clip_val=10.0, matching 06_data_efficiency_ablation_hypernetwork/06_data_efficiency_ablation_individual's own then-budget
 # instead of this arm's actual reference -- caught alongside the same discrepancy in
-# arc1d_lowdata_baseline's own base.yaml, see its "2026-09-14 unification" note). Compute
+# 06_data_efficiency_ablation_individual's own base.yaml, see its "2026-09-14 unification" note). Compute
 # is still held fixed across every data level within this arm -- just recalibrated to 01's
 # own validated 8000-step recipe instead of an untested smaller one.
 #
 # Self-contained (no _base_ of its own), matching every sibling base.yaml.
-project_name: arc1d_lowdata_joint
+project_name: 06_data_efficiency_ablation_joint
 entity: fjfehr
 output_dir: outputs
 seed: 42

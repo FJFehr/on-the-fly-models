@@ -1,4 +1,4 @@
-# arc1d_lowdata
+# 06_data_efficiency_ablation_hypernetwork
 
 Phase 1 of a 3-phase data-efficiency study. Phases 2-3 are direction only, not designed yet.
 

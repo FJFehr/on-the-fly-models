@@ -1,4 +1,4 @@
-"""Generate the data-reduction levels for arc1d_lowdata.
+"""Generate the data-reduction levels for 06_data_efficiency_ablation_hypernetwork.
 
 Tests whether the hypernetwork needs less training data than a model with no
 cross-task transfer, by training experiment 2's own dim=4 matched-scale
@@ -46,7 +46,7 @@ import yaml
 
 DST = Path("experiments/06_data_efficiency_ablation/hypernetwork/configs")
 BASE_CFG = "experiments/06_data_efficiency_ablation/hypernetwork/configs/base.yaml"
-PROJECT = "arc1d_lowdata"
+PROJECT = "06_data_efficiency_ablation_hypernetwork"
 
 # None ("full") means no reduction -- the entire train split, same as leaving
 # variants_per_base_task unset.

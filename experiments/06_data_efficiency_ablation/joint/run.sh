@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Run all arc1d_lowdata_joint cells: 7 data-reduction levels
+# Run all 06_data_efficiency_ablation_joint cells: 7 data-reduction levels
 # (variants_per_base_task in {1, 2, 3, 4, 5, 20, full}, stratified/nested per
 # base task - see README.md) x 2 conditions (td/notd) x 5 seeds each (70 jobs
 # total). One direct_supervised model per (condition, level, seed), trained
 # jointly across all 14 task categories on rope_canon_looped_transformer, at
-# the hypernetwork's own ~10K-param scaffold size (not arc1d_lowdata/
-# arc1d_lowdata_baseline's dim=4 target -- see README.md) -- no hypernetwork,
+# the hypernetwork's own ~10K-param scaffold size (not 06_data_efficiency_ablation_hypernetwork/
+# 06_data_efficiency_ablation_individual's dim=4 target -- see README.md) -- no hypernetwork,
 # no per-task isolation. Third arm alongside those two: see
 # README.md for what this isolates.
 #
@@ -31,8 +31,8 @@
 
 set -uo pipefail
 
-PROJECT="arc1d_lowdata_joint"
-LOG_DIR="logs/arc1d_lowdata_joint"
+PROJECT="06_data_efficiency_ablation_joint"
+LOG_DIR="logs/06_data_efficiency_ablation_joint"
 CFG_DIR="experiments/06_data_efficiency_ablation/joint/configs"
 CELL_GLOB="${CELL_GLOB:-cell_*.yaml}"
 FREE_GPUS_FLAG="${FREE_GPUS_FLAG:-}"

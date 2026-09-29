@@ -1,6 +1,6 @@
-"""Generate the data-reduction levels for arc1d_lowdata_joint.
+"""Generate the data-reduction levels for 06_data_efficiency_ablation_joint.
 
-Third arm alongside arc1d_lowdata (hypernetwork) and arc1d_lowdata_baseline
+Third arm alongside 06_data_efficiency_ablation_hypernetwork (hypernetwork) and 06_data_efficiency_ablation_individual
 (fully-isolated individual): one shared backbone (direct_supervised, no
 hypernetwork) trained jointly across all 14 task categories, with vs.
 without a task-identity embedding (td/notd) -- reusing experiment 1's own
@@ -10,7 +10,7 @@ notd/td) -- sized to the hypernetwork's own total parameter budget, not its
 dim=4 target.
 
 variants_per_base_task in {1, 2, 3, 4, 5, 20, full} x {td, notd} -- same 6
-reduced levels as arc1d_lowdata, plus a "full" cell (variants_per_base_task
+reduced levels as 06_data_efficiency_ablation_hypernetwork, plus a "full" cell (variants_per_base_task
 left at None -- no reduction, the entire train split) run at the same fixed
 compute budget as every other level (max_steps=8000, since the 2026-09-14
 unification onto experiment 1's own td_dim14/notd_dim14 recipe exactly), so
@@ -41,7 +41,7 @@ import yaml
 
 DST = Path("experiments/06_data_efficiency_ablation/joint/configs")
 BASE_CFG = "experiments/06_data_efficiency_ablation/joint/configs/base.yaml"
-PROJECT = "arc1d_lowdata_joint"
+PROJECT = "06_data_efficiency_ablation_joint"
 
 # None ("full") means no reduction -- the entire train split, same as leaving
 # variants_per_base_task unset.

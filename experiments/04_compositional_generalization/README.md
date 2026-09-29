@@ -106,7 +106,7 @@ uv run python experiments/04_compositional_generalization/plot_compositional.py 
 `run.sh` evaluates `notd` directly against experiment 2's checkpoints, and pads +
 evaluates `frozen_td`'s (`pad_frozentd_checkpoint.py`, skip-on-done, writes the padded
 checkpoint under `outputs/04_compositional_generalization/padded_checkpoints/` so it's only
-computed once). Both write to `outputs/compute_efficiency/04_compositional_generalization/
+computed once). Both write to `outputs/04_compositional_generalization/
 {notd,frozentd}_seed{1..5}/results.txt`. If experiment 2's checkpoints aren't local yet:
 
 ```bash

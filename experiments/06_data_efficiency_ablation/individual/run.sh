@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Run all arc1d_lowdata_baseline cells: 14 task categories x 4 data levels
+# Run all 06_data_efficiency_ablation_individual cells: 14 task categories x 4 data levels
 # (variants_per_base_task in {1, 2, 3, full}, stratified/nested per base task
 # - see README.md) x 5 seeds each (280 jobs total). No hypernetwork -- one
 # LoopedSupervisedLightning model per (category, level, seed), trained
 # directly on rope_canon_looped_transformer (identical architecture to
-# arc1d_lowdata's target_model). Companion sweep to arc1d_lowdata: see its
+# 06_data_efficiency_ablation_hypernetwork's target_model). Companion sweep to 06_data_efficiency_ablation_hypernetwork: see its
 # README.md for the fairness/asymmetry discussion.
 #
 # Each job is tiny (<=360 raw training pairs, hidden_dim=16) and uses a single
@@ -28,8 +28,8 @@
 
 set -uo pipefail
 
-PROJECT="arc1d_lowdata_baseline"
-LOG_DIR="logs/arc1d_lowdata_baseline"
+PROJECT="06_data_efficiency_ablation_individual"
+LOG_DIR="logs/06_data_efficiency_ablation_individual"
 CFG_DIR="experiments/06_data_efficiency_ablation/individual/configs"
 CATEGORY_GLOB="${CATEGORY_GLOB:-*}"
 CELL_GLOB="${CELL_GLOB:-*.yaml}"

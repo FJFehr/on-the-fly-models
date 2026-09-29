@@ -31,7 +31,7 @@ cd "$(dirname "$0")/../.."
 # specific interpreter instead of `uv run python`.
 PYTHON="${PYTHON:-uv run python}"
 CKPT_DIR="${CKPT_DIR:-outputs/02_hypernetwork_multitask}"
-OUT_ROOT="${OUT_ROOT:-outputs/compute_efficiency/04_compositional_generalization}"
+OUT_ROOT="${OUT_ROOT:-outputs/04_compositional_generalization}"
 PADDED_DIR="${PADDED_DIR:-outputs/04_compositional_generalization/padded_checkpoints}"
 
 echo "== notd: direct eval against experiment 2's checkpoints =="

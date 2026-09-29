@@ -26,7 +26,7 @@
 # checked data_modules/*.py -- devices: auto's 8-way DDP on a full node gave batch_size=512 an
 # effective global batch of 4096, 8x 02's own single-GPU 512; hypernetwork/run.sh moved to the
 # same GPUS=-parallel-slot pattern joint/individual already use, to not lose throughput now that
-# devices is back to 1). Caught while investigating why arc1d_lowdata_baseline's own `full`-level
+# devices is back to 1). Caught while investigating why 06_data_efficiency_ablation_individual's own `full`-level
 # result didn't match experiment 1's established ceiling -- see that arm's own base.yaml for the
 # individual-side half of this story. All 70 jobs from before this were invalidated and rerun.
 #
@@ -51,7 +51,7 @@
 #
 # Self-contained (no _base_ of its own) -- the config loader only resolves one level of _base_
 # inheritance (training/config.py).
-project_name: arc1d_lowdata
+project_name: 06_data_efficiency_ablation_hypernetwork
 entity: fjfehr
 output_dir: outputs
 seed: 42

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run all 7 arc1d_lowdata data-reduction levels (variants_per_base_task in
+# Run all 7 06_data_efficiency_ablation_hypernetwork data-reduction levels (variants_per_base_task in
 # {1, 2, 3, 4, 5, 20, full}, stratified/nested per base task - see README.md)
 # x 2 conditions (frozentd/notd), 5 seeds each (70 jobs total). Fixed architecture
 # throughout (experiment 2's own dim=4 matched-scale recipe, Muon lr=0.005) -
@@ -36,8 +36,8 @@
 
 set -uo pipefail
 
-PROJECT="arc1d_lowdata"
-LOG_DIR="logs/arc1d_lowdata"
+PROJECT="06_data_efficiency_ablation_hypernetwork"
+LOG_DIR="logs/06_data_efficiency_ablation_hypernetwork"
 CFG_DIR="experiments/06_data_efficiency_ablation/hypernetwork/configs"
 CELL_GLOB="${CELL_GLOB:-cell_*.yaml}"
 FREE_GPUS_FLAG="${FREE_GPUS_FLAG:-}"

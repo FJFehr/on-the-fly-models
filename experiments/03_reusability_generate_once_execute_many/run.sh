@@ -32,7 +32,7 @@ cd "$(dirname "$0")/../.."
 # specific interpreter instead of `uv run python`.
 PYTHON="${PYTHON:-uv run python}"
 CKPT_DIR="${CKPT_DIR:-outputs/02_hypernetwork_multitask}"
-OUT_ROOT="${OUT_ROOT:-outputs/compute_efficiency/03_reusability_generate_once_execute_many}"
+OUT_ROOT="${OUT_ROOT:-outputs/03_reusability_generate_once_execute_many}"
 SPLIT="${GENERALIZATION_SPLIT:-val,test}"
 
 for COND in notd frozentd; do

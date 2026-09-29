@@ -5,7 +5,7 @@ experiment's README for why) -- in-distribution numbers are literally experiment
 results.txt (both experiments train on the identical 14-category recipe, confirmed by
 diffing their configs), so this script's own --outputs-dir rescan reads across TWO
 experiments' outputs/ trees: experiment 2's for in-distribution, this experiment's own
-outputs/compute_efficiency/04_compositional_generalization/ (written by run.sh) for the
+outputs/04_compositional_generalization/ (written by run.sh) for the
 zero-shot compositional eval.
 
 Two figures:
@@ -108,8 +108,8 @@ def parse_holdout_table(results_path: Path) -> dict[str, dict[str, float]]:
 
 def extract_holdout_records(outputs_dir: Path) -> list[dict]:
     """notd/frozen_td zero-shot compositional-holdout numbers, from run.sh's own output --
-    outputs/compute_efficiency/04_compositional_generalization/{notd,frozentd}_seed{N}/results.txt."""
-    root = outputs_dir / "compute_efficiency" / "04_compositional_generalization"
+    outputs/04_compositional_generalization/{notd,frozentd}_seed{N}/results.txt."""
+    root = outputs_dir / "04_compositional_generalization"
     records = []
     for cond, dirname_cond in (("notd", "notd"), ("frozen_td", "frozentd")):
         for seed in SEEDS:

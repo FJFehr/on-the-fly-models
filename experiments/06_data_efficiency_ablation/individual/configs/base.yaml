@@ -1,11 +1,11 @@
-# Base config for the arc1d_lowdata "no hypernetwork" capacity baseline.
+# Base config for the 06_data_efficiency_ablation_hypernetwork "no hypernetwork" capacity baseline.
 #
-# Companion to arc1d_lowdata: trains the EXACT SAME target architecture
+# Companion to 06_data_efficiency_ablation_hypernetwork: trains the EXACT SAME target architecture
 # (rope_canon_looped_transformer, hidden_dim=4/n_loops=1/dropout=0.1, identical
 # Canon settings -- experiment 2's own dim=4 matched-scale target), no
 # hypernetwork, no weight generation, no cross-task sharing at all. One model
 # per task category, per data level, per seed. This isolates whether
-# arc1d_lowdata's data efficiency comes specifically from cross-task transfer
+# 06_data_efficiency_ablation_hypernetwork's data efficiency comes specifically from cross-task transfer
 # through the shared hypernetwork backbone, or whether a plain single-task
 # model needs just as little data.
 #
@@ -32,7 +32,7 @@
 # All 280 jobs from before this were invalidated and rerun.
 #
 # Data-reduction mechanism is the same stratified/nested variants_per_base_task
-# sampling as arc1d_lowdata (see data_modules/arc1d_direct.py's
+# sampling as 06_data_efficiency_ablation_hypernetwork (see data_modules/arc1d_direct.py's
 # _stratified_variants_per_base_task, ported verbatim from
 # data_modules/arc1d_meta_multiclass.py), applied to the same data_seed=42
 # rows from the same data/arc_1d_looped_augmented dataset -- so at a given
@@ -41,22 +41,22 @@
 # Known asymmetry (documented, not "fixed"): Arc1dDirectDataModule unpacks
 # each selected row into its 3 support (input, output) pairs only (the row's
 # query is held out for the separate dev/test splits) -- so 3 raw supervised
-# pairs/row here, vs. 4 in arc1d_lowdata (which also supervises the row's own
+# pairs/row here, vs. 4 in 06_data_efficiency_ablation_hypernetwork (which also supervises the row's own
 # query reconstruction as part of the hypernetwork's training loss). This is
 # an inherent difference between the two datamodules' established
 # conventions, not something changed for this comparison.
 #
-# Optimizer: Muon (lr=0.005), matching arc1d_lowdata exactly to remove
+# Optimizer: Muon (lr=0.005), matching 06_data_efficiency_ablation_hypernetwork exactly to remove
 # optimizer choice as a confound -- the same muon_lr=0.005 experiment 1's own
 # dim=4 optimizer ablation (01_multitask_capacity) already validated at this
-# exact target architecture; consistency with arc1d_lowdata was prioritised
+# exact target architecture; consistency with 06_data_efficiency_ablation_hypernetwork was prioritised
 # over re-testing the AdamW alternative here.
 #
 # Self-contained (no _base_ of its own) -- the config loader only resolves one
 # level of _base_ inheritance (training/config.py), so settings that would
 # otherwise come from arc1d_recursion_ablation/base_ablation.yaml (data:
 # arc_1d_direct, data_dir, batch_size, etc.) are inlined here directly instead.
-project_name: arc1d_lowdata_baseline
+project_name: 06_data_efficiency_ablation_individual
 entity: fjfehr
 output_dir: outputs
 seed: 42

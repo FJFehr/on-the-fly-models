@@ -7,9 +7,9 @@ the swept quantity on the x-axis is training-data amount (rows/category),
 not model parameter count, and the three conditions compared are:
 
   1. Individual   -- one model per task category, no cross-task sharing at
-                     all (arc1d_lowdata_baseline, dim=4 matched-scale target)
-  2. Hyper, Task ID    -- the hypernetwork, frozen_td (arc1d_lowdata)
-  3. Hyper, w/o Task ID -- the hypernetwork, notd (arc1d_lowdata)
+                     all (06_data_efficiency_ablation_individual, dim=4 matched-scale target)
+  2. Hyper, Task ID    -- the hypernetwork, frozen_td (06_data_efficiency_ablation_hypernetwork)
+  3. Hyper, w/o Task ID -- the hypernetwork, notd (06_data_efficiency_ablation_hypernetwork)
 
 The joint (direct, no-hypernetwork) arm is left out of the default figure
 -- it's a different comparison (weight generation vs. plain task-id
@@ -154,7 +154,7 @@ def extract_records(outputs_dir: Path) -> list[dict]:
     # --- hypernetwork: lowdata_{frozentd,notd}_{level}_seed{n} ---
     cond_map = {"frozentd": "td", "notd": "notd"}
     hyper_re = re.compile(r"^lowdata_(frozentd|notd)_(v\d+|t\d+|full)_seed(\d+)$")
-    hyper_dir = outputs_dir / "arc1d_lowdata"
+    hyper_dir = outputs_dir / "06_data_efficiency_ablation_hypernetwork"
     for path in sorted(hyper_dir.glob("*/results.txt")):
         m = hyper_re.match(path.parent.name)
         if not m:
@@ -174,7 +174,7 @@ def extract_records(outputs_dir: Path) -> list[dict]:
     # averaged across that seed's 14 separate per-task models).
     cat_alt = "|".join(re.escape(c) for c in CATEGORIES)
     indiv_re = re.compile(rf"^lowdata_baseline_({cat_alt})_(v\d+|t\d+|full)_seed(\d+)$")
-    indiv_dir = outputs_dir / "arc1d_lowdata_baseline"
+    indiv_dir = outputs_dir / "06_data_efficiency_ablation_individual"
     indiv_raw: dict[tuple[str, int], list[float]] = {}
     for path in sorted(indiv_dir.glob("*/results.txt")):
         m = indiv_re.match(path.parent.name)

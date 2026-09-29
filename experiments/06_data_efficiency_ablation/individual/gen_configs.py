@@ -1,22 +1,22 @@
-"""Generate per-category, per-level configs for arc1d_lowdata_baseline.
+"""Generate per-category, per-level configs for 06_data_efficiency_ablation_individual.
 
-Companion sweep to arc1d_lowdata (experiments/06_data_efficiency_ablation/hypernetwork/gen_configs.py) testing the
+Companion sweep to 06_data_efficiency_ablation_hypernetwork (experiments/06_data_efficiency_ablation/hypernetwork/gen_configs.py) testing the
 same variants_per_base_task data-reduction axis WITHOUT the hypernetwork: one
 direct_supervised model per task category, trained directly on
-rope_canon_looped_transformer (the exact same architecture as arc1d_lowdata's
+rope_canon_looped_transformer (the exact same architecture as 06_data_efficiency_ablation_hypernetwork's
 target_model), with no cross-task sharing at all.
 
 variants_per_base_task in {1, 2, 3, full} this round (levels 4/5/20 from
-arc1d_lowdata are out of scope for now). "full" (variants_per_base_task left
+06_data_efficiency_ablation_hypernetwork are out of scope for now). "full" (variants_per_base_task left
 at None -- no reduction, the entire per-category train split) is a
 self-contained full-data anchor at this experiment's own fixed compute
 budget (max_steps=8000, since the 2026-09-14 unification onto experiment 1's
 own dim=4 Individual recipe exactly), added 2026-09-10 alongside the other
 two arms' own "full" cells.
 
-Same 14 in-distribution task categories as arc1d_lowdata/base.yaml -- the
+Same 14 in-distribution task categories as 06_data_efficiency_ablation_hypernetwork/base.yaml -- the
 paper's standard set (matching 01/02/05), not the original scaffolding's 15
-(dropped 1d_recolor_cmp, 2026-09-10, to match arc1d_lowdata's own resize).
+(dropped 1d_recolor_cmp, 2026-09-10, to match 06_data_efficiency_ablation_hypernetwork's own resize).
 
 2026-09-15: added a second, independent data-reduction axis --
 base_tasks_per_category in {1, 3, 5, 10, 20}, always paired with
@@ -43,7 +43,7 @@ import yaml
 
 DST = Path("experiments/06_data_efficiency_ablation/individual/configs")
 BASE_CFG = "experiments/06_data_efficiency_ablation/individual/configs/base.yaml"
-PROJECT = "arc1d_lowdata_baseline"
+PROJECT = "06_data_efficiency_ablation_individual"
 
 TASK_CATEGORIES = [
     "1d_denoising_1c",

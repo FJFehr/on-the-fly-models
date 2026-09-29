@@ -1,11 +1,11 @@
-# arc1d_lowdata_baseline
+# 06_data_efficiency_ablation_individual
 
-Companion experiment to `arc1d_lowdata`, testing the same data-reduction axis
+Companion experiment to `06_data_efficiency_ablation_hypernetwork`, testing the same data-reduction axis
 **without the hypernetwork**.
 
 ## Goal
 
-`arc1d_lowdata` shows that its hypernetwork reaches near-full performance at
+`06_data_efficiency_ablation_hypernetwork` shows that its hypernetwork reaches near-full performance at
 `variants_per_base_task=2` (~80 examples/category). The open question: does
 that data efficiency come specifically from **cross-task transfer** — the
 hypernetwork sharing one backbone across all 15 task categories — or would a
@@ -18,7 +18,7 @@ hypernetwork to reach the same performance at a given category, that supports
 the cross-task-transfer hypothesis. If it needs about the same, the
 hypernetwork isn't buying data efficiency at these scales.
 
-**2026-09-10: resized alongside `arc1d_lowdata`'s own dim=4 rescale** — was
+**2026-09-10: resized alongside `06_data_efficiency_ablation_hypernetwork`'s own dim=4 rescale** — was
 `hidden_dim=16/n_loops=4` (the pre-unification legacy target this experiment's
 own "EXACT SAME target architecture" framing always required matching), now
 experiment 2's own dim=4 matched-scale target. Also dropped `1d_recolor_cmp`
@@ -46,7 +46,7 @@ shrink with it). Caught because this arm's own `full`-level result (macro
 alone was 24% vs. 01's own ~65%. All 280 jobs from before this were
 invalidated and rerun.
 
-## Fixed architecture (identical to arc1d_lowdata's target_model)
+## Fixed architecture (identical to 06_data_efficiency_ablation_hypernetwork's target_model)
 
 - `rope_canon_looped_transformer` (`hidden_dim: 4, num_heads: 1, inner_dim: 4,
   inner_num_heads: 1, n_loops: 1, dropout: 0.1`, same Canon settings —
@@ -55,18 +55,18 @@ invalidated and rerun.
   experiment 1's own Individual arm exactly) — no task-identity conditioning
   of any kind.
 - `optimizer: Muon, muon_lr: 0.005, muon_momentum: 0.95` — matches
-  `arc1d_lowdata` exactly, to remove optimizer choice as a confound between
+  `06_data_efficiency_ablation_hypernetwork` exactly, to remove optimizer choice as a confound between
   the two experiments, and the same value experiment 1's own dim=4 optimizer
   ablation already validated at this exact target architecture (the
   alternative there, AdamW, is not re-tested here). `learning_rate: 0.0005`
   and `task_encoding.embedding_dim: 10` match experiment 1's own dim=4
-  Individual convention exactly (not `arc1d_lowdata`'s — the two references
+  Individual convention exactly (not `06_data_efficiency_ablation_hypernetwork`'s — the two references
   differ here, and this arm now follows its own).
 - `max_steps: 8000, warmup_steps: 200` — matches experiment 1's own dim=4
-  Individual compute budget exactly, not `arc1d_lowdata`'s own (reduced)
+  Individual compute budget exactly, not `06_data_efficiency_ablation_hypernetwork`'s own (reduced)
   budget.
 - One model **per task category** (14 categories, the paper's standard set —
-  same list as `arc1d_lowdata/base.yaml` and matching 01/02/05, not the
+  same list as `06_data_efficiency_ablation_hypernetwork/base.yaml` and matching 01/02/05, not the
   original 15 or `arc1d_uniform_ablation`'s 17).
 
 ## Data-reduction mechanism
@@ -86,7 +86,7 @@ identical underlying task-variant rows** — the data itself is matched, not
 just the count.
 
 **Levels this round**: `variants_per_base_task` ∈ {1, 2, 3, full} (≈40/80/120/≈40,000
-examples/category), matching `arc1d_lowdata`'s `cell_{cond}_v1`/`v2`/`v3`/`full`. Levels
+examples/category), matching `06_data_efficiency_ablation_hypernetwork`'s `cell_{cond}_v1`/`v2`/`v3`/`full`. Levels
 4/5/20 are out of scope for now. `full` (no reduction, added 2026-09-10) runs at
 `max_steps: 8000` (since the 2026-09-14 unification, matching experiment 1's own dim=4
 Individual budget exactly) — so `full` here genuinely reproduces experiment 1's own
@@ -110,7 +110,7 @@ more jobs**, total **630**.
 
 `Arc1dDirectDataModule` unpacks each selected row into its **3 support**
 `(input, output)` pairs only — the row's own query is held out entirely for
-the separate dev/test splits. `arc1d_lowdata`'s hypernetwork, by contrast,
+the separate dev/test splits. `06_data_efficiency_ablation_hypernetwork`'s hypernetwork, by contrast,
 supervises reconstruction of **all 4** examples per row (the 3 support pairs
 plus that row's own query, confirmed by tracing the training loss in
 `models/hypermodel_lightning.py`). So at a given `variants_per_base_task`
@@ -140,12 +140,12 @@ examples). 630 jobs total (14 categories × 9 levels [4 v/full + 5 t] × 5
 seeds), each tiny (≤360 raw training pairs, or up to ≈40,000 rows at `full`,
 or as few as 3 at `t1`) and single-GPU
 (`devices: 1`) — no benefit to claiming multiple GPUs per job here, unlike
-`arc1d_lowdata`.
+`06_data_efficiency_ablation_hypernetwork`.
 
 ## Reading results
 
 For each category and level, compare `val_query_exact_match`/
-`test_query_exact_match` (mean ± std across 5 seeds) against `arc1d_lowdata`'s
+`test_query_exact_match` (mean ± std across 5 seeds) against `06_data_efficiency_ablation_hypernetwork`'s
 per-category numbers at the same `variants_per_base_task` level (via its
 `val_query_exact_match_by_task_{category}` metrics). A much larger gap in
 favour of the hypernetwork at low levels (1/2) that narrows by level 3 or
