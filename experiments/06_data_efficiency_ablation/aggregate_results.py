@@ -1,9 +1,9 @@
 """Aggregate experiment 6's raw results.txt files into tidy CSVs.
 
-Scans all three arms' outputs/ trees (hypernetwork: 06_data_efficiency_ablation_hypernetwork, joint:
-06_data_efficiency_ablation_joint, individual: 06_data_efficiency_ablation_individual), parses each run's
-results.txt (a flat "key: value" dump written by train.py) together with its
-directory name (which encodes condition/level/category/seed), and writes:
+Scans all three arms' output folders (outputs/06_data_efficiency_ablation_{hypernetwork,
+joint,individual}/), parses each run's results.txt (a flat "key: value" dump written by
+train.py) together with its directory name (which encodes condition/level/category/seed), and
+writes:
 
   outputs/results/06_data_efficiency_ablation/results_hypernetwork.csv
   outputs/results/06_data_efficiency_ablation/results_joint.csv
@@ -114,20 +114,21 @@ def main() -> None:
 
     # --- hypernetwork: lowdata_{frozentd,notd}_{level}_seed{n} ---
     hyper_re = re.compile(r"^lowdata_(?P<condition>frozentd|notd)_(?P<level>v\d+|t\d+|full)_seed(?P<seed>\d+)$")
-    hyper_rows = collect(REPO_ROOT / "outputs" / "06_data_efficiency_ablation_hypernetwork", hyper_re)
+    outputs = REPO_ROOT / "outputs"
+    hyper_rows = collect(outputs / "06_data_efficiency_ablation_hypernetwork", hyper_re)
     hyper_df = pd.DataFrame(hyper_rows).sort_values(["condition", "level_n", "seed"])
     hyper_df.to_csv(OUT_DIR / "results_hypernetwork.csv", index=False)
 
     # --- joint: lowdata_joint_{td,notd}_{level}_seed{n} ---
     joint_re = re.compile(r"^lowdata_joint_(?P<condition>td|notd)_(?P<level>v\d+|t\d+|full)_seed(?P<seed>\d+)$")
-    joint_rows = collect(REPO_ROOT / "outputs" / "06_data_efficiency_ablation_joint", joint_re)
+    joint_rows = collect(outputs / "06_data_efficiency_ablation_joint", joint_re)
     joint_df = pd.DataFrame(joint_rows).sort_values(["condition", "level_n", "seed"])
     joint_df.to_csv(OUT_DIR / "results_joint.csv", index=False)
 
     # --- individual: lowdata_baseline_{category}_{level}_seed{n} ---
     cat_alt = "|".join(re.escape(c) for c in CATEGORIES)
     indiv_re = re.compile(rf"^lowdata_baseline_(?P<category>{cat_alt})_(?P<level>v\d+|t\d+|full)_seed(?P<seed>\d+)$")
-    indiv_rows = collect(REPO_ROOT / "outputs" / "06_data_efficiency_ablation_individual", indiv_re)
+    indiv_rows = collect(outputs / "06_data_efficiency_ablation_individual", indiv_re)
     indiv_df = pd.DataFrame(indiv_rows).sort_values(["category", "level_n", "seed"])
     indiv_df.to_csv(OUT_DIR / "results_individual.csv", index=False)
 

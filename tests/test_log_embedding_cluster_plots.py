@@ -47,7 +47,9 @@ def test_log_embedding_cluster_plots_npz_excludes_holdout_records(
     embeddings"."""
     model = build_hypernetwork(log_embedding_clusters=True)
     reference_batches = [make_hypernetwork_batch(n=1, task_category="1d_move_1p", task_id=1)]
-    holdout_batches = [make_hypernetwork_batch(n=1, task_category="1d_comp_fill_mirror", task_id=99)]
+    holdout_batches = [
+        make_hypernetwork_batch(n=1, task_category="1d_comp_fill_mirror", task_id=99)
+    ]
     datamodule = FakeDatamodule(reference_batches)
 
     log_embedding_cluster_plots(
