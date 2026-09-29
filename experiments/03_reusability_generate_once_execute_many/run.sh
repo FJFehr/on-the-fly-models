@@ -29,8 +29,8 @@ set -uo pipefail
 cd "$(dirname "$0")/../.."
 
 # Override CKPT_DIR/OUT_ROOT to evaluate another run of experiment 2, and PYTHON to use a
-# specific interpreter instead of `uv run python`.
-PYTHON="${PYTHON:-uv run python}"
+# specific interpreter instead of .venv/bin/python (created by `uv sync`).
+PYTHON="${PYTHON:-.venv/bin/python}"
 CKPT_DIR="${CKPT_DIR:-outputs/02_hypernetwork_multitask}"
 OUT_ROOT="${OUT_ROOT:-outputs/03_reusability_generate_once_execute_many}"
 SPLIT="${GENERALIZATION_SPLIT:-val,test}"
