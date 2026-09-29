@@ -134,13 +134,9 @@ def create_checkpoint_callback(cfg) -> ModelCheckpoint:
     - `best_model.ckpt` for metric-selected evaluation
     - `last.ckpt` for seamless resume
 
-    Set `save_checkpoints: false` in a config to skip writing either file to
-    disk (e.g. for large sweeps where only the final metrics matter and
-    checkpoint storage becomes the disk-usage bottleneck). Post-training
-    evaluation still runs correctly without a checkpoint - it just evaluates
-    the model's final in-memory weights instead of reloading a "best" epoch
-    (resolve_best_checkpoint_path/load_checkpoint_state already handle a
-    missing checkpoint path gracefully).
+    Set `save_checkpoints: false` in a config to skip writing either file.
+    Which weights are finally evaluated is set separately, by `evaluate_on`
+    (see run_post_training_artifacts).
     """
     metric = cfg.primary_metric
     mode = "min" if metric.endswith("loss") else "max"
@@ -315,13 +311,24 @@ def run_post_training_artifacts(
 
     Keeping this sequence together avoids scattering "after fit" decisions
     across `train.py`:
-    - choose the checkpoint to evaluate
-    - load that checkpoint into the in-memory model
+    - choose the weights to evaluate
     - emit optional local/W&B artefacts
     - run final validation and test passes
+
+    `evaluate_on` in the config chooses the weights:
+    - "best" (default): reload the best checkpoint by `primary_metric`.
+    - "final": keep the weights training ended with, and save exactly those
+      to `final_model.ckpt`.
     """
-    checkpoint_path = resolve_best_checkpoint_path(checkpoint_callback)
-    load_checkpoint_state(model, checkpoint_path)
+    evaluate_on = cfg.get("evaluate_on", "best")
+    if evaluate_on == "final":
+        checkpoint_path = None
+        trainer.save_checkpoint(os.path.join(cfg.output_path, "final_model.ckpt"))
+    elif evaluate_on == "best":
+        checkpoint_path = resolve_best_checkpoint_path(checkpoint_callback)
+        load_checkpoint_state(model, checkpoint_path)
+    else:
+        raise ValueError(f"evaluate_on must be 'best' or 'final', got {evaluate_on!r}.")
 
     export_hard_validation_examples(
         model=model,

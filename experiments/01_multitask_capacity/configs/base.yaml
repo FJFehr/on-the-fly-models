@@ -15,6 +15,9 @@ output_path: ${output_dir}/${project_name}/${experiment_name}
 data: arc_1d_direct
 data_dir: data/arc_1d_looped_augmented
 primary_metric: val_loss
+# Evaluate the weights training ended with (saved as final_model.ckpt), as for every
+# published result of this experiment; best_model.ckpt/last.ckpt are kept as well.
+evaluate_on: final
 stop_on_perfect_val_exact_match: false
 
 task_categories: null

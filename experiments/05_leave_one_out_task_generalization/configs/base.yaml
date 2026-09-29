@@ -34,6 +34,9 @@ data: arc_1d_meta_multiclass
 data_dir: data/arc_1d_looped_augmented
 model: hypernetwork
 primary_metric: val_loss
+# Evaluate the weights training ended with (saved as final_model.ckpt), as for every
+# published result of this experiment; best_model.ckpt/last.ckpt are kept as well.
+evaluate_on: final
 num_workers: 0
 
 task_categories:
