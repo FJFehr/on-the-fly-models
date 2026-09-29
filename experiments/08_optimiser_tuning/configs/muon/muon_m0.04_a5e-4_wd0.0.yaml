@@ -1,0 +1,6 @@
+_base_: experiments/08_optimiser_tuning/configs/base.yaml
+experiment_name: muon_m0.04_a5e-4_wd0.0
+optimizer: Muon
+muon_lr: 0.04
+learning_rate: 5e-4
+weight_decay: 0.0

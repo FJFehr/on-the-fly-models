@@ -136,6 +136,13 @@ def test_unknown_optimizer_is_rejected(build_direct):
         build_direct(optimizer="SGD")
 
 
+def test_adam_betas_reach_plain_adamw_only_when_set(build_direct):
+    default = build_direct(optimizer="AdamW").configure_optimizers()["optimizer"]
+    assert default.param_groups[0]["betas"] == (0.9, 0.999)
+    tuned = build_direct(optimizer="AdamW", adam_betas=[0.9, 0.95]).configure_optimizers()
+    assert tuned["optimizer"].param_groups[0]["betas"] == (0.9, 0.95)
+
+
 def test_warmup_then_cosine_schedule(build_direct):
     model = build_direct(
         learning_rate=1.0,

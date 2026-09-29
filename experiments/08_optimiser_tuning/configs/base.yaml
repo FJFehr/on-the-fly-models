@@ -1,0 +1,116 @@
+# Experiment 8 (optimiser tuning): settings shared by every config. See ../README.md.
+# Experiment 2's dim-4 notd hypernetwork (configs/base.yaml + dim4_notd.yaml, written out in
+# full because configs have one level of `_base_`), with these changes:
+# - eta_min: 0, so every learning rate decays to zero. Experiment 2's absolute floor of 0.0001
+#   would leave an AdamW learning rate of 0.0001 with no decay at all.
+# - no embedding-cluster plots. Checkpoints stay on: the best one by val_loss is what gets
+#   evaluated, as in experiment 2.
+# - adam_betas (0.9, 0.95) for plain AdamW, the betas Muon's own Adam group uses.
+# The leaf configs in muon/ and adamw/ set optimizer, muon_lr, learning_rate and weight_decay.
+
+project_name: 08_optimiser_tuning
+entity: fjfehr
+output_dir: outputs
+seed: 42
+experiment_name: optimiser_tuning
+output_path: ${output_dir}/${project_name}/${experiment_name}
+
+data: arc_1d_meta_multiclass
+data_dir: data/arc_1d_looped_augmented
+model: hypernetwork
+primary_metric: val_loss
+num_workers: 0
+
+task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_scale_dp
+task_ids: null
+val_task_categories:
+  - 1d_denoising_1c
+  - 1d_denoising_mc
+  - 1d_fill
+  - 1d_flip
+  - 1d_hollow
+  - 1d_mirror
+  - 1d_move_1p
+  - 1d_move_2p
+  - 1d_move_2p_dp
+  - 1d_move_3p
+  - 1d_move_dp
+  - 1d_pcopy_1c
+  - 1d_pcopy_mc
+  - 1d_scale_dp
+train_split: train
+val_split: val
+test_split: test
+overfit_single_batch: false
+
+accelerator: auto
+float32_matmul_precision: medium
+precision: bf16-mixed
+devices: 1
+save_checkpoints: true
+
+optimizer: Muon
+muon_lr: 0.005
+muon_momentum: 0.95
+adam_betas: [0.9, 0.95]
+batch_size: 512
+learning_rate: 0.001
+weight_decay: 0.01
+gradient_clip_val: 10.0
+lr_scheduler:
+  name: CosineAnnealingLR
+  params:
+    T_max: ${max_steps}
+    eta_min: 0.0
+max_steps: 8000
+warmup_steps: 800
+
+log_task_examples: true
+log_task_examples_every_n_epochs: 100
+num_periodic_train_task_examples: 100
+num_periodic_val_task_examples: 100
+log_embedding_clusters: false
+
+prediction_task: multiclass
+num_classes: 10
+padding_idx: 10
+stop_on_perfect_val_exact_match: false
+
+task_encoding:
+  embedding_dim: 4
+  use_sinusoidal_pe: false
+
+target:
+  hidden_dim: 4
+  num_layers: 3
+  num_heads: 1
+  dropout: 0.1
+  canon_set: ABCD
+  canon_kernel: 5
+
+encoder:
+  hidden_dim: 4
+  num_heads: 1
+  num_layers: 1
+  output_dim: 4
+  canon_set: ABCD
+  canon_kernel: 5
+
+hyper_head:
+  bottleneck_dim: 8
+  num_tasks: null
+  freeze_task_indicator: false

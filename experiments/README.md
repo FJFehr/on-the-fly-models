@@ -18,12 +18,16 @@ the question, setup, figures, results and cost. Installing and building the data
    whole unseen task category (13 of 14).
 6. [**Data efficiency**](06_data_efficiency_ablation/README.md): individual, joint and
    hypernetwork models at shrinking amounts of training data.
+8. [**Optimiser tuning**](08_optimiser_tuning/README.md): a Muon grid and a separately tuned
+   plain-AdamW grid on the task-ID-free hypernetwork, to pick the recipe for later runs and
+   compare the two optimisers fairly.
 
 | | Task identity arms | Other axes |
 |---|---|---|
 | 1 | `td` (learned embedding) / `notd` | size (dim 4 to 14), Canon, optimiser |
 | 2 to 5 | `frozen_td` (fixed random one-hot projection) / `notd` | |
 | 6 | hypernetwork `frozen_td`/`notd`, joint `td`/`notd`, individual none | training data amount |
+| 8 | hypernetwork `notd` | Muon and AdamW learning rates, weight decay |
 
 ## Every command
 
@@ -49,6 +53,9 @@ GPUS=0,1,2,3 bash experiments/06_data_efficiency_ablation/joint/run.sh          
 GPUS=0,1,2,3 bash experiments/06_data_efficiency_ablation/individual/run.sh         # 630 jobs
 uv run python experiments/06_data_efficiency_ablation/aggregate_results.py
 uv run python experiments/06_data_efficiency_ablation/plot_data_efficiency.py --outputs-dir outputs
+
+GPUS=0,1,2,3 JOBS_PER_GPU=2 bash experiments/08_optimiser_tuning/run.sh             # 225 jobs
+uv run python experiments/08_optimiser_tuning/plot_all.py
 ```
 
 Figures of the task types themselves:

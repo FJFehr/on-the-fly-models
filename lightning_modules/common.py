@@ -55,6 +55,7 @@ class ArcLightningModule(pl.LightningModule):
         weight_decay: float,
         muon_lr: float = 0.02,
         muon_momentum: float = 0.95,
+        adam_betas: list[float] | None = None,
         lr_scheduler: dict | None = None,
         warmup_steps: int = 0,
         log_task_examples: bool = False,
@@ -71,6 +72,9 @@ class ArcLightningModule(pl.LightningModule):
         self.weight_decay = weight_decay
         self.muon_lr = muon_lr
         self.muon_momentum = muon_momentum
+        # Betas for plain AdamW/RAdam; unset keeps torch's default (0.9, 0.999). Muon's own
+        # Adam group always uses the muon library's (0.9, 0.95).
+        self.adam_betas = tuple(adam_betas) if adam_betas is not None else None
         self.lr_scheduler_cfg = lr_scheduler
         self.warmup_steps = warmup_steps
         self.log_task_examples = log_task_examples
@@ -112,10 +116,12 @@ class ArcLightningModule(pl.LightningModule):
         if self.optimizer_name == "Muon":
             optimizer = SingleDeviceMuonWithAuxAdam(self.muon_param_groups())
         else:
+            betas = {"betas": self.adam_betas} if self.adam_betas is not None else {}
             optimizer = getattr(torch.optim, self.optimizer_name)(
                 (p for p in self.parameters() if p.requires_grad),
                 lr=self.learning_rate,
                 weight_decay=self.weight_decay,
+                **betas,
             )
         if not self.lr_scheduler_cfg:
             return optimizer

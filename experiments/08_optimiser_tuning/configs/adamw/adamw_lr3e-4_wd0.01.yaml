@@ -1,0 +1,5 @@
+_base_: experiments/08_optimiser_tuning/configs/base.yaml
+experiment_name: adamw_lr3e-4_wd0.01
+optimizer: AdamW
+learning_rate: 3e-4
+weight_decay: 0.01
