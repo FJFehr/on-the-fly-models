@@ -63,9 +63,7 @@ data_dir: data/arc_1d_looped_augmented
 model: hypernetwork
 primary_metric: val_loss
 num_workers: 0
-# Disk space on the shared cluster home is tight - this sweep only needs the
-# final metrics (results.txt/wandb), not the model weights themselves.
-save_checkpoints: false
+save_checkpoints: true
 
 task_categories:
   - 1d_denoising_1c

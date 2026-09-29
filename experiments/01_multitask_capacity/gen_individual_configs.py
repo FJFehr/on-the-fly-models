@@ -71,7 +71,7 @@ def config_at(dim: int, category: str) -> dict:
         "experiment_name": f"individual_dim{dim}_{category}",
         "project_name": "01_multitask_capacity",
         "task_categories": [category],
-        "save_checkpoints": False,
+        "save_checkpoints": True,
         "model": "direct",
         **MUON_PARAMS,
         "learning_rate": 0.0005,

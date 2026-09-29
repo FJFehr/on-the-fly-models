@@ -82,7 +82,7 @@ def common_fields(dim: int) -> dict:
     return {
         "_base_": BASE_CFG,
         "project_name": "01_multitask_capacity",
-        "save_checkpoints": False,
+        "save_checkpoints": True,
         "model": "direct",
         **MUON_PARAMS,
         "learning_rate": 0.0005,

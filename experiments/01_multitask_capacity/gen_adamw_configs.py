@@ -76,7 +76,7 @@ def common_fields(dim: int) -> dict:
     return {
         "_base_": BASE_CFG,
         "project_name": "01_multitask_capacity",
-        "save_checkpoints": False,
+        "save_checkpoints": True,
         "model": "direct",
         "optimizer": "AdamW",  # <- the ablation: no Muon, no muon_lr/muon_momentum
         "max_steps": 8000,

@@ -3,7 +3,7 @@ experiment_name: individual_dim10_1d_flip
 project_name: 01_multitask_capacity
 task_categories:
 - 1d_flip
-save_checkpoints: false
+save_checkpoints: true
 model: direct
 optimizer: Muon
 muon_lr: 0.005

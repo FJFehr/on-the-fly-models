@@ -21,9 +21,6 @@
 # automatic per-category breakdown reports the held-out category's zero-shot score alongside the
 # 13 in-distribution ones from the same run.
 #
-# save_checkpoints: false (matching the legacy precedent) -- nothing downstream needs a
-# checkpoint, the held-out score is read directly from results.txt.
-#
 # Self-contained (no _base_ of its own), matching every sibling base.yaml, because the config
 # loader only resolves one level of _base_ inheritance (training/config.py's load_config).
 project_name: 05_leave_one_out_task_generalization
@@ -79,7 +76,7 @@ accelerator: auto
 float32_matmul_precision: medium
 precision: bf16-mixed
 devices: 1
-save_checkpoints: false
+save_checkpoints: true
 
 optimizer: Muon
 muon_lr: 0.005

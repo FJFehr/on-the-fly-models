@@ -70,7 +70,7 @@ model: direct
 primary_metric: val_loss
 stop_on_perfect_val_exact_match: false
 num_workers: 1
-save_checkpoints: false
+save_checkpoints: true
 
 task_categories: null
 task_ids: null
