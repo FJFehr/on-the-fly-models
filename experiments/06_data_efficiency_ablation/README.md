@@ -5,14 +5,17 @@
 Does sharing across tasks let a model learn each task from less data? Three arms are trained
 at progressively smaller amounts of training data:
 
-| Arm | Model | Sharing across tasks | Task identity |
-|---|---|---|---|
-| [`hypernetwork/`](hypernetwork/README.md) | experiment 2's dim-4 hypernetwork (about 11.4K parameters) | generated weights | `frozen_td` / `notd` |
-| [`joint/`](joint/README.md) | one direct model for all 14 categories, dim 14 (about 9.6K parameters, sized to the hypernetwork's budget) | one shared model | `td` / `notd` |
-| [`individual/`](individual/README.md) | one direct dim-4 model per category (the hypernetwork's target) | none | none |
+| Arm | Model | Parameters (total) | Parameters used per prediction | Sharing across tasks | Task identity |
+|---|---|---:|---:|---|---|
+| [`hypernetwork/`](hypernetwork/README.md) | experiment 2's dim-4 hypernetwork | 11.4K | 1,204 (the generated dim-4 target) | generated weights | `frozen_td` / `notd` |
+| [`joint/`](joint/README.md) | one direct dim-14 model for all 14 categories | 9.7K | 9.7K (all of them) | one shared model | `td` / `notd` |
+| [`individual/`](individual/README.md) | one direct dim-4 model per category | 1.4K per category | 1.4K | none | none |
 
-`hypernetwork` vs `joint` isolates weight generation from simply sharing a model; `individual`
-is the no-sharing baseline.
+The joint model is sized to the hypernetwork's total parameter budget, and `individual` is
+the no-sharing baseline at the hypernetwork's target size. The two shared models do
+fundamentally different things, though: the hypernetwork decouples the task from the model
+that executes it, so every prediction runs through a generated 1,204-parameter target,
+while the joint model runs every prediction through all of its 9.7K parameters.
 
 ## Data levels
 
@@ -72,10 +75,16 @@ Test exact match, mean over 5 seeds (macro over categories for `individual`):
 | v20 | | 95.4% | 61.4% | 98.9% | 64.9% |
 | full | 94.6% | 92.9% | 63.1% | 98.9% | 66.9% |
 
-With task identity, both shared models need less data than individual models from about
-`t10` upwards, and the joint model (with more parameters than the dim-4 models) is ahead at
-every level. Without task identity, neither shared model reaches the individual models'
-level at any data amount.
+With task identity, the hypernetwork is ahead of individual models of its target's size
+from `t10` to `v3` (for example `v1`: 89.4% vs 85.4%), where sharing across tasks makes up
+for the missing data; with very little data (`t1` to `t5`) and at full data the individual
+models are ahead. The joint model is ahead of both at every level, as expected from the
+parameters each uses per prediction: the joint model executes with all of its 9.7K
+parameters, while the hypernetwork has to distil everything a task needs into the weights of
+a 1,204-parameter target (8 times fewer, the size of an individual model). This is the cost
+of decoupling the task from the executing model, not a failure of the hypernetwork. Without
+task identity, neither shared model reaches the individual models' level at any data
+amount.
 
 **Reproducibility.** Not yet re-run on the refactored code. These numbers come from the
 original runs, which were evaluated on an older build of the validation and test splits
