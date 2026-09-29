@@ -3,9 +3,8 @@
 The default look-and-feel for comparing two trained runs' embedding
 disentanglement: reads two .npz dumps -- saved automatically by training
 itself (`log_embedding_clusters: true`, see training.logging's
-log_embedding_cluster_plots) as `outputs/<project>/<run>/embedding_clusters/embeddings.npz`,
-or by legacy/scripts/dump_embedding_clusters.py for a run that predates
-that -- and renders each available projection (PCA / t-SNE / UMAP) as one figure
+log_embedding_cluster_plots) as `outputs/<project>/<run>/embedding_clusters/embeddings.npz`
+-- and renders each available projection (PCA / t-SNE / UMAP) as one figure
 with both runs side by side, sharing one legend -- so any two conditions
 (task-ID vs no task-ID, two model sizes, two seeds, ...) are directly
 comparable rather than living in separate single-condition files. Styled

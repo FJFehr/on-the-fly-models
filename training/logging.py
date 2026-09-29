@@ -443,9 +443,7 @@ def log_embedding_cluster_plots(
 
     # Dump the raw (reference-only, no holdout) vectors alongside the figure -- this run's own
     # embeddings.npz, saved naturally as part of the run that computed them, no separate
-    # checkpoint-reload step needed. Same schema legacy/scripts/dump_embedding_clusters.py
-    # (only still useful for a run that predates this) produces, so every consumer
-    # (visualisation.paper.plot_embedding_clusters et al.) reads either the same way.
+    # checkpoint-reload step needed. Read by visualisation.paper.plot_embedding_clusters.
     np.savez_compressed(
         os.path.join(cluster_dir, "embeddings.npz"),
         vectors=torch.stack([record["pooled_embedding"] for record in records]).numpy(),

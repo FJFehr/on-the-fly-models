@@ -35,7 +35,12 @@ def test_structure_matches_pre_refactor_snapshot(structure_key, monkeypatch):
     # Configs use repo-relative _base_ paths.
     monkeypatch.chdir(ROOT)
     expected = SNAPSHOT["structures"][structure_key]
-    configs = [path for path, key in SNAPSHOT["configs"].items() if key == structure_key]
+    # Configs deleted since the snapshot was taken are skipped.
+    configs = [
+        path
+        for path, key in SNAPSHOT["configs"].items()
+        if key == structure_key and (ROOT / path).exists()
+    ]
     for config_path in configs:
         model = build(config_path)
 
@@ -58,10 +63,14 @@ def test_structure_matches_pre_refactor_snapshot(structure_key, monkeypatch):
 
 
 def test_every_experiment_config_is_covered():
-    """Guards against a config being added or renamed without a snapshot entry."""
+    """Guards against a config being added or renamed without a snapshot entry.
+
+    Configs may be deleted (the snapshot keeps their entries), but every existing config must
+    have been checked against the pre-refactor code.
+    """
     config_paths = {
         str(path.relative_to(ROOT))
         for path in (ROOT / "experiments").rglob("*.yaml")
         if str(path.relative_to(ROOT)) not in SNAPSHOT["errors"]
     }
-    assert config_paths == set(SNAPSHOT["configs"])
+    assert config_paths <= set(SNAPSHOT["configs"])

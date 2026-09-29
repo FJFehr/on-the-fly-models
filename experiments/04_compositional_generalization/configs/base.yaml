@@ -1,8 +1,7 @@
 # Recipe for the compositional-generalization question: does a hypernetwork trained on 14
 # in-distribution ARC-1D task categories generalise zero-shot to 10 synthetic categories that
-# chain two of those rules together (data/arc_1d_compositional_holdout, already built -- see
-# legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/README.md for the
-# generator, rule semantics, and combo-selection rationale, all reused unmodified here)?
+# chain two of those rules together (data/arc_1d_compositional_holdout, built by
+# scripts/build_arc1d_compositional.py)?
 #
 # As of this session, this config is documentation/provenance only -- NOT the active training
 # recipe. Both arms now reuse experiment 2's own dim=4 matched-scale checkpoints directly

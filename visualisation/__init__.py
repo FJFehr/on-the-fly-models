@@ -9,13 +9,6 @@
 #
 # Consumers should import from this package, not from the submodule:
 #   from visualisation import render_task_figure, figure_to_wandb_image
-#
-# Task-attention-gallery rendering (render_task_attention_figure,
-# resolve_attention_matrix) moved to legacy/visualisation/attention.py: the
-# hook that would call it (Lightning.log_task_attention_gallery) is
-# hasattr-guarded in training/trainer.py and training/logging.py, but no
-# current model class defines that method, so it never fires. Re-add the
-# import here if a model implements it again.
 # ---------------------------------------------------------------------------
 
 from visualisation.core.arc import (

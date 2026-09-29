@@ -1,7 +1,6 @@
 """Zero-shot evaluation of a trained hypermodel checkpoint on the held-out compositional set.
 
-Loads a trained notd or frozen_td checkpoint (see
-legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/) and runs it, unmodified and
+Loads a trained notd or frozen_td checkpoint from experiment 2 and runs it, unmodified and
 with no fine-tuning, on data/arc_1d_compositional_holdout -- 10 task categories built by chaining
 two base rules the model *was* trained on individually (see data_modules/arc1d_compositional.py
 and this experiment's README.md for what those categories are and why).
@@ -12,19 +11,16 @@ Composite categories are registered into models.embedding.TASK_CATEGORY_INDEX at
 indices 18..18+K-1 for the duration of this script only -- frozen_td's untrained projection
 matrix already has those extra rows (num_tasks=28 in frozen_td.yaml), they just need names.
 
-Usage:
+Usage (experiments/04_compositional_generalization/run.sh runs this for every seed):
+    # notd: evaluate a trained experiment 2 run directly
     uv run python scripts/eval_compositional_holdout.py \
-        --config legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/frozen_td.yaml
-    uv run python scripts/eval_compositional_holdout.py \
-        --config legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/notd.yaml \
-        --checkpoint last --num-qualitative 5
+        --config outputs/02_hypernetwork_multitask/hyper_multitask_dim4_notd_seed1/config.yaml \
+        --checkpoint best --output-dir outputs/04_compositional_generalization/notd_seed1
 
-    # Point at a specific seed's checkpoint/output dir via OmegaConf dotlist overrides
-    # (same mechanism as train.py), e.g. for a multi-seed rerun:
+    # frozen_td: evaluate a padded checkpoint (see pad_frozentd_checkpoint.py)
     uv run python scripts/eval_compositional_holdout.py \
-        --config legacy/configs/experiments/arc1d_v2_compositional_generalization/notd.yaml \
-        seed=2 experiment_name=v2_compositional_generalization_notd_seed2 \
-        output_path=outputs/arc1d_v2_compositional_generalization/v2_compositional_generalization_notd_seed2
+        --config experiments/04_compositional_generalization/configs/frozen_td.yaml \
+        --checkpoint PADDED.ckpt --output-dir outputs/04_compositional_generalization/frozentd_seed1
 """
 
 import argparse

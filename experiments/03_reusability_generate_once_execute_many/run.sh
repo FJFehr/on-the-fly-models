@@ -15,8 +15,7 @@
 #
 # measure_compute_efficiency.py has no skip/resume logic of its own for --stage
 # generalization (each --output-dir is unconditionally overwritten, never merged) -- this
-# script's own marker check (generalization_table.csv already present) provides that,
-# mirroring experiments/04_compositional_generalization/run_seeds.sh's "Phase 2" eval loop.
+# script's own marker check (generalization_table.csv already present) provides that.
 #
 # Cheap and CPU-only (~30s/cell) -- no GPU, no cluster needed once experiment 2's
 # checkpoints are local. If a checkpoint is missing, fetch it first:

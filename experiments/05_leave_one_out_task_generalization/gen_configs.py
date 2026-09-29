@@ -12,8 +12,7 @@ sized off the fixed global TASK_CATEGORY_INDEX registry (models/hypermodel_light
 off how many categories a given leaf trains on.
 
 Short names (for filenames/experiment_name) are derived mechanically -- strip the "1d_" prefix
-and drop underscores (e.g. 1d_move_2p_dp -> move2pdp) -- matching the token style
-legacy/scripts/gen_v2_generalization_configs.py used by hand for its curated 5-category subset.
+and drop underscores (e.g. 1d_move_2p_dp -> move2pdp).
 
 Usage:
     uv run python experiments/05_leave_one_out_task_generalization/gen_configs.py

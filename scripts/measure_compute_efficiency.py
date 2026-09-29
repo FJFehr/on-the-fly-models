@@ -1,9 +1,8 @@
 """Measure the compute cost of "train once, generate many" (hypernetwork) vs.
-"train many small models" (arc1d_lowdata_baseline's per-task recipe).
+"train many small models" (experiment 6's individual per-task recipe).
 
-Background (see experiments/06_data_efficiency_ablation/individual/README.md and
-legacy/configs/experiments/arc1d_hypermodel_compositional_generalization/README.md): both routes use
-the IDENTICAL target architecture (rope_canon_looped_transformer) for actual per-query
+Background (see experiments/06_data_efficiency_ablation/individual/README.md): both routes use
+the IDENTICAL target architecture (the 3-layer RoPE + Canon Transformer) for actual per-query
 inference, so that cost cancels out of the "one model vs many" comparison. What's left is:
 
     hypernetwork route    = train_hypernetwork_once + n_tasks * (generate_weights_once_per_task
@@ -188,8 +187,8 @@ def make_repeated_loader(batch: dict, n_batches: int) -> DataLoader:
 def measure_forward_flops_and_time(
     fn, n_warmup: int, n_iters: int, device: torch.device
 ) -> tuple[int, float]:
-    """Time and FLOP-count a zero-arg forward-only closure. Mirrors
-    legacy/scripts/smoke_test_vmap_target_model.py's warm-up/perf_counter/cuda-sync pattern."""
+    """Time and FLOP-count a zero-arg forward-only closure (warm-up, then timed iterations with
+    CUDA syncs)."""
     is_cuda = device.type == "cuda"
     for _ in range(n_warmup):
         fn()

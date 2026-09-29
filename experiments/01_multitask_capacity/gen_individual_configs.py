@@ -8,13 +8,7 @@ difference is `task_categories` narrowed to a single category and no
 task-identity embedding (meaningless for a model that only ever sees one
 task).
 
-Previously this data came from two now-gone sources outside this experiment
-folder: `legacy/configs/experiments/arc1d_v2_backbone_capacity/` (dim=10,
-3 seeds, the original Phase 1 "RC1" run) and a `arc1d_v2_minimal_size` sweep
-(dim=4/6, 3 seeds) that was deleted outright rather than archived to
-`legacy/` during the paper-repro reorg (recoverable from git history at
-commit 40e91c0 if ever needed for reference). This generator makes
-experiment 1 self-contained instead: same 4 sizes as the joint arms
+This generator makes experiment 1 self-contained: same 4 sizes as the joint arms
 (4/6/10/14), 5 seeds each, matching the seed count used everywhere else in
 this experiment.
 
@@ -35,7 +29,7 @@ DST = Path("experiments/01_multitask_capacity/configs/individual")
 BASE_CFG = "experiments/01_multitask_capacity/configs/base.yaml"
 
 # Same 14-task set as notd*.yaml/td*.yaml (drops 1d_padded_fill, 1d_recolor_cmp,
-# 1d_recolor_cnt, 1d_recolor_oe from the full 18 -- see docs/arc1d_story/01_data.md).
+# 1d_recolor_cnt, 1d_recolor_oe from the full 18).
 TASK_CATEGORIES = [
     "1d_denoising_1c",
     "1d_denoising_mc",

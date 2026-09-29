@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Generic training launcher shared by the experiments/ trees.
 #
-# Extracted from what used to be ~35 near-identical, hand-copied run_*.sh
-# scripts (see legacy/scripts/ for the originals): glob a config directory,
+# Globs a config directory,
 # skip any (config, seed) pair that already has a results.txt, and launch
 # the rest via train.py, either sequentially or round-robined across a list
 # of GPUs.

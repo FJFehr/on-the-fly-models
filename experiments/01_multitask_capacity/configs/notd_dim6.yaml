@@ -1,8 +1,7 @@
 # Experiment 2a at dim=6: joint 14-task training, NO task embedding ("notd").
 #
 # Same as notd.yaml, but on the dim=6 architecture from Experiment 1
-# (2,444 params individually, near-ceiling at 0.989 - see
-# docs/arc1d_story/06_phase1_findings.md), between RC1's dim=10 and the
+# (2,444 params individually, near-ceiling at 0.989), between RC1's dim=10 and the
 # much smaller dim=4. task_encoding.embedding_dim stays fixed at 10.
 _base_: experiments/01_multitask_capacity/configs/base.yaml
 experiment_name: joint_notd_dim6

@@ -12,13 +12,8 @@
 #
 # hyper_head.num_tasks stays at 18 for frozen_td regardless of which/how many categories are
 # held out -- it's sized off the fixed global 18-category TASK_CATEGORY_INDEX registry, not off
-# how many categories any given leaf actually trains on (models/hypermodel_lightning.py:222,
-# models/hypermodel.py:279-281).
-#
-# Precedent: legacy/configs/experiments/arc1d_v2_generalization ran this exact question at this
-# exact architecture, 3 seeds, on a curated 5-category subset -- notd beat frozen_td on token
-# accuracy in 5/5 held-out categories (0.813 vs. 0.691 mean), exact match a uniform 0 across all
-# 30 cells. This experiment extends that to all 14 base categories at 5 seeds; see gen_configs.py.
+# how many categories any given leaf actually trains on (models/embedding.py's
+# TASK_CATEGORY_INDEX, models/hypernetwork.py's task_indicator_proj).
 #
 # task_categories/val_task_categories below are placeholders (the full 14-category list) --
 # every leaf gen_configs.py writes overrides both: task_categories to the 13 categories that

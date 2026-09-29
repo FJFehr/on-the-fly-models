@@ -1,9 +1,8 @@
 # Experiment 2a: joint 14-task training, NO task embedding ("notd").
 #
-# Single RC1-architecture model (RoPE + Canon, dim=10, flat n_loops=1, N_sup=1,
-# Muon) trained jointly across all 14 task categories at once - no per-task
-# model, no task-identity signal. Reference point: Phase 1's individually-
-# trained 14-task mean (0.986, docs/arc1d_story/06_phase1_findings.md). If
+# Single model (RoPE + Canon Transformer, dim=10, Muon) trained jointly across all
+# 14 task categories at once - no per-task model, no task-identity signal.
+# Reference point: the individually-trained 14-task mean (0.986). If
 # this joint run falls well short of that, it's evidence a single fixed
 # weight set can't hold all 14 tasks at once.
 _base_: experiments/01_multitask_capacity/configs/base.yaml

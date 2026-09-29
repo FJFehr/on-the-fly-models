@@ -4,11 +4,9 @@
 # sweep in experiments/ so far).
 #
 # Custom script, not scripts/run_config.sh (the generic launcher) -- gen_configs.py already
-# bakes seed and a unique experiment_name into each leaf (<short>_<arm>_seed<N>.yaml, matching
-# experiment 4's gen_seeds.py convention), so the generic launcher's own SEEDS_OVERRIDE looping
-# would append a second, conflicting _seed<N> suffix and re-override each leaf's baked seed --
-# see experiments/04_compositional_generalization/run_seeds.sh, which hits the same issue and
-# solves it the same way (this script mirrors its shape).
+# bakes seed and a unique experiment_name into each leaf (<short>_<arm>_seed<N>.yaml), so the
+# generic launcher's own SEEDS_OVERRIDE looping would append a second, conflicting _seed<N>
+# suffix and re-override each leaf's baked seed.
 #
 # No separate eval step needed, unlike experiment 4: val_task_categories always includes the
 # held-out category, so its zero-shot score already lands in results.txt's automatic
