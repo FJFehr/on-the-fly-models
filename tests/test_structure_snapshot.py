@@ -21,6 +21,8 @@ from training.config import build_runtime_config_dict, load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT = json.loads((ROOT / "tests/fixtures/structure_snapshot.json").read_text())
+# Experiments added after the snapshot was taken, so they have no pre-refactor entry.
+POST_REFACTOR_EXPERIMENTS = ("07_task_identity_ablation",)
 
 
 def build(config_path: str):
@@ -66,11 +68,16 @@ def test_every_experiment_config_is_covered():
     """Guards against a config being added or renamed without a snapshot entry.
 
     Configs may be deleted (the snapshot keeps their entries), but every existing config must
-    have been checked against the pre-refactor code.
+    have been checked against the pre-refactor code. Experiments added after the refactor are
+    exempt; tests/test_task_indicator_placement.py checks experiment 7's configs against the
+    experiment 2 and 5 configs they extend.
     """
     config_paths = {
         str(path.relative_to(ROOT))
         for path in (ROOT / "experiments").rglob("*.yaml")
         if str(path.relative_to(ROOT)) not in SNAPSHOT["errors"]
+        and not any(
+            path.is_relative_to(ROOT / "experiments" / e) for e in POST_REFACTOR_EXPERIMENTS
+        )
     }
     assert config_paths <= set(SNAPSHOT["configs"])

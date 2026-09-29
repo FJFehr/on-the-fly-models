@@ -5,7 +5,8 @@ For each task in the batch:
   ENCODER (support set -> task representation)
     1. `encoder`: a Transformer reads the serialised support examples,
     2. `pooler`: attention pooling turns its token outputs into one task representation,
-    3. `task_indicator_proj` (optional): a one-hot task identity is projected and added.
+    3. `task_indicator_proj` (optional): a one-hot task identity is projected and added,
+       to the task representation ("latent") or to every context token ("input").
 
   WEIGHT DECODER (task representation -> target weights)
     4. `projection`: an MLP maps the task representation to a flat vector holding every
@@ -50,6 +51,9 @@ class Hypernetwork(nn.Module):
             the task representation ("task ID" arms). If None, the hypernetwork sees the
             support examples only ("w/o task ID" arms).
         freeze_task_indicator: keep that projection at its random initialisation.
+        task_indicator_placement: "latent" adds the projected task identity to the pooled
+            task representation; "input" adds it to every context token before the
+            encoder (then encoder_dim must equal the context's embedding dim).
     """
 
     def __init__(
@@ -60,6 +64,7 @@ class Hypernetwork(nn.Module):
         bottleneck_dim: int,
         num_tasks: int | None = None,
         freeze_task_indicator: bool = False,
+        task_indicator_placement: str = "latent",
     ):
         super().__init__()
         # Layers are created in this order (encoder and target first, as they arrive
@@ -84,6 +89,9 @@ class Hypernetwork(nn.Module):
         # --- Encoder (continued): pool the tokens into one task representation --------
         self.pooler = AttentionPooler(encoder_dim)
         self.num_tasks = num_tasks
+        if task_indicator_placement not in ("latent", "input"):
+            raise ValueError(f"Unknown task_indicator_placement: {task_indicator_placement!r}")
+        self.task_indicator_placement = task_indicator_placement
         self.task_indicator_proj = (
             nn.Linear(num_tasks, encoder_dim, bias=False) if num_tasks is not None else None
         )
@@ -105,11 +113,21 @@ class Hypernetwork(nn.Module):
     def task_representation(
         self, context: torch.Tensor, task_ids: torch.Tensor | None = None
     ) -> torch.Tensor:
-        """Encoder: (batch, context_len, embedding_dim) -> (batch, encoder_dim)."""
-        representation = self.pooler(self.encoder(context))
+        """Encoder: (batch, context_len, embedding_dim) -> (batch, encoder_dim).
+
+        `task_ids` is either integer ids (one-hot encoded) or a float task vector
+        (batch, num_tasks), e.g. zero or multi-hot.
+        """
+        task_embedding = None
         if self.task_indicator_proj is not None and task_ids is not None:
-            one_hot = F.one_hot(task_ids, num_classes=self.num_tasks).float()
-            representation = representation + self.task_indicator_proj(one_hot)
+            if not task_ids.is_floating_point():
+                task_ids = F.one_hot(task_ids, num_classes=self.num_tasks).float()
+            task_embedding = self.task_indicator_proj(task_ids)
+        if task_embedding is not None and self.task_indicator_placement == "input":
+            context = context + task_embedding.unsqueeze(1)
+        representation = self.pooler(self.encoder(context))
+        if task_embedding is not None and self.task_indicator_placement == "latent":
+            representation = representation + task_embedding
         self.last_task_representation = representation.detach()
         return representation
 

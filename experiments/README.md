@@ -18,6 +18,10 @@ the question, setup, figures, results and cost. Installing and building the data
    whole unseen task category (13 of 14).
 6. [**Data efficiency**](06_data_efficiency_ablation/README.md): individual, joint and
    hypernetwork models at shrinking amounts of training data.
+7. [**Task-identity ablation**](07_task_identity_ablation/README.md): is the frozen,
+   latent task embedding the right choice? Frozen vs learned, crossed with latent vs input
+   placement: every task-ID arm lets the encoder rely on the ID instead of the examples, and
+   none generalises as well as no task ID.
 8. [**Optimiser tuning**](08_optimiser_tuning/README.md): a Muon grid and a separately tuned
    plain-AdamW grid on the task-ID-free hypernetwork, to pick the recipe for later runs and
    compare the two optimisers fairly.
@@ -27,6 +31,7 @@ the question, setup, figures, results and cost. Installing and building the data
 | 1 | `td` (learned embedding) / `notd` | size (dim 4 to 14), Canon, optimiser |
 | 2 to 5 | `frozen_td` (fixed random one-hot projection) / `notd` | |
 | 6 | hypernetwork `frozen_td`/`notd`, joint `td`/`notd`, individual none | training data amount |
+| 7 | `notd`, frozen/learned × latent/input | in-distribution, compositional, leave-one-out |
 | 8 | hypernetwork `notd` | Muon and AdamW learning rates, weight decay |
 
 ## Every command
@@ -53,6 +58,11 @@ GPUS=0,1,2,3 bash experiments/06_data_efficiency_ablation/joint/run.sh          
 GPUS=0,1,2,3 bash experiments/06_data_efficiency_ablation/individual/run.sh         # 630 jobs
 uv run python experiments/06_data_efficiency_ablation/aggregate_results.py
 uv run python experiments/06_data_efficiency_ablation/plot_data_efficiency.py --outputs-dir outputs
+
+GPUS=0,1,2 bash experiments/07_task_identity_ablation/run_indist.sh                 # 15 jobs, needs 2
+bash experiments/07_task_identity_ablation/run_analysis.sh                          # needs 2, 5
+GPUS=all bash experiments/07_task_identity_ablation/run_loo.sh                      # 280 jobs
+PYTHONPATH=. uv run python experiments/07_task_identity_ablation/plot_all.py
 
 GPUS=0,1,2,3 JOBS_PER_GPU=2 bash experiments/08_optimiser_tuning/run.sh             # 225 jobs
 uv run python experiments/08_optimiser_tuning/plot_all.py

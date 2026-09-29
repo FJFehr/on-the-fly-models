@@ -84,7 +84,11 @@ class HypernetworkLightning(ArcLightningModule):
             bottleneck_dim=hyper_head["bottleneck_dim"],
             num_tasks=hyper_head.get("num_tasks"),
             freeze_task_indicator=hyper_head.get("freeze_task_indicator", False),
+            task_indicator_placement=hyper_head.get("placement", "latent"),
         )
+        # Categories scored with a zero task vector (no task identity), e.g. the category
+        # held out of training in a leave-one-out run.
+        self.zero_task_categories = set(hyper_head.get("zero_task_categories") or [])
 
     # ------------------------------------------------------------------
     # Forward pass
@@ -127,7 +131,8 @@ class HypernetworkLightning(ArcLightningModule):
             target_inputs: embedded inputs of the 3 support pairs then the query,
                 (batch, 4, seq_len, embedding_dim)
             targets: the matching outputs, (batch, 4, seq_len)
-            task_ids: task category indices when the model uses task identity, else None
+            task_ids: task category indices when the model uses task identity, else None;
+                a float task vector (zero rows for `zero_task_categories`) when any are set
         """
         context = self.embed_context(batch["support_inputs"], batch["support_outputs"])
 
@@ -143,6 +148,13 @@ class HypernetworkLightning(ArcLightningModule):
             task_ids = torch.tensor(
                 [TASK_CATEGORY_INDEX[c] for c in batch["task_category"]], device=self.device
             )
+            if self.zero_task_categories:
+                keep = torch.tensor(
+                    [c not in self.zero_task_categories for c in batch["task_category"]],
+                    device=self.device,
+                )
+                num_tasks = self.hypernetwork.num_tasks
+                task_ids = F.one_hot(task_ids, num_tasks).float() * keep.unsqueeze(1)
         return context, target_inputs, targets, task_ids
 
     def forward(self, batch: dict) -> tuple[torch.Tensor, torch.Tensor]:

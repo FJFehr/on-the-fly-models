@@ -1,0 +1,39 @@
+_base_: experiments/05_leave_one_out_task_generalization/configs/base.yaml
+project_name: 07_task_identity_ablation
+experiment_name: loo_pcopy1c_learnedtd_input_seed1
+seed: 1
+task_categories:
+- 1d_denoising_1c
+- 1d_denoising_mc
+- 1d_fill
+- 1d_flip
+- 1d_hollow
+- 1d_mirror
+- 1d_move_1p
+- 1d_move_2p
+- 1d_move_2p_dp
+- 1d_move_3p
+- 1d_move_dp
+- 1d_pcopy_mc
+- 1d_scale_dp
+val_task_categories:
+- 1d_denoising_1c
+- 1d_denoising_mc
+- 1d_fill
+- 1d_flip
+- 1d_hollow
+- 1d_mirror
+- 1d_move_1p
+- 1d_move_2p
+- 1d_move_2p_dp
+- 1d_move_3p
+- 1d_move_dp
+- 1d_pcopy_1c
+- 1d_pcopy_mc
+- 1d_scale_dp
+hyper_head:
+  num_tasks: 18
+  freeze_task_indicator: false
+  placement: input
+  zero_task_categories:
+  - 1d_pcopy_1c

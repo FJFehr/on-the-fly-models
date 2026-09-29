@@ -1,0 +1,25 @@
+# Experiment 7, in-distribution: experiment 2's dim-4 recipe with a frozen (random) one-hot task
+# identity added to every support-set token before the encoder. Only hyper_head differs from
+# experiment 2's dim4_frozentd.yaml, so seeds match its runs.
+
+_base_: experiments/02_hypernetwork_multitask/configs/base.yaml
+project_name: 07_task_identity_ablation
+experiment_name: indist_frozentd_input
+
+task_encoding:
+  embedding_dim: 4
+
+target:
+  hidden_dim: 4
+
+encoder:
+  hidden_dim: 4
+  num_heads: 1
+  num_layers: 1
+  output_dim: 4
+
+hyper_head:
+  bottleneck_dim: 8
+  num_tasks: 18
+  freeze_task_indicator: true
+  placement: input
