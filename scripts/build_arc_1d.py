@@ -11,6 +11,9 @@ from pathlib import Path
 from datasets import Dataset, DatasetDict
 
 REPO_URL = "https://github.com/khalil-research/1D-ARC.git"
+# The 1D-ARC commit every paper result was built from. Pinned so an upstream change cannot
+# silently change the data.
+REPO_COMMIT = "1e74dc4cb4c58d8160e1fbd0ba638eb745f37147"
 OUTPUT_DIR = Path("data/arc_1d")
 SIMPLE_OUTPUT_DIR = Path("data/arc_1d_simple")
 PADDED_MULTICLASS_OUTPUT_DIR = Path("data/arc_1d_padded_multiclass")
@@ -352,11 +355,14 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         repo_dir = Path(tmp_dir) / "1D-ARC"
-        print(f"Cloning {REPO_URL} ...")
-        subprocess.run(
-            ["git", "clone", "--depth", "1", REPO_URL, str(repo_dir)],
-            check=True,
-        )
+        print(f"Fetching {REPO_URL} at {REPO_COMMIT} ...")
+        git = ["git", "-C", str(repo_dir)]
+        for command in (
+            ["git", "init", "--quiet", str(repo_dir)],
+            [*git, "fetch", "--quiet", "--depth", "1", REPO_URL, REPO_COMMIT],
+            [*git, "checkout", "--quiet", "FETCH_HEAD"],
+        ):
+            subprocess.run(command, check=True)
         tasks = collect_tasks(repo_dir / "dataset")
 
     num_categories = len({task["task_category"] for task in tasks})
