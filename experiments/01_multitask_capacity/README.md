@@ -84,5 +84,10 @@ give an identical test exact match.
 
 ## Cost
 
-About 64 A40 GPU-hours (median job: 3 to 4 minutes for individual models, 8 to 9 minutes for
-joint models).
+Wall-clock minutes per run on one NVIDIA A40 (one run per GPU), including data setup and evaluation. Measured on the refactor rerun.
+
+| Runs | Count | Minutes per run | A40 GPU-hours |
+|---|---:|---:|---:|
+| individual (main / no-Canon / AdamW) | 280 each | 3.6 / 3.6 / 2.5 | 16.8 / 16.8 / 11.7 |
+| joint (main / no-Canon / AdamW) | 40 each | 9.8 / 9.6 / 8.7 | 6.5 / 6.4 / 5.8 |
+| **Total** | **960** | | **64** |

@@ -26,8 +26,8 @@ uv run python -m scripts.augment_arc_1d --per-pair --n-color-permutations 199 \
     --output-dir data/arc_1d_looped_augmented
 uv run python -m scripts.build_arc1d_compositional
 
-# 3. Run an experiment on GPUs 0-3, then make its figures (here experiment 1)
-GPUS=0,1,2,3 bash experiments/01_multitask_capacity/run.sh
+# 3. Run an experiment, then make its figures (here experiment 1)
+bash experiments/01_multitask_capacity/run.sh
 uv run python experiments/01_multitask_capacity/plot_all.py --outputs-dir outputs
 ```
 
@@ -35,20 +35,42 @@ Every experiment works the same way: one `run.sh`, then its plot script. Results
 models and figures are written to `outputs/`. Runs log to Weights & Biases; set
 `WANDB_MODE=offline` to keep them local.
 
+By default `run.sh` runs one job at a time on your GPU. The models are tiny (a job uses about
+350 MB of GPU memory, 1 CPU core and 3 to 5 GB of RAM), so run several jobs per GPU with
+`JOBS_PER_GPU=4`, and use every GPU with `GPUS=all` (or a list such as `GPUS=0,1`).
+
 ## Experiments
 
-| | Question | Finding | A40 GPU-hours |
-|---|---|---|---:|
-| [1](experiments/01_multitask_capacity/README.md) | Can one small model learn all 14 tasks at once? | No: it solves each alone but not all together | 64 |
-| [2](experiments/02_hypernetwork_multitask/README.md) | Does generating weights close that gap? | Yes, with the task's identity: 93% vs 92.6% for per-task models | 4 |
-| [3](experiments/03_reusability_generate_once_execute_many/README.md) | Do weights generated from one example set work for other instances? | Yes, losing about 2 points | minutes |
-| [4](experiments/04_compositional_generalization/README.md) | Unseen combinations of known rules? | Better without the task's identity (75.5% vs 67.7%) | minutes |
-| [5](experiments/05_leave_one_out_task_generalization/README.md) | A task type never seen in training? | Better without the task's identity, 13 of 14 types | 57 |
-| [6](experiments/06_data_efficiency_ablation/README.md) | How much training data is needed? | Sharing across tasks helps at moderate data sizes | 340 |
+| | Question | Finding |
+|---|---|---|
+| [1](experiments/01_multitask_capacity/README.md) | Can one small model learn all 14 tasks at once? | No: it solves each alone but not all together |
+| [2](experiments/02_hypernetwork_multitask/README.md) | Does generating weights close that gap? | Yes, with the task's identity: 93% vs 92.6% for per-task models |
+| [3](experiments/03_reusability_generate_once_execute_many/README.md) | Do weights generated from one example set work for other instances? | Yes, losing about 2 points |
+| [4](experiments/04_compositional_generalization/README.md) | Unseen combinations of known rules? | Better without the task's identity (75.5% vs 67.7%) |
+| [5](experiments/05_leave_one_out_task_generalization/README.md) | A task type never seen in training? | Better without the task's identity, 13 of 14 types |
+| [6](experiments/06_data_efficiency_ablation/README.md) | How much training data is needed? | Sharing across tasks helps at moderate data sizes |
 
 Run experiment 2 before 3 and 4, which evaluate its models. Each experiment's README has the
 full setup, commands, figures and results; [`experiments/README.md`](experiments/README.md)
 covers running on several GPUs or nodes, the output layout and the config format.
+
+## Compute
+
+Every run uses one GPU. Times are wall-clock minutes per run on one NVIDIA A40, including data
+setup and evaluation; GPU-hours are the sum over all runs.
+
+| Experiment | Runs | Minutes per run | A40 GPU-hours |
+|---|---:|---|---:|
+| 1 | 960 | 2.5 to 3.6 (individual), 9 to 10 (joint) | 64 |
+| 2 | 10 | 24 | 4 |
+| 3 | 10 evaluations | 0.4 | 0.1 |
+| 4 | 10 evaluations | 0.7 (CPU) | 0 |
+| 5 | 140 | 23 | 53 |
+| 6 | 870 | 7 to 109, by arm and data level | 340 |
+| **All** | **1,980** | | **461** |
+
+Each run writes its own `compute.json` (GPU model and minutes);
+`python scripts/compute_cost.py` totals them per experiment.
 
 ## Code
 

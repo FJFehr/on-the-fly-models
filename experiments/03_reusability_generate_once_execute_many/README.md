@@ -60,4 +60,4 @@ rounding).
 
 ## Cost
 
-Evaluation only: minutes on one GPU.
+Evaluation only: about 0.4 minutes per checkpoint on one A40, under 5 minutes for all 10.

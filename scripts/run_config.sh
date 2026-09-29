@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # Training launcher shared by every experiment's run.sh.
 #
-# Finds the leaf configs under CFG_DIR, skips any job that already has a results.txt, and
-# runs the rest with train.py: one after another, or in parallel with one job per GPU (a GPU
-# takes the next job as soon as its current one finishes). Always safe to rerun: finished
-# jobs are skipped, so it resumes after an interruption.
+# Finds the leaf configs under CFG_DIR, skips any job that already has a results.txt, and runs
+# the rest with train.py, keeping a fixed number of jobs running: each job slot takes the next
+# job as soon as its current one finishes. Always safe to rerun: finished jobs are skipped, so
+# it resumes after an interruption.
+#
+# Every job uses one GPU but only about 350 MB of its memory; most of a job's time is CPU-bound
+# data setup (about 1 core and 3 to 5 GB of RAM per job), so several jobs can share a GPU.
 #
 # Usage:
-#   CFG_DIR=experiments/01_multitask_capacity bash scripts/run_config.sh      # sequential
-#   CFG_DIR=experiments/01_multitask_capacity GPUS=0,1,2 bash scripts/run_config.sh
+#   CFG_DIR=experiments/01_multitask_capacity bash scripts/run_config.sh                  # one at a time
+#   CFG_DIR=experiments/01_multitask_capacity JOBS_PER_GPU=4 bash scripts/run_config.sh   # 4 at once, one GPU
+#   CFG_DIR=experiments/01_multitask_capacity GPUS=all bash scripts/run_config.sh         # one per GPU
 #
 # Env vars:
 #   CFG_DIR         (required) config directory, searched recursively
@@ -18,9 +22,11 @@
 #                   written in it
 #   PROJECT         output folder and W&B project (default: basename of CFG_DIR); runs land
 #                   in outputs/<PROJECT>/<run name>/
-#   GPUS            comma-separated GPU ids to run on in parallel (default: sequential)
+#   GPUS            GPU ids to use, comma-separated, or "all" for every visible GPU
+#                   (default: the default GPU only)
+#   JOBS_PER_GPU    jobs to run at once on each GPU (default: 1)
 #   SHARD           "k/N": run only every N-th job, starting at the k-th (0-based), to split
-#                   one sweep across nodes (default: all jobs)
+#                   one sweep across machines (default: all jobs)
 #   PYTHON          interpreter (default: .venv/bin/python, created by `uv sync`)
 
 set -uo pipefail
@@ -31,6 +37,7 @@ LOG_DIR="${LOG_DIR:-logs/${PROJECT}}"
 CELL_GLOB="${CELL_GLOB:-*.yaml}"
 SEEDS_OVERRIDE="${SEEDS_OVERRIDE:-1}"
 GPUS="${GPUS:-}"
+JOBS_PER_GPU="${JOBS_PER_GPU:-1}"
 SHARD="${SHARD:-0/1}"
 PYTHON="${PYTHON:-.venv/bin/python}"
 mkdir -p "$LOG_DIR"
@@ -63,11 +70,20 @@ for SEED in "${SEEDS[@]}"; do
 done
 N_JOBS=${#JOBS[@]}
 
-GPU_IDS=()
-[ -n "$GPUS" ] && IFS=',' read -ra GPU_IDS <<< "$GPUS"
-N_PARALLEL=${#GPU_IDS[@]}
+# One job slot per GPU and repeat. An empty GPU id means the default GPU (CUDA_VISIBLE_DEVICES
+# is left as it is).
+if [ "$GPUS" = "all" ]; then
+    mapfile -t GPU_IDS < <(nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null)
+    [ "${#GPU_IDS[@]}" -gt 0 ] || { echo "GPUS=all: nvidia-smi found no GPUs"; exit 1; }
+elif [ -n "$GPUS" ]; then
+    IFS=',' read -ra GPU_IDS <<< "$GPUS"
+else
+    GPU_IDS=("")
+fi
+SLOTS=()
+for ((r = 0; r < JOBS_PER_GPU; r++)); do SLOTS+=("${GPU_IDS[@]}"); done
 
-echo "Running $N_JOBS jobs on ${N_PARALLEL:-0} GPU(s) ${GPU_IDS[*]:-(sequential)}; $SKIPPED already complete"
+echo "Running $N_JOBS jobs, ${#SLOTS[@]} at a time (GPUs: ${GPUS:-default}, jobs per GPU: $JOBS_PER_GPU); $SKIPPED already complete"
 echo "Project: $PROJECT | Config dir: $CFG_DIR | Glob: $CELL_GLOB | Seeds: ${SEEDS[*]} | Shard: $SHARD | Logs: $LOG_DIR/"
 echo ""
 if [ "$N_JOBS" -eq 0 ]; then
@@ -85,42 +101,37 @@ run_job() {
         overrides+=(seed="$seed" experiment_name="$name"
                     logging_name="$(grep '^experiment_name:' "$cfg" | awk '{print $2}')")
     fi
+    local gpu_env=()
+    [ -n "$gpu_id" ] && gpu_env=(CUDA_VISIBLE_DEVICES="$gpu_id")
     echo "START  ${PROJECT} / ${name}${gpu_id:+  (gpu $gpu_id)}"
-    if CUDA_VISIBLE_DEVICES="$gpu_id" $PYTHON train.py --config "$cfg" "${overrides[@]}" > "$log" 2>&1; then
+    if env "${gpu_env[@]}" $PYTHON train.py --config "$cfg" "${overrides[@]}" > "$log" 2>&1; then
         echo "DONE   ${PROJECT} / ${name}${gpu_id:+  (gpu $gpu_id)}"
     else
         echo "FAILED ${PROJECT} / ${name}${gpu_id:+  (gpu $gpu_id)}  (see $log)"
     fi
 }
 
-if [ "$N_PARALLEL" -eq 0 ]; then
-    for job in "${JOBS[@]}"; do
-        IFS='|' read -r cfg seed <<< "$job"
-        run_job "$cfg" "$seed"
-    done
-else
-    # Start one job per GPU, then give each GPU the next job as soon as it frees up.
-    declare -A GPU_OF_PID
-    next=0
-    start_next() {
-        IFS='|' read -r cfg seed <<< "${JOBS[$next]}"
-        run_job "$cfg" "$seed" "$1" &
-        GPU_OF_PID[$!]="$1"
-        next=$((next + 1))
-    }
-    for gpu in "${GPU_IDS[@]}"; do
+# Fill every slot, then give each slot the next job as soon as its current one finishes.
+declare -A GPU_OF_PID
+next=0
+start_next() {
+    IFS='|' read -r cfg seed <<< "${JOBS[$next]}"
+    run_job "$cfg" "$seed" "$1" &
+    GPU_OF_PID[$!]="$1"
+    next=$((next + 1))
+}
+for gpu in "${SLOTS[@]}"; do
+    [ "$next" -lt "$N_JOBS" ] && start_next "$gpu"
+done
+while [ "${#GPU_OF_PID[@]}" -gt 0 ]; do
+    wait -n 2>/dev/null || true
+    for pid in "${!GPU_OF_PID[@]}"; do
+        kill -0 "$pid" 2>/dev/null && continue
+        gpu="${GPU_OF_PID[$pid]}"
+        unset "GPU_OF_PID[$pid]"
         [ "$next" -lt "$N_JOBS" ] && start_next "$gpu"
     done
-    while [ "${#GPU_OF_PID[@]}" -gt 0 ]; do
-        wait -n 2>/dev/null || true
-        for pid in "${!GPU_OF_PID[@]}"; do
-            kill -0 "$pid" 2>/dev/null && continue
-            gpu="${GPU_OF_PID[$pid]}"
-            unset "GPU_OF_PID[$pid]"
-            [ "$next" -lt "$N_JOBS" ] && start_next "$gpu"
-        done
-    done
-fi
+done
 
 echo ""
 echo "All $N_JOBS jobs finished. Logs in $LOG_DIR/"

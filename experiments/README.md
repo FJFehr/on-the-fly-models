@@ -62,21 +62,32 @@ finished jobs are skipped, so rerunning a command resumes a sweep.
 
 | Variable | Meaning |
 |---|---|
-| `GPUS` | comma-separated GPU ids; one job per GPU, each GPU takes the next job when free (unset: one job at a time) |
-| `SHARD` | `k/N`: run only every N-th job starting at the k-th, to split a sweep across nodes |
+| `GPUS` | GPUs to use: a list such as `0,1,3`, or `all` (unset: your default GPU) |
+| `JOBS_PER_GPU` | jobs to run at once on each GPU (default 1); a job needs about 350 MB of GPU memory, 1 CPU core and 3 to 5 GB of RAM, so this is usually limited by CPU and RAM |
+| `SHARD` | `k/N`: run only every N-th job starting at the k-th, to split a sweep across machines |
 | `SEEDS_OVERRIDE` | seeds to run (default `1 2 3 4 5`) |
 | `PROJECT` | output folder and W&B project (defaults to the experiment's name) |
 | `PYTHON` | interpreter (default `.venv/bin/python`) |
 
-On a cluster, launch under `nohup` (or `tmux`) and give each node its own shard:
+Examples:
 
 ```bash
-SHARD=0/2 GPUS=0,1,2,3 nohup bash experiments/05_leave_one_out_task_generalization/run.sh > shard0.log 2>&1 &   # node A
-SHARD=1/2 GPUS=0,1,2,3 nohup bash experiments/05_leave_one_out_task_generalization/run.sh > shard1.log 2>&1 &   # node B
+bash experiments/05_leave_one_out_task_generalization/run.sh                       # one GPU, one job at a time
+JOBS_PER_GPU=4 bash experiments/05_leave_one_out_task_generalization/run.sh        # one GPU, 4 jobs at a time
+GPUS=all JOBS_PER_GPU=2 bash experiments/05_leave_one_out_task_generalization/run.sh
 ```
 
-`scripts/fetch_experiments.sh` copies an experiment's outputs, models included, back from a
-node (`REMOTE_HOST=torrnode15.priv bash scripts/fetch_experiments.sh 02_hypernetwork_multitask`;
+To split a sweep across machines, give each its own shard, and launch under `nohup` (or
+`tmux`) so it survives the terminal closing:
+
+```bash
+SHARD=0/2 GPUS=all nohup bash experiments/05_leave_one_out_task_generalization/run.sh > shard0.log 2>&1 &   # machine A
+SHARD=1/2 GPUS=all nohup bash experiments/05_leave_one_out_task_generalization/run.sh > shard1.log 2>&1 &   # machine B
+```
+
+`scripts/fetch_experiments.sh` copies an experiment's outputs, models included, back from
+another machine
+(`REMOTE=user@host:/path/to/on-the-fly-models bash scripts/fetch_experiments.sh 05_leave_one_out_task_generalization`;
 `EXCLUDE_CHECKPOINTS=1` skips the models).
 
 If every training job fails instantly with a `PermissionError` from wandb, `uv sync` dropped
@@ -88,7 +99,8 @@ the executable bit on an NFS home directory:
 Everything goes under `outputs/`, which git ignores:
 
 - `outputs/<experiment>/<run>/`: `results.txt` (final validation and test metrics),
-  `config.yaml` (the resolved config), `model.txt`, `train.log`, and the trained model
+  `config.yaml` (the resolved config), `model.txt`, `train.log`, `compute.json` (GPU model
+  and wall-clock minutes, totalled by `python scripts/compute_cost.py`), and the trained model
   (`best_model.ckpt`, `last.ckpt`, and `final_model.ckpt` when the experiment evaluates its
   final weights).
 - `outputs/results/<experiment>/*.csv`: numbers aggregated across runs by the plot scripts.

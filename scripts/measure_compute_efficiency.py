@@ -71,7 +71,7 @@ Known confounds (see this script's README / the plan that produced it):
     the wall-clock numbers here as production-deployment numbers.
   - No local GPU was available when this script was written -- FLOP counts are hardware
     independent and are the primary evidence; wall-clock numbers should be regathered with
-    --device cuda on a torrnode for a realistic wall-clock comparison.
+    --device cuda on a GPU machine for a realistic wall-clock comparison.
 
 Usage:
     uv run python scripts/measure_compute_efficiency.py --stage all
@@ -938,7 +938,7 @@ def main() -> None:
                 "\nSkipping the wall-clock crossover plot: measurements were taken on "
                 f"{measurements.get('device')!r}, not cuda -- CPU wall-clock isn't a "
                 "meaningful stand-in for GPU wall-clock (see feedback_no_local_heavy_compute); "
-                "re-run --stage flops with --device cuda on a torrnode for that view."
+                "re-run --stage flops with --device cuda on a GPU for that view."
             )
 
         for name, y_label, title, generation_per_task, training_per_task, inference_per_row, hyper_training_total in metrics:

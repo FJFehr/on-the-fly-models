@@ -20,6 +20,7 @@ import os
 import re as _re
 import subprocess
 import sys
+import time
 
 import lightning as pl
 import torch
@@ -35,6 +36,7 @@ from training.config import (
 from training.logging import (
     create_wandb_logger,
     describe_model,
+    write_compute_record,
     write_model_summary,
     write_results_file,
 )
@@ -162,6 +164,7 @@ def main() -> None:
     5. run post-training artefact generation plus final validation/test
     6. write a plain-text summary file for the run directory
     """
+    start = time.perf_counter()
     cli_args = parse_args()
 
     # Resolve config inheritance, aliases, and grouped sections before anything
@@ -242,6 +245,9 @@ def main() -> None:
         val_results=val_results,
         test_results=test_results,
     )
+
+    # Wall-clock time of the whole run (setup, training and evaluation), on one GPU per job.
+    write_compute_record(cfg.output_path, runtime_cfg, time.perf_counter() - start)
 
 
 if __name__ == "__main__":

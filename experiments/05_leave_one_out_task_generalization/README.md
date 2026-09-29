@@ -82,4 +82,4 @@ vs 68.5%).
 
 ## Cost
 
-140 jobs, about 24 minutes each: about 57 A40 GPU-hours.
+Wall-clock minutes per run on one NVIDIA A40 (one run per GPU), including data setup and evaluation. Measured on the refactor rerun: 140 runs of about 23 minutes, 53 A40 GPU-hours.

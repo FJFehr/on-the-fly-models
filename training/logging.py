@@ -4,6 +4,7 @@ This module owns everything that produces output artefacts during or after a
 training run — writing to disk, logging to W&B, or printing to stdout.
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -179,6 +180,29 @@ def create_wandb_logger(
 # ---------------------------------------------------------------------------
 # Results file
 # ---------------------------------------------------------------------------
+
+
+def write_compute_record(output_path: str, runtime_cfg: dict, wall_clock_seconds: float) -> None:
+    """Record the compute a run used in compute.json (read by scripts/compute_cost.py).
+
+    A resumed run adds a segment, so `wall_clock_minutes` is the run's total across restarts.
+    """
+    path = os.path.join(output_path, "compute.json")
+    segments = []
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            segments = json.load(f).get("segments", [])
+    segments.append(round(wall_clock_seconds / 60, 2))
+    devices = runtime_cfg.get("devices", 1)
+    record = {
+        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+        "devices": devices if isinstance(devices, int) else 1,
+        "precision": runtime_cfg.get("precision", "32-true"),
+        "wall_clock_minutes": round(sum(segments), 2),
+        "segments": segments,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(record, f, indent=2)
 
 
 def write_results_file(

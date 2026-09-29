@@ -1,73 +1,41 @@
 #!/usr/bin/env bash
-# Fetch experiment outputs (results, logs, figures and model checkpoints) from a torrnode.
+# Copy experiment outputs (results, logs, figures and trained models) from another machine
+# into the local outputs/ folder, with rsync over ssh.
 #
 # Usage:
-#   bash scripts/fetch_experiments.sh 02_hypernetwork_multitask
-#   bash scripts/fetch_experiments.sh outputs/02_hypernetwork_multitask
-#   REMOTE_HOST=torrnode15.priv bash scripts/fetch_experiments.sh 01_multitask_capacity 05_leave_one_out_task_generalization
-#   EXCLUDE_CHECKPOINTS=1 bash scripts/fetch_experiments.sh 01_multitask_capacity
+#   REMOTE=user@host:/path/to/on-the-fly-models bash scripts/fetch_experiments.sh 02_hypernetwork_multitask
+#   REMOTE=gpu-box:on-the-fly-models bash scripts/fetch_experiments.sh 01_multitask_capacity 05_leave_one_out_task_generalization
+#   EXCLUDE_CHECKPOINTS=1 REMOTE=... bash scripts/fetch_experiments.sh 01_multitask_capacity
 #
 # Env vars:
-#   REMOTE_HOST          which torrnode to pull from (default: torrnode11.priv)
-#   REMOTE_REPO          repo directory name on that node, under /homes/55/fabiojfehr/
-#                        (default: on-the-fly-models)
-#   EXCLUDE_CHECKPOINTS  1 to skip *.ckpt files (default: fetch them, so every trained
-#                        model is kept locally; outputs/ is gitignored)
+#   REMOTE               (required) the repository on the other machine, as an rsync source
+#                        (host:path); ssh options such as jump hosts belong in ~/.ssh/config
+#   EXCLUDE_CHECKPOINTS  1 to skip *.ckpt files (default: copy them)
 
 set -uo pipefail
 
-REMOTE_HOST="${REMOTE_HOST:-torrnode11.priv}"
-REMOTE_REPO="${REMOTE_REPO:-on-the-fly-models}"
-REMOTE_BASE="/homes/55/fabiojfehr/${REMOTE_REPO}/outputs"
-LOCAL_BASE="outputs"
-JUMP_HOST="robots.ox.ac.uk"
+REMOTE="${REMOTE:?Set REMOTE to the repository on the other machine, e.g. user@host:/path/to/on-the-fly-models}"
 EXCLUDE_CHECKPOINTS="${EXCLUDE_CHECKPOINTS:-}"
 
 if [[ $# -eq 0 ]]; then
-    echo "Usage: $0 <output_dir> [output_dir ...]"
-    echo "  output_dir: name under outputs/ (e.g. 02_hypernetwork_multitask)"
-    echo "              or full path (e.g. outputs/02_hypernetwork_multitask)"
+    echo "Usage: REMOTE=host:/path/to/repo $0 <experiment> [<experiment> ...]"
+    echo "  <experiment>: a folder under outputs/, e.g. 02_hypernetwork_multitask"
     exit 1
 fi
 
-# Detect if direct connection works; fall back to jump host if not.
-SSH_OPTS="-o ConnectTimeout=10 -o BatchMode=yes"
-if ssh $SSH_OPTS "$REMOTE_HOST" true 2>/dev/null; then
-    RSYNC_SSH="ssh"
-    echo "Using direct connection to $REMOTE_HOST"
-else
-    echo "Direct connection failed, trying jump host $JUMP_HOST ..."
-    RSYNC_SSH="ssh -o ConnectTimeout=20 -o ServerAliveInterval=15 -J $JUMP_HOST"
-fi
+EXCLUDES=()
+[[ -n "$EXCLUDE_CHECKPOINTS" ]] && EXCLUDES=(--exclude '*.ckpt')
 
 EXIT=0
 for ARG in "$@"; do
-    # Strip leading "outputs/" if supplied as full path
-    DIR_NAME="${ARG#outputs/}"
-
-    REMOTE_PATH="${REMOTE_HOST}:${REMOTE_BASE}/${DIR_NAME}/"
-    LOCAL_PATH="${LOCAL_BASE}/${DIR_NAME}/"
-    mkdir -p "$LOCAL_PATH"
-
-    echo ""
-    echo "==> Fetching: $REMOTE_PATH"
-    echo "         to: $LOCAL_PATH"
-
-    RSYNC_EXCLUDES=()
-    if [[ -n "$EXCLUDE_CHECKPOINTS" ]]; then
-        RSYNC_EXCLUDES=(--exclude '*/checkpoints/*' --exclude '*.ckpt')
-    fi
-
-    if rsync -avz \
-        "${RSYNC_EXCLUDES[@]}" \
-        -e "$RSYNC_SSH" \
-        "$REMOTE_PATH" "$LOCAL_PATH"; then
-        N=$(find "$LOCAL_PATH" -name "results.txt" | wc -l)
-        echo "    Done — $N results.txt files in $LOCAL_PATH"
+    NAME="${ARG#outputs/}"
+    mkdir -p "outputs/${NAME}"
+    echo "==> ${REMOTE}/outputs/${NAME}/ -> outputs/${NAME}/"
+    if rsync -az "${EXCLUDES[@]}" "${REMOTE}/outputs/${NAME}/" "outputs/${NAME}/"; then
+        echo "    $(find "outputs/${NAME}" -name results.txt | wc -l) runs with results"
     else
-        echo "    FAILED: $REMOTE_PATH" >&2
+        echo "    FAILED" >&2
         EXIT=1
     fi
 done
-
 exit $EXIT

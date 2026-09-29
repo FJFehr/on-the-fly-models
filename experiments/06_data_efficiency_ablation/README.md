@@ -93,6 +93,15 @@ with about 5 tasks per category (the current build, used by experiments 1 to 5, 
 
 ## Cost
 
-870 jobs, about 340 A40 GPU-hours in the original runs (hypernetwork `t*` cells about 2 hours
-each, `v*`/`full` about 30 minutes; individual `v*`/`full` about 30 minutes, `t*` about 6
-minutes; joint 10 to 20 minutes).
+Wall-clock minutes per run on one NVIDIA A40 (one run per GPU), including data setup and evaluation. Measured on the original runs (the same A40 cluster; these runs predate
+`compute.json`, so the GPU model was not recorded per run).
+
+| Arm | Levels | Runs | Minutes per run | A40 GPU-hours |
+|---|---|---:|---:|---:|
+| hypernetwork | `t*` | 50 | 109 | 90.9 |
+| hypernetwork | `v*`, `full` | 70 | 35 | 40.5 |
+| individual | `t*` | 350 | 6.6 | 38.4 |
+| individual | `v*`, `full` | 280 | 30.5 | 142.4 |
+| joint | `t*` | 50 | 16.7 | 13.9 |
+| joint | `v*`, `full` | 70 | 11.8 | 13.8 |
+| **Total** | | **870** | | **340** |

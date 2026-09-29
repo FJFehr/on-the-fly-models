@@ -76,4 +76,4 @@ experiment 2: all 10 results files are identical.
 
 ## Cost
 
-Evaluation only: minutes on a CPU.
+Evaluation only, on the CPU: about 0.7 minutes per checkpoint, under 10 minutes for all 10.
