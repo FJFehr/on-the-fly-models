@@ -65,7 +65,8 @@ def representations(model, dataloader, device: str) -> dict[str, np.ndarray]:
             spaces["task"].append(task)
             spaces["weights"].append(hypernetwork.projection(task).float())
             spaces["task_categories"] += list(batch["task_category"])
-            spaces["task_ids"] += batch["task_id"].tolist()
+            task_id = batch["task_id"]
+            spaces["task_ids"] += task_id.tolist() if torch.is_tensor(task_id) else list(task_id)
     out = {name: torch.cat(spaces[name]).cpu().numpy() for name in SPACES}
     out["task_categories"] = np.array(spaces["task_categories"])
     out["task_ids"] = np.array(spaces["task_ids"])
