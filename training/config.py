@@ -7,6 +7,7 @@ This module owns the full config lifecycle:
 """
 
 import os
+from pathlib import Path
 
 from omegaconf import OmegaConf
 
@@ -60,3 +61,15 @@ def load_config(config_path: str, overrides: list[str] | None = None):
 
     OmegaConf.resolve(cfg)
     return cfg
+
+
+def locate_saved_run(cfg, config_path: str) -> None:
+    """Point output_path at the folder of a saved run's config.yaml.
+
+    A finished run's config.yaml records where the run was written, but the folder may have
+    been moved, renamed or copied from another machine since. When `config_path` is such a
+    file (a config.yaml next to a results.txt), its own folder is the run's folder.
+    """
+    folder = Path(config_path).resolve().parent
+    if Path(config_path).name == "config.yaml" and (folder / "results.txt").exists():
+        cfg.output_path = str(folder)

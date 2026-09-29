@@ -7,7 +7,12 @@ import lightning as pl
 
 from data_modules import DATA_REGISTRY
 from lightning_modules import MODEL_REGISTRY
-from training.config import build_runtime_config_dict, ensure_output_path, load_config
+from training.config import (
+    build_runtime_config_dict,
+    ensure_output_path,
+    load_config,
+    locate_saved_run,
+)
 from training.logging import (
     create_wandb_logger,
     describe_model,
@@ -67,6 +72,7 @@ def main() -> None:
     """Run shared evaluation flow for a saved checkpoint."""
     cli_args = parse_args()
     cfg = load_config(cli_args.config)
+    locate_saved_run(cfg, cli_args.config)
     runtime_cfg = build_runtime_config_dict(cfg)
     checkpoint_path = resolve_evaluation_checkpoint_path(cfg.output_path, cli_args.checkpoint)
 

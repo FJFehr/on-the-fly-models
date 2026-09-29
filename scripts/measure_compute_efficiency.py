@@ -99,7 +99,7 @@ import lightning as pl
 from data_modules import DATA_REGISTRY
 from lightning_modules import MODEL_REGISTRY
 from models.embedding import TASK_CATEGORY_INDEX
-from training.config import build_runtime_config_dict, load_config
+from training.config import build_runtime_config_dict, load_config, locate_saved_run
 from training.trainer import load_checkpoint_state, resolve_evaluation_checkpoint_path
 from visualisation.core.style import apply_latex_style
 
@@ -701,6 +701,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_hyper_lightning(config_path: str, checkpoint: str | None, device: torch.device):
     cfg = load_config(config_path)
+    locate_saved_run(cfg, config_path)
     runtime_cfg = build_runtime_config_dict(cfg)
     model = MODEL_REGISTRY[cfg.model](**runtime_cfg)
     if checkpoint is not None:
@@ -719,6 +720,7 @@ def load_hyper_lightning(config_path: str, checkpoint: str | None, device: torch
 
 def load_baseline_lightning(config_path: str, device: torch.device):
     cfg = load_config(config_path)
+    locate_saved_run(cfg, config_path)
     runtime_cfg = build_runtime_config_dict(cfg)
     model = MODEL_REGISTRY[cfg.model](**runtime_cfg)
     model.to(device)

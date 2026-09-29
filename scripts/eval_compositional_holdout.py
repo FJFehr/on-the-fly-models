@@ -20,7 +20,8 @@ Usage (experiments/04_compositional_generalization/run.sh runs this for every se
     # frozen_td: evaluate a padded checkpoint (see pad_frozentd_checkpoint.py)
     uv run python scripts/eval_compositional_holdout.py \
         --config experiments/04_compositional_generalization/configs/frozen_td.yaml \
-        --checkpoint PADDED.ckpt --output-dir outputs/04_compositional_generalization/frozentd_seed1
+        --checkpoint PADDED.ckpt \
+        --output-dir outputs/04_compositional_generalization/frozentd_seed1
 """
 
 import argparse
@@ -36,7 +37,7 @@ from data_modules.arc1d_compositional import COMPOSITE_TASK_SPECS
 from data_modules.arc1d_meta_multiclass import Arc1dMetaPaddingCollator, Arc1dMetaTaskDataset
 from lightning_modules import MODEL_REGISTRY
 from models.embedding import TASK_CATEGORY_INDEX
-from training.config import build_runtime_config_dict, load_config
+from training.config import build_runtime_config_dict, load_config, locate_saved_run
 from training.logging import log_embedding_cluster_plots
 from training.trainer import load_checkpoint_state, resolve_evaluation_checkpoint_path
 
@@ -105,6 +106,7 @@ def build_holdout_dataloader(data_dir: str, split: str, batch_size: int, padding
 def main() -> None:
     args = parse_args()
     cfg = load_config(args.config, args.overrides)
+    locate_saved_run(cfg, args.config)
     runtime_cfg = build_runtime_config_dict(cfg)
 
     num_tasks = cfg.hyper_head.get("num_tasks")
