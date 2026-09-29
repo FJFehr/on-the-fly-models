@@ -1,33 +1,6 @@
-# Recipe for the compositional-generalization question: does a hypernetwork trained on 14
-# in-distribution ARC-1D task categories generalise zero-shot to 10 synthetic categories that
-# chain two of those rules together (data/arc_1d_compositional_holdout, built by
-# scripts/build_arc1d_compositional.py)?
-#
-# As of this session, this config is documentation/provenance only -- NOT the active training
-# recipe. Both arms now reuse experiment 2's own dim=4 matched-scale checkpoints directly
-# (outputs/02_hypernetwork_multitask/hyper_multitask_dim4_{notd,frozentd}_seed{1..5}/, trained
-# on this exact 14-category recipe already) rather than training here from scratch -- see
-# run.sh and this experiment's README for the full reasoning (in short: no need to duplicate a
-# training run that already exists at the right architecture and data recipe). Kept accurate
-# and buildable in case a genuine from-scratch retrain is ever needed (e.g. a future dim=6
-# version) -- frozen_td.yaml specifically is still directly used, as the architecture template
-# scripts/eval_compositional_holdout.py builds its model from when evaluating experiment 2's
-# checkpoint after pad_frozentd_checkpoint.py extends it to num_tasks=28.
-#
-# Architecture is the "matched-scale" recipe from experiment 2's own sizing sweep (10,156
-# trainable hypernetwork params, built around the dim=4 target model -- 1,398 params) --
-# identical to experiments/02_hypernetwork_multitask/configs/dim4_notd.yaml/dim4_frozentd.yaml
-# except num_tasks (28 here, reserving 10 indices for the composite holdout categories; 18 in
-# experiment 2, which has no reason to reserve them for its own purposes).
-#
-# task_categories/val_task_categories: the standard 14-category v2 list (drops 1d_recolor_cmp
-# from this experiment's own 15-category predecessor, arc1d_v2_compositional_generalization --
-# safe, since none of the 10 composite specs in data_modules/arc1d_compositional.py involve it,
-# and frozen_td's num_tasks=28 is sized off the fixed 18-category TASK_CATEGORY_INDEX registry
-# in models/hypermodel_lightning.py, not off how many categories this list has).
-#
-# Self-contained (no _base_ of its own), matching every sibling base.yaml, because the config
-# loader only resolves one level of _base_ inheritance (training/config.py's load_config).
+# Experiment 4 trains nothing: it evaluates experiment 2's dim-4 checkpoints. This config only
+# describes the model to build (experiment 2's dim-4 recipe) and the data. See ../README.md.
+
 project_name: 04_compositional_generalization
 entity: fjfehr
 output_dir: outputs
@@ -113,9 +86,6 @@ task_encoding:
   embedding_dim: 4
   use_sinusoidal_pe: false
 
-# Flat (n_loops=1), matched to the "matched-scale" dim=4 target from
-# arc1d_v2_hypernetwork_multitask -- not the older recipe's looped (n_loops=4) hidden_dim=16
-# target.
 target:
   hidden_dim: 4
   num_layers: 3
@@ -124,8 +94,6 @@ target:
   canon_set: ABCD
   canon_kernel: 5
 
-# Plain (non-Zhu) rope_canon_transformer, matched-width to the dim=4 target -- not the older
-# recipe's rope_canon_zhu_transformer/hidden_dim=64/8-layer encoder.
 encoder:
   hidden_dim: 4
   num_heads: 1
@@ -134,7 +102,6 @@ encoder:
   canon_set: ABCD
   canon_kernel: 5
 
-# Placeholder default: notd (no task-identity signal). Overridden per leaf for frozen_td.
 hyper_head:
   bottleneck_dim: 8
   num_tasks: null

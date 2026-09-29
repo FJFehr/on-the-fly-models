@@ -1,26 +1,24 @@
 # on-the-fly-models
 
-Task-conditioned models that generate or adapt a small target model from a task's examples instead of training a separate model per task.
+A hypernetwork that generates the weights of a small target model from a task's examples, on
+the 1D-ARC benchmark, compared with training one model per task and one shared model for all
+tasks. This repository reproduces every experiment in the paper from scratch.
 
-**→ For the paper's experiments, start at [`experiments/README.md`](experiments/README.md).**
-It names the 6 experiments, their status, and the exact commands to reproduce
-each figure. The rest of this README covers the shared codebase (data prep,
-training/validation entry points, model classes, repository layout). The
-original 1D-ARC capacity/binary/multiclass track that predates the paper
-work has been removed (its configs and scripts, along with the exploratory
-`arc1d_*` runs that predated the current 6 experiments, are still recoverable
-from git history before this cleanup).
-
-## Reproducing from a clean environment
-
-The exact sequence for a full clean-slate rerun of the paper experiments under
-`experiments/`: fresh environment, datasets rebuilt from scratch, everything else
-downstream of that. Full per-experiment commands and findings live in
-[`experiments/README.md`](experiments/README.md); this is the process, once.
+## Setup
 
 ```bash
 uv sync --python 3.12 --managed-python
+```
 
+This creates `.venv/`, which every run script uses (`.venv/bin/python`). Runs log to Weights
+& Biases; set `WANDB_MODE=offline` to log locally only. On some NFS home directories `uv sync`
+drops the executable bit from wandb's bundled binaries, so every training job fails instantly
+with a `PermissionError`; fix it with
+`chmod +x .venv/lib/python3.12/site-packages/wandb/bin/{wandb-core,gpu_stats}`.
+
+## Build the data
+
+```bash
 uv run python -m scripts.build_arc_1d
 uv run python -m scripts.augment_arc_1d \
     --per-pair --n-color-permutations 199 --shifts 1 2 -1 -2 --no-mirror \
@@ -29,315 +27,164 @@ uv run python -m scripts.augment_arc_1d \
 uv run python -m scripts.build_arc1d_compositional
 ```
 
-This builds `data/arc_1d` (the raw benchmark), `data/arc_1d_looped_augmented`
-(721,000 train rows, the dataset every current experiment shares) and
-`data/arc_1d_compositional_holdout` (experiment 4's zero-shot eval set).
-Optionally confirm there's no train/eval overlap:
-`uv run pytest -m slow tests/test_data_leakage.py`.
+| Dataset | Contents | Used by |
+|---|---|---|
+| `data/arc_1d` | the raw benchmark: 18 categories, 901 tasks (721 train, 90 dev, 90 test) | the augmentation step |
+| `data/arc_1d_looped_augmented` | 721,000 train, 1,800 dev and 1,800 test tasks | experiments 1 to 6 |
+| `data/arc_1d_compositional_holdout` | 10 synthetic composite categories, 400 tasks | experiment 4 |
 
-**Known gotcha**: on some NFS-mounted home directories, `uv sync` can silently
-strip the executable bit from `wandb`'s bundled binary, which fails every
-training job instantly with `PermissionError: ... wandb/bin/wandb-core`. Fix
-with `chmod +x .venv/lib/python3.12/site-packages/wandb/bin/wandb-core
-.venv/lib/python3.12/site-packages/wandb/bin/gpu_stats` if training jobs fail
-immediately after a fresh `uv sync`.
+The build is deterministic: 1D-ARC is fetched at a pinned commit and all randomness is
+seeded, so a rebuild is identical row for row. `uv run pytest -m slow tests/test_data_leakage.py`
+checks that no training example appears in the dev, test or holdout splits.
 
-### Running on the cluster
+Each task holds 3 support pairs and 1 query pair (`support_inputs`, `support_outputs`,
+`query_input`, `query_output`, plus `task_category`, `task_id`, `sequence_length`). The
+augmentation remaps non-zero colours with a random injective mapping (colour 9 stays fixed for
+`1d_mirror`, where it is the pivot) and shifts every sequence by padding with zeros, the same
+transform for all sequences of a task, so the rule is preserved. Splits are made before
+augmenting.
 
-Training runs on GPU nodes (`torrnodeN.priv`), reachable with a single
-`ssh torrnodeN.priv` (a `ProxyJump` through the lab's login host handles the hop
-transparently via `~/.ssh/config`). Standing convention: only launch jobs on
-`torrnode8`, `torrnode9`, `torrnode11`-`torrnode15` (not `torrnode10`, not
-`torrnode1`-`torrnode7`), per `experiments/02_hypernetwork_multitask/README.md`
-(where the reasoning is explained).
+## Reproduce the paper
 
-```bash
-ssh torrnode15.priv
-git clone git@github.com:FJFehr/on-the-fly-models.git && cd on-the-fly-models
-uv sync --python 3.12 --managed-python
-# build the datasets as above, then launch a sweep across all 8 GPUs:
-CFG_DIR=experiments/01_multitask_capacity SEEDS_OVERRIDE="1 2 3 4 5" \
-    GPUS="0,1,2,3,4,5,6,7" bash scripts/run_config.sh
-```
+Each experiment has one command to train (or evaluate) and one to make its figures and CSVs.
+Experiments 3 and 4 only evaluate experiment 2's models, so run 2 first.
 
-`scripts/run_config.sh` skips any `(config, seed)` pair that already has a
-`results.txt`, so it's always safe to rerun. Launch it under `nohup ... &` (or
-`tmux`) so it survives the SSH session ending. `CFG_DIR` recurses, so pointing
-it at an experiment's whole directory sweeps every config folder underneath
-it too (a sub-study living alongside the main configs, say). Narrow `CFG_DIR`
-to a specific subfolder for a scoped launch, and pass `PROJECT=<name>`
-explicitly if you want its results grouped under a project other than that
-subfolder's own basename.
-
-Once training finishes, fetch the results back (checkpoints excluded) and
-regenerate the figures:
+| Experiment | Question | Jobs | A40 GPU-hours |
+|---|---|---:|---:|
+| [1. Multi-task capacity](experiments/01_multitask_capacity/README.md) | Can one small model learn all 14 tasks at once? | 960 | 64 |
+| [2. Hypernetwork](experiments/02_hypernetwork_multitask/README.md) | Does generating per-task weights close that gap? | 10 | 4 |
+| [3. Reusability](experiments/03_reusability_generate_once_execute_many/README.md) | Do weights generated from one instance solve others? | eval | minutes |
+| [4. Compositional generalisation](experiments/04_compositional_generalization/README.md) | Zero-shot on chained combinations of known rules | eval | minutes |
+| [5. Leave-one-out](experiments/05_leave_one_out_task_generalization/README.md) | Zero-shot on a whole unseen task category | 140 | 57 |
+| [6. Data efficiency](experiments/06_data_efficiency_ablation/README.md) | Does sharing across tasks need less data? | 870 | 340 |
 
 ```bash
-REMOTE_HOST=torrnode15.priv bash scripts/fetch_experiments.sh 01_multitask_capacity
+GPUS=0,1,2,3,4,5,6,7 bash experiments/01_multitask_capacity/run.sh
 uv run python experiments/01_multitask_capacity/plot_all.py --outputs-dir outputs
+
+GPUS=0,1,2,3,4 bash experiments/02_hypernetwork_multitask/run.sh
+uv run python experiments/02_hypernetwork_multitask/plot_all.py
+
+bash experiments/03_reusability_generate_once_execute_many/run.sh
+uv run python experiments/03_reusability_generate_once_execute_many/plot_generalization_loo.py --outputs-dir outputs
+
+bash experiments/04_compositional_generalization/run.sh
+uv run python experiments/04_compositional_generalization/plot_compositional.py --outputs-dir outputs
+uv run python experiments/04_compositional_generalization/report_holdout_breakdown.py
+
+GPUS=0,1,2,3,4,5,6,7 bash experiments/05_leave_one_out_task_generalization/run.sh
+uv run python experiments/05_leave_one_out_task_generalization/plot_leave_one_out.py --outputs-dir outputs
+
+GPUS=0,1,2,3 bash experiments/06_data_efficiency_ablation/hypernetwork/run.sh
+GPUS=0,1,2,3 bash experiments/06_data_efficiency_ablation/joint/run.sh
+GPUS=0,1,2,3 bash experiments/06_data_efficiency_ablation/individual/run.sh
+uv run python experiments/06_data_efficiency_ablation/aggregate_results.py
+uv run python experiments/06_data_efficiency_ablation/plot_data_efficiency.py --outputs-dir outputs
 ```
 
-`experiments/01_multitask_capacity/plot_all.py` is that experiment's single
-entry point: it rescans `outputs/`, refreshes every CSV under
-`outputs/results/01_multitask_capacity/`, and renders every figure (the
-capacity-cliff plot plus a per-task breakdown for every size present in the
-data) in one pass. Other experiments' own READMEs list their exact
-plot script(s); this one-script-does-everything convention isn't wired up
-everywhere yet.
+Every training `run.sh` wraps [`scripts/run_config.sh`](scripts/run_config.sh) and accepts:
 
-The current codebase is a config-driven 1D ARC experimentation repo with two active tracks: task-level hypermodel experiments and direct-supervised baselines. Shared registries and runtime utilities let the same training and evaluation entrypoints run both tracks from YAML configs.
+| Variable | Meaning |
+|---|---|
+| `GPUS` | comma-separated GPU ids; one job per GPU, each GPU takes the next job when free (unset: one job at a time) |
+| `SHARD` | `k/N`: run only every N-th job starting at the k-th, to split a sweep across nodes |
+| `SEEDS_OVERRIDE` | seeds to run (default `1 2 3 4 5`) |
+| `PROJECT` | output folder and W&B project (defaults to the experiment's name) |
+| `PYTHON` | interpreter (default `.venv/bin/python`) |
 
-## Overview
+Finished jobs are skipped, so rerunning the same command resumes a sweep. Everything is
+written under `outputs/` (not tracked by git):
 
-- [train.py](/home/fabio/Projects/on-the-fly-models/train.py) loads a YAML config, instantiates the selected datamodule and model, trains with PyTorch Lightning, saves the resolved config, and writes final metrics to `results.txt`.
-- [validate.py](/home/fabio/Projects/on-the-fly-models/validate.py) reloads a saved run and evaluates `best`, `last`, `auto`, or an explicit checkpoint path.
-- Model and datamodule selection are registry-driven via `models/__init__.py` and `data_modules/__init__.py`, so most new experiments only require YAML changes.
+- `outputs/<experiment>/<run>/`: `results.txt` (final validation and test metrics),
+  `config.yaml` (the resolved config), `model.txt`, `train.log`, and the trained model:
+  `best_model.ckpt` and `last.ckpt`, plus `final_model.ckpt` when the experiment evaluates its
+  final weights.
+- `outputs/results/<experiment>/*.csv`: numbers aggregated across runs by the plot scripts.
+- `outputs/figures/<experiment>/*.{png,pdf}`: the figures.
 
-## Quick start
+The per-experiment READMEs give the setup, the figures produced, the results and the
+reproducibility check for each experiment. Figures of the task categories themselves:
+`uv run python -m visualisation.paper.plot_paper_tasks --first-per-category` (add
+`--compositional` for the composite ones).
 
-For a full clean-slate rerun of the paper experiments, see "Reproducing from
-a clean environment" above. In general:
+## Running on a GPU cluster
+
+Launch sweeps under `nohup` (or `tmux`) so they survive the SSH session, and split a sweep
+across nodes with `SHARD`, for example on two nodes:
 
 ```bash
-uv sync --python 3.12 --managed-python
-uv run python train.py --config <path/to/experiment_config>.yaml
-uv run python validate.py --config outputs/<run_name>/config.yaml --checkpoint best --mode both
+SHARD=0/2 GPUS=0,1,2,3 nohup bash experiments/05_leave_one_out_task_generalization/run.sh > shard0.log 2>&1 &   # node A
+SHARD=1/2 GPUS=0,1,2,3 nohup bash experiments/05_leave_one_out_task_generalization/run.sh > shard1.log 2>&1 &   # node B
 ```
 
-## Setup
+`scripts/fetch_experiments.sh` copies an experiment's outputs, models included, from a node
+(`REMOTE_HOST=torrnode15.priv bash scripts/fetch_experiments.sh 02_hypernetwork_multitask`;
+`EXCLUDE_CHECKPOINTS=1` skips the models).
 
-```bash
-uv sync --python 3.12 --managed-python
-```
+## How a run works
 
-## Data
+`train.py --config <file>.yaml [key=value ...]` loads the config (one level of `_base_`
+inheritance plus command-line overrides), builds the Lightning module named by `model` and the
+data module named by `data`, trains for `max_steps`, evaluates, and writes the run folder.
+`validate.py --config outputs/<experiment>/<run>/config.yaml --checkpoint best|last|<path>`
+re-evaluates a saved run.
 
-Build the base task-level ARC1D dataset:
-
-```bash
-uv run python scripts/build_arc_1d.py
-```
-
-This creates a task-level HuggingFace `DatasetDict` with complete ARC tasks kept intact across splits. Each task record contains:
-
-- `task_category`
-- `task_id`
-- `sequence_length`
-- `support_inputs`
-- `support_outputs`
-- `query_input`
-- `query_output`
-
-Build the simplified binary dataset used by the binary track:
-
-```bash
-uv run python scripts/build_arc_1d.py --simple
-```
-
-This writes `data/arc_1d_simple`.
-
-Build the padded multiclass dataset used by the multiclass track:
-
-```bash
-uv run python scripts/build_arc_1d.py --padded-multiclass
-```
-
-This writes `data/arc_1d_padded_multiclass`.
-
-Build the augmented variable-length dataset used by the augmented capacity experiments:
-
-```bash
-uv run python scripts/augment_arc_1d.py
-```
-
-This writes `data/arc_1d_augmented`. Only the train split is augmented; dev and test are
-passed through unchanged so results are directly comparable to the baseline.
-Default settings produce up to 242 variants per task (22 colour variants × 11 shift positions:
-0, ±1, ±2, ±3, ±4, ±5), giving ~9,680 tasks per category in train. For `1d_mirror` tasks,
-colour 9 (the semantic pivot) is kept fixed and excluded from permutation targets.
-
-Build the move-task augmented dataset used by the disentanglement experiments:
-
-```bash
-uv run python scripts/augment_arc_1d.py --per-pair --n-color-permutations 199 --shifts 1 2 -1 -2 --no-mirror --task-categories 1d_move_1p 1d_move_2p 1d_move_3p --output-dir data/arc_1d_move_augmented
-```
-
-This writes `data/arc_1d_move_augmented` with only the three move task categories.
-Per-pair colour augmentation gives each support pair and the query independent injective
-colour mappings, producing 200 colour variants × 5 shift positions = 1000 variants per task
-(120,000 train examples total). Dev and test are filtered to the same categories and passed
-through unchanged.
-
-## Data Augmentation
-
-`scripts/augment_arc_1d.py` augments the train split of `data/arc_1d` with two
-transforms applied in order: colour permutation → shift. All transforms
-apply consistently to every sequence in a task (support inputs, support outputs,
-query input, and query output) so the rule relationship between input and output
-is preserved.
-
-### 1 — Colour permutation
-
-Non-zero colours in a task are remapped via a random injective mapping to `{1…9}`.
-Background (0) is always preserved. The same mapping is applied to every sequence,
-so the transformation is semantically valid for all multiclass tasks.
-
-For `1d_mirror` tasks, colour 9 is the semantic pivot and is excluded from both the
-permutable set and the available target set.
-
-**Example** — original task colours `{1, 3}` remapped to `{5, 2}`:
-
-```
-Before:  support_input  = [0, 1, 0, 3, 0]
-         support_output = [0, 3, 0, 1, 0]
-
-After:   support_input  = [0, 5, 0, 2, 0]
-         support_output = [0, 2, 0, 5, 0]
-```
-
-### 2 — Shift (translation)
-
-All sequences are extended by prepending or appending zeros. Content is never
-discarded. The `sequence_length` field increases by `abs(shift)`.
-
-- Positive shift: prepend zeros → content moves right.
-- Negative shift: append zeros → content moves left.
-
-**Example** — shift +2 on a task with sequence length 5:
-
-```
-Before (length 5):  [0, 1, 3, 0, 0]
-After  (length 7):  [0, 0, 0, 1, 3, 0, 0]
-```
-
-Sequences can grow beyond the 33-token fixed-length limit used in the padded
-track; the variable-length collator (`Arc1dDirectPaddingCollator`) handles any
-length dynamically at batch time.
-
-### Using the augmented dataset
-
-The schema of `data/arc_1d_augmented` is identical to `data/arc_1d`, so no new
-data module is needed. Point the `data_dir` field in any YAML config at the new
-directory:
+The model part of a config:
 
 ```yaml
-data_dir: data/arc_1d_augmented
+model: hypernetwork            # or: direct
+evaluate_on: best              # best checkpoint by primary_metric, or final weights
+task_encoding:
+  embedding_dim: 4
+  use_sinusoidal_pe: false     # position comes from RoPE in attention
+target:                        # the generated model (direct models use `backbone:` instead)
+  hidden_dim: 4
+  num_layers: 3
+  num_heads: 1
+  dropout: 0.1
+  canon_set: ABCD              # Canon layer positions; '' for none
+  canon_kernel: 5
+encoder:                       # the hypernetwork's Transformer
+  hidden_dim: 4
+  num_layers: 1
+  num_heads: 1
+  output_dim: 4
+hyper_head:
+  bottleneck_dim: 8
+  num_tasks: 18                # one-hot task identity; null for none
+  freeze_task_indicator: true
+optimizer: Muon                # or AdamW, RAdam
 ```
 
-Both `Arc1dDirectDataModule` (capacity track) and `Arc1dMetaDataModule`
-(hypernetwork / meta-learning track) are compatible.
-
-## Training
-
-Training is config-driven. Each experiment YAML selects a registered model/data pair and overrides only the fields that differ from its inherited base configs. See each experiment's own README under `experiments/` for its exact training commands.
-
-Supported model families are:
-
-- `binary_hyper_model` / `hyper_model` — both resolve to `HyperModelLightning`; hypernetwork and target template are selected via `hyper_model.name` and `target_model.name` in the experiment config
-- `direct_supervised` — resolves to `DirectSupervisedLightning`; trains a backbone (RNN, CNN, Transformer, MLP) directly on (input, output) pairs without a hypernetwork
-- `looped_supervised` — resolves to `LoopedSupervisedLightning`; recursion-supervised training over `N_supervision` loop steps
-
-## Validation
-
-After a training run, validate or test a saved run with the resolved config in its output directory:
-
-```bash
-uv run python validate.py --config outputs/<run_name>/config.yaml --checkpoint best --mode both
-```
-
-Key flags from [validate.py](/home/fabio/Projects/on-the-fly-models/validate.py):
-
-- `--checkpoint auto|best|last|<path>` selects which checkpoint to evaluate
-- `--mode validate|test|both` controls which evaluation pass runs
-- `--log-hard-examples --num-hard-examples N` exports the hardest validation failures
-- `--log-to-wandb` opens a separate evaluation run for metrics and artifacts
-
-## Models
-
-`HyperModelLightning` is the active model class. It encodes the full task context (3 support examples + query input) using a configurable hypernetwork (`hyper_model.name`), pools the token representations into a single task vector, projects it through a hyper-head to a flat parameter vector, and applies those generated weights to a target model template (`target_model.name`) for all support and query examples.
-
-For the binary track, the wrapper can now encode those task tokens in two ways:
-
-- `scalar`: the existing 5-scalar feature vector
-- `shared_embeddings`: summed learned embeddings for `value`, `position`,
-  `example_id`, `role`, and `is_query`, reused by both the hypernetwork and the
-  target model's input-side tokens
-
-Available encoder architectures for both hypernetwork and target roles: `cnn`, `rnn`, `transformer` (defined in `models/`).
-
-Shared experiment defaults:
-
-- `val_exact_match_accuracy` is the primary metric; elementwise accuracy is also logged
-- each run writes the resolved config, model summary, checkpoints, and `results.txt`
-- early stopping triggers at `val_exact_match_accuracy == 1.0` unless disabled
-
-## Repository layout
-
-For the paper's 6 experiments, start at [`experiments/README.md`](experiments/README.md)
-instead — it's the current, actively-maintained map of that tree. This
-section is the whole-repo picture:
+## Code layout
 
 ```text
-on-the-fly-models/
-├── train.py                        # entry point: config -> model/datamodule -> fit
-├── validate.py                     # entry point: reload a saved run -> validate/test
-├── README.md
-├── pyproject.toml
-│
-├── models/                         # what gets trained: architectures + Lightning wrappers
-│   ├── __init__.py                     # MODEL_REGISTRY
-│   ├── metrics.py                      # accuracy / exact_match_accuracy
-│   ├── direct_supervised_lightning.py  # DirectSupervisedLightning
-│   ├── looped_supervised_lightning.py  # LoopedSupervisedLightning (N_supervision recursion)
-│   ├── hypermodel.py                   # generic hypernetwork <-> target-model wrapper
-│   ├── hypermodel_lightning.py         # HyperModelLightning training module
-│   ├── task_token_embedder.py          # shared task-token embedding, both training tracks
-│   ├── canon_layer.py, canon_transformer.py, rope.py, rope_looped_transformer.py
-│   │                                    # the RoPE+Canon target/hypernetwork architecture family
-│   ├── transformer.py, cnn.py, rnn.py, mlp.py, activations.py, looped_transformer.py,
-│   │   recursive_transformer.py        # backbone building blocks / alternative encoders
-│
-├── data_modules/                   # what gets trained on: datasets
-│   ├── __init__.py                     # DATA_REGISTRY
-│   ├── arc1d_direct.py                 # flat (input, output) supervised datamodule
-│   ├── arc1d_meta_multiclass.py        # task-level (support+query) datamodule for the hypernetwork
-│   ├── arc1d_compositional.py          # synthetic chained-skill holdout generator
-│   └── task_filtering.py               # shared, caching-aware task-category/id filter
-│
-├── training/                       # how a run executes: mechanics, not definitions
-│   ├── __init__.py
-│   ├── config.py                       # YAML + _base_ inheritance, dotlist overrides
-│   ├── trainer.py                      # Lightning trainer/callbacks, checkpoint I/O
-│   └── logging.py                      # model summaries, W&B, results.txt, run artifacts
-│
-├── visualisation/
-│   ├── __init__.py                     # public rendering API, re-exported from core/
-│   ├── core/                           # shared rendering: used by training AND paper figures
-│   │   ├── arc.py, style.py, embedding_clusters.py
-│   └── paper/                          # paper-specific figure generators only
-│       ├── arc_paper.py, plot_tasks.py, plot_paper_tasks.py, plot_embedding_clusters.py
-│
-├── scripts/                        # data prep + standalone analysis, run directly
-│   ├── build_arc_1d.py                 # ingest the raw 1D-ARC benchmark
-│   ├── augment_arc_1d.py               # colour/shift/mirror augmentation
-│   ├── build_arc1d_compositional.py    # build the compositional holdout set
-│   ├── eval_compositional_holdout.py   # zero-shot-evaluate a trained run against it
-│   ├── run_config.sh                   # generic train.py launcher (skip-on-done, GPU round-robin)
-│   ├── visualise_augmentation.py, measure_compute_efficiency.py, fetch_experiments.sh
-│
-├── experiments/                    # the paper's 6 experiments -- see experiments/README.md
-├── docs/arc1d_story/                # research-narrative writeups
-├── tests/                          # pytest suite (testpaths); `slow`-marked tests need built data
-└── .agents/                        # operating contract for coding agents working in this repo
+train.py, validate.py      entry points
+models/                    network architectures (plain PyTorch modules)
+  transformer.py             the RoPE + Canon Transformer used everywhere
+  canon.py, rope.py          Canon layer, rotary position embedding
+  embedding.py               token embeddings and the task-category index
+  hypernetwork.py            encoder, pooling, weight decoder, and running the generated target
+lightning_modules/         training: loss, metrics, optimiser, logging
+  direct.py                  trains one Transformer directly (individual and joint models)
+  hypernetwork.py            trains the hypernetwork
+  common.py                  shared optimiser (Muon, AdamW, RAdam), schedule, per-category metrics
+data_modules/              ARC-1D datasets: direct pairs, task episodes, compositional generator
+training/                  run mechanics: config loading, trainer and callbacks, run artefacts
+experiments/               one folder per paper experiment: configs, run.sh, plot scripts, README
+scripts/                   data build, shared launcher, evaluation scripts, fetching outputs
+visualisation/             figure rendering (core/ shared, paper/ paper-only figures)
+tests/                     pytest suite, see tests/README.md
+.agents/                   conventions for coding agents working in this repository
 ```
 
 ## Tests
 
 ```bash
-uv run pytest
+uv run pytest            # about a minute; trains tiny models, so use a machine with CPU to spare
 uv run ruff check .
 ```
 
-## Agentic workflow
-
-The `.agents/` folder is the repository's operating contract for coding agents. It defines instruction precedence, style, task processes, verification expectations, and prompting structure so repo work stays consistent across tools.
+See [`tests/README.md`](tests/README.md). In particular `tests/test_structure_snapshot.py`
+checks that every experiment config still builds exactly the model it built before the
+`models/` refactor, so refactoring cannot silently change an experiment.

@@ -1,61 +1,7 @@
-# Base config for the 06_data_efficiency_ablation_hypernetwork "no hypernetwork" capacity baseline.
-#
-# Companion to 06_data_efficiency_ablation_hypernetwork: trains the EXACT SAME target architecture
-# (rope_canon_looped_transformer, hidden_dim=4/n_loops=1/dropout=0.1, identical
-# Canon settings -- experiment 2's own dim=4 matched-scale target), no
-# hypernetwork, no weight generation, no cross-task sharing at all. One model
-# per task category, per data level, per seed. This isolates whether
-# 06_data_efficiency_ablation_hypernetwork's data efficiency comes specifically from cross-task transfer
-# through the shared hypernetwork backbone, or whether a plain single-task
-# model needs just as little data.
-#
-# 2026-09-14: unified onto experiment 1's own dim=4 Individual recipe exactly
-# (01_multitask_capacity/configs/individual/*/dim4.yaml), not just its
-# architecture -- an earlier version of this file matched the architecture
-# but silently diverged on the actual training regime: model:
-# looped_supervised (now direct_supervised, matching 01 -- LoopedSupervised's
-# own N_supervision=2 doubled the real optimizer-step count per batch, see
-# training/trainer.py's max_steps*N_supervision Trainer wiring, and isn't
-# what 01's own reference used at all), max_steps 2000 -> 8000, learning_rate
-# 0.001 -> 0.0005, gradient_clip_val 10.0 -> removed (01 has none, and
-# direct_supervised's automatic optimization means Lightning's own automatic
-# clipping would have newly activated here if left in), task_encoding.
-# embedding_dim 4 -> 10 (01 holds this fixed at 10 across its whole dim
-# sweep -- it sizes the value/example/role embedding tables feeding a
-# Linear(embedding_dim -> hidden_dim) projection into the backbone, confirmed
-# in models/task_token_embedder.py + direct_supervised_lightning.py, so it's
-# real input capacity independent of hidden_dim, not something that should
-# shrink with it here). This was caught by a discrepancy between this arm's
-# own `full`-level results (macro 86.3%) and 01's own established dim=4
-# Individual ceiling (92.6%) -- see experiments/06_data_efficiency_ablation/
-# individual/README.md's "2026-09-14 unification" note for the full story.
-# All 280 jobs from before this were invalidated and rerun.
-#
-# Data-reduction mechanism is the same stratified/nested variants_per_base_task
-# sampling as 06_data_efficiency_ablation_hypernetwork (see data_modules/arc1d_direct.py's
-# _stratified_variants_per_base_task, ported verbatim from
-# data_modules/arc1d_meta_multiclass.py), applied to the same data_seed=42
-# rows from the same data/arc_1d_looped_augmented dataset -- so at a given
-# level, both experiments train on the identical underlying task-variant rows.
-#
-# Known asymmetry (documented, not "fixed"): Arc1dDirectDataModule unpacks
-# each selected row into its 3 support (input, output) pairs only (the row's
-# query is held out for the separate dev/test splits) -- so 3 raw supervised
-# pairs/row here, vs. 4 in 06_data_efficiency_ablation_hypernetwork (which also supervises the row's own
-# query reconstruction as part of the hypernetwork's training loss). This is
-# an inherent difference between the two datamodules' established
-# conventions, not something changed for this comparison.
-#
-# Optimizer: Muon (lr=0.005), matching 06_data_efficiency_ablation_hypernetwork exactly to remove
-# optimizer choice as a confound -- the same muon_lr=0.005 experiment 1's own
-# dim=4 optimizer ablation (01_multitask_capacity) already validated at this
-# exact target architecture; consistency with 06_data_efficiency_ablation_hypernetwork was prioritised
-# over re-testing the AdamW alternative here.
-#
-# Self-contained (no _base_ of its own) -- the config loader only resolves one
-# level of _base_ inheritance (training/config.py), so settings that would
-# otherwise come from arc1d_recursion_ablation/base_ablation.yaml (data:
-# arc_1d_direct, data_dir, batch_size, etc.) are inlined here directly instead.
+# Experiment 6, individual arm: experiment 1's individual dim-4 recipe at reduced training data.
+# See ../README.md. Data levels and the category are set by configs/<category>/*.yaml.
+# evaluate_on: final scores the weights training ended with (saved as final_model.ckpt).
+
 project_name: 06_data_efficiency_ablation_individual
 entity: fjfehr
 output_dir: outputs
@@ -68,8 +14,6 @@ data: arc_1d_direct
 data_dir: data/arc_1d_looped_augmented
 model: direct
 primary_metric: val_loss
-# Evaluate the weights training ended with (saved as final_model.ckpt), as for every
-# published result of this experiment; best_model.ckpt/last.ckpt are kept as well.
 evaluate_on: final
 stop_on_perfect_val_exact_match: false
 num_workers: 1
@@ -107,16 +51,7 @@ prediction_task: multiclass
 num_classes: 10
 padding_idx: 10
 
-# variants_per_base_task is a placeholder here, overridden per leaf (see {category}/v*.yaml).
 variants_per_base_task: null
-# base_tasks_per_category is a placeholder here too, overridden per t{N} leaf
-# (added 2026-09-15 for the sub-40-base-tasks-per-category axis -- how many
-# distinct base tasks/category to use, at variants_per_base_task=1 always,
-# going below the v1 floor's ~40 base tasks; see
-# data_modules/arc1d_direct.py's _stratified_base_tasks_per_category). null =
-# no reduction (all ~40 base tasks/category), same as leaving it unset --
-# every existing {category}/v*/full.yaml leaf above is unaffected by this
-# addition.
 base_tasks_per_category: null
 data_seed: 42
 

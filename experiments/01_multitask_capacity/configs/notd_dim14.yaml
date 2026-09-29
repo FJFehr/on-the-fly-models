@@ -1,9 +1,5 @@
-# Experiment 2c at dim=14: joint 14-task training, NO task embedding ("notd").
-#
-# Same as notd.yaml, but at the ~10K-param scaffold size (9,508 params
-# individually) flagged as a TODO in experiments/README.md's rerun list --
-# not yet run. task_encoding.embedding_dim stays fixed at 10, matching
-# every other size in this sweep.
+# Joint training on all 14 categories, no task identity, hidden_dim 14.
+
 _base_: experiments/01_multitask_capacity/configs/base.yaml
 experiment_name: joint_notd_dim14
 project_name: 01_multitask_capacity

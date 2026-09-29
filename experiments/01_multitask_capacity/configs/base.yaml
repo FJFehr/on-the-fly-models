@@ -1,9 +1,6 @@
-# Base config for the multitask capacity experiment (paper experiment #1).
-# Direct-supervised RoPE-Canon-Looped-Transformer trained jointly across all
-# 14 ARC-1D task categories, with vs. without a task-identity embedding
-# ("td"/"notd"), swept across a shrinking hidden_dim to find the capacity
-# cliff. Inherited unchanged from its original home (arc1d_recursion_ablation,
-# where this backbone size/step-budget recipe was first established).
+# Experiment 1 (multi-task capacity): settings shared by every config. See ../README.md.
+# evaluate_on: final scores the weights training ended with (saved as final_model.ckpt).
+
 project_name: 01_multitask_capacity
 entity: fjfehr
 output_dir: outputs
@@ -15,8 +12,6 @@ output_path: ${output_dir}/${project_name}/${experiment_name}
 data: arc_1d_direct
 data_dir: data/arc_1d_looped_augmented
 primary_metric: val_loss
-# Evaluate the weights training ended with (saved as final_model.ckpt), as for every
-# published result of this experiment; best_model.ckpt/last.ckpt are kept as well.
 evaluate_on: final
 stop_on_perfect_val_exact_match: false
 

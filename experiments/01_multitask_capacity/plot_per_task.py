@@ -9,7 +9,7 @@ is not (74.0%); dim=4 and dim=10 follow the same shape once available.
 Uses val_query_exact_match_by_task_<category> throughout, for ALL THREE
 conditions -- not test_query_exact_match like plot_capacity_cliff.py. Only
 the validation split has a per-task breakdown (no equivalent exists for
-test, see models/direct_supervised_lightning.py's on_validation_epoch_end
+test, see lightning_modules/direct.py's on_validation_epoch_end
 vs test_step), so this chart is internally consistent (same split across
 all bars) but not directly comparable, split-wise, to the capacity-cliff
 plot's numbers.

@@ -1,38 +1,13 @@
-"""Generate the data-reduction levels for 06_data_efficiency_ablation_joint.
+"""Write the configs for experiment 6's joint arm (configs/cell_<condition>_<level>.yaml).
 
-Third arm alongside 06_data_efficiency_ablation_hypernetwork (hypernetwork) and 06_data_efficiency_ablation_individual
-(fully-isolated individual): one shared backbone (direct_supervised, no
-hypernetwork) trained jointly across all 14 task categories, with vs.
-without a task-identity embedding (td/notd) -- reusing experiment 1's own
-direct_supervised + task_encoding.use_task_embedding mechanism, at
-experiment 1's own dim=14 "~10K-param scaffold" (9,508/9,688 params,
-notd/td) -- sized to the hypernetwork's own total parameter budget, not its
-dim=4 target.
+Experiment 1's joint dim-14 model (sized to the hypernetwork's parameter budget), td and notd,
+at 12 data levels (t1 to t20, v1 to v5, v20, full): 24 configs, 120 jobs at 5 seeds.
 
-variants_per_base_task in {1, 2, 3, 4, 5, 20, full} x {td, notd} -- same 6
-reduced levels as 06_data_efficiency_ablation_hypernetwork, plus a "full" cell (variants_per_base_task
-left at None -- no reduction, the entire train split) run at the same fixed
-compute budget as every other level (max_steps=8000, since the 2026-09-14
-unification onto experiment 1's own td_dim14/notd_dim14 recipe exactly), so
-it's a fair anchor point *within* this experiment.
-
-Sampling is stratified/nested per underlying base task, identical mechanism
-to the other two arms -- see data_modules/arc1d_direct.py's
-_stratified_variants_per_base_task.
-
-2026-09-15: added a second, independent data-reduction axis --
-base_tasks_per_category in {1, 3, 5, 10, 20}, always paired with
-variants_per_base_task=1 (zero additional augmentation) -- to go BELOW v1's
-~40-base-tasks/category floor by reducing task *diversity* rather than
-augmentation *depth*. Tagged cell_{cond}_t{N}.yaml (distinct from
-cell_{cond}_v{N}.yaml) to avoid any naming collision. See
-data_modules/arc1d_direct.py's _stratified_base_tasks_per_category for the
-(separately data_seed-seeded, nested/reproducible) selection.
-
-7 v/full levels + 5 t levels, x 2 conditions x 5 seeds (seed handled by the
-runner script, not baked into configs) = 120 jobs. Validation/test are
-untouched at every level (see base.yaml) - only train_dataset shrinks (or,
-at "full", doesn't).
+Levels (see ../README.md): t1, t3, t5, t10, t20 keep 1 to 20 base tasks per category with
+original examples only (base_tasks_per_category); v{N} keeps all base tasks with N variants
+each (variants_per_base_task); full applies no reduction. Selection is deterministic
+(data_seed) and nested, and only the training split shrinks. Seeds are added by run.sh, not
+written into the configs.
 """
 
 from pathlib import Path

@@ -1,40 +1,13 @@
-"""Generate per-category, per-level configs for 06_data_efficiency_ablation_individual.
+"""Write the configs for experiment 6's individual arm (configs/<category>/<level>.yaml).
 
-Companion sweep to 06_data_efficiency_ablation_hypernetwork (experiments/06_data_efficiency_ablation/hypernetwork/gen_configs.py) testing the
-same variants_per_base_task data-reduction axis WITHOUT the hypernetwork: one
-direct_supervised model per task category, trained directly on
-rope_canon_looped_transformer (the exact same architecture as 06_data_efficiency_ablation_hypernetwork's
-target_model), with no cross-task sharing at all.
+Experiment 1's individual dim-4 model, one per task category, at 9 data levels (t1 to t20,
+v1 to v3, full): 14 x 9 = 126 configs, 630 jobs at 5 seeds.
 
-variants_per_base_task in {1, 2, 3, full} this round (levels 4/5/20 from
-06_data_efficiency_ablation_hypernetwork are out of scope for now). "full" (variants_per_base_task left
-at None -- no reduction, the entire per-category train split) is a
-self-contained full-data anchor at this experiment's own fixed compute
-budget (max_steps=8000, since the 2026-09-14 unification onto experiment 1's
-own dim=4 Individual recipe exactly), added 2026-09-10 alongside the other
-two arms' own "full" cells.
-
-Same 14 in-distribution task categories as 06_data_efficiency_ablation_hypernetwork/base.yaml -- the
-paper's standard set (matching 01/02/05), not the original scaffolding's 15
-(dropped 1d_recolor_cmp, 2026-09-10, to match 06_data_efficiency_ablation_hypernetwork's own resize).
-
-2026-09-15: added a second, independent data-reduction axis --
-base_tasks_per_category in {1, 3, 5, 10, 20}, always paired with
-variants_per_base_task=1 (zero additional augmentation) -- to go BELOW v1's
-~40-base-tasks/category floor by reducing task *diversity* rather than
-augmentation *depth*. This is the sharpest test of the paper's
-cross-task-sharing hypothesis: at t1, a single per-category model here trains
-on exactly one base task's 3 support pairs -- the isolated-model floor the
-hypothesis predicts hypernetwork/joint should pull ahead of. Tagged
-{category}/t{N}.yaml (distinct from {category}/v{N}.yaml) to avoid any
-naming collision. See data_modules/arc1d_direct.py's
-_stratified_base_tasks_per_category for the (separately data_seed-seeded,
-nested/reproducible) selection.
-
-14 categories x (4 v/full levels + 5 t levels) x 5 seeds (seed handled by the
-runner script, not baked into configs) = 630 jobs. Validation/test are
-untouched at every level (see base.yaml) - only train_dataset shrinks (or,
-at "full", doesn't).
+Levels (see ../README.md): t1, t3, t5, t10, t20 keep 1 to 20 base tasks per category with
+original examples only (base_tasks_per_category); v{N} keeps all base tasks with N variants
+each (variants_per_base_task); full applies no reduction. Selection is deterministic
+(data_seed) and nested, and only the training split shrinks. Seeds are added by run.sh, not
+written into the configs.
 """
 
 from pathlib import Path

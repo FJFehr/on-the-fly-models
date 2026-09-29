@@ -1,9 +1,5 @@
-# Experiment 2b at dim=4: joint 14-task training, WITH task embedding ("td").
-#
-# Same as td.yaml (use_task_embedding: true), but on the dim=4 minimal
-# architecture from Experiment 1 instead of RC1's dim=10 - does task
-# identity still recover most of the joint-training gap at this much
-# smaller size? task_encoding.embedding_dim stays fixed at 10.
+# Joint training on all 14 categories, with a learned task-identity embedding, hidden_dim 4.
+
 _base_: experiments/01_multitask_capacity/configs/base.yaml
 experiment_name: joint_td_dim4
 project_name: 01_multitask_capacity

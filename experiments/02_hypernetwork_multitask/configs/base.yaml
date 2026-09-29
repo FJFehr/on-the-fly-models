@@ -1,39 +1,7 @@
-# Experiment 4: first joint (all-task) hypernetwork run, minimal recipe.
-#
-# Builds directly on Experiment 1 (arc1d_v2_minimal_size: a 2,444-param
-# dim=6 RoPE+Canon target already matches the dim=10 individual-training
-# reference) and Experiment 2 (arc1d_v2_multitask: joint DIRECT training of
-# that same small architecture hits a real capacity cliff -- 74.0% joint
-# w/ task-ID vs 98.9% individual at dim=6 -- which is the whole motivation
-# for a hypernetwork). Every prior hypernetwork experiment in this repo used
-# a much bigger target (dim=16+) and encoder (rope_canon_zhu_transformer,
-# hidden_dim=64/num_layers=8, ~1.58M params). This is the first test of
-# whether the hypernetwork mechanism itself can be small too.
-#
-# Hypothesis: joint frozen_td/notd exact match at dim=6/dim=4 should land
-# close to Experiment 1's individual-training ceiling (13/14 tasks at 1.0,
-# move_dp the one soft spot), not Experiment 2's joint-direct numbers.
-#
-# hyper_model.params.hidden_dim (64 here) is the "enc64" default -- the
-# smoke_*_enc32.yaml leaf overrides it to 32 to test a genuinely smaller,
-# previously-untested encoder size before the main grid commits to one.
-# hyper_model.name is the PLAIN rope_canon_transformer (no Zhu tricks:
-# RMSNorm/QK-norm/SwiGLU), already registered in HYPERNETWORK_REGISTRY and
-# confirmed architecturally identical to rope_canon_zhu_transformer with all
-# three trick-flags off -- simpler, no code changes needed.
-#
-# 14-task set matching experiment 1 exactly (the three 1d_recolor_* categories and
-# 1d_padded_fill are excluded).
-#
-# N_supervision=1 (not the historical default of 2) -- matches the "no loops
-# or N_sup needed" finding for the target model, applied here to the
-# hypernetwork's own training loop. max_steps=8000/warmup_steps=800
-# preserves the Round 2 convention's 8000-total-optimizer-update budget
-# (N_supervision=1 x max_steps=8000 == N_supervision=2 x max_steps=4000).
-#
-# Self-contained (no _base_ of its own), matching every sibling base.yaml,
-# because the config loader only resolves one level of _base_ inheritance
-# (training/config.py).
+# Experiment 2 (hypernetwork): settings shared by every config. See ../README.md.
+# The sizes here are the earlier dim-6 variant; dim4_*.yaml resize every part to the dim-4 target.
+# evaluate_on defaults to best: the best checkpoint by val_loss is evaluated (and reused by experiments 3 and 4).
+
 project_name: 02_hypernetwork_multitask
 entity: fjfehr
 output_dir: outputs
@@ -127,12 +95,6 @@ target:
   canon_set: ABCD
   canon_kernel: 5
 
-# hidden_dim=32: smoke-tested against the hidden_dim=64 "safe" default and
-# selected for the main grid -- at matched step counts (~500-650 steps) it
-# tracked at least as well (lower loss, higher train exact match), so there's
-# no reason to pay for the larger encoder. See
-# smoke_dim6_frozentd_enc64.yaml/smoke_dim6_frozentd_enc32.yaml for the two
-# smoke configs (in git history) for the comparison.
 encoder:
   hidden_dim: 32
   num_heads: 4
@@ -141,7 +103,6 @@ encoder:
   canon_set: ABCD
   canon_kernel: 5
 
-# Placeholder: notd. Overridden per leaf for frozen_td.
 hyper_head:
   bottleneck_dim: 128
   num_tasks: null

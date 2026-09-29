@@ -42,7 +42,7 @@ SEEDS = (1, 2, 3, 4, 5)
 # directly from each condition's own model.txt -- see "Hypernetwork size" in this
 # experiment's README. Fixed per (dim, condition), not something a rescan can
 # recompute from results.txt/linear_probe_summary.txt. dim=4 is the matched-scale
-# recipe (task_encoding.embedding_dim/hyper_model/hyper_head all sized to the dim=4
+# recipe (task_encoding.embedding_dim/encoder/hyper_head all sized to the dim=4
 # target it generates -- 10,156 trainable params, identical for both conditions since
 # the frozen projection isn't trainable; the 72-param notd/frozentd delta below is
 # entirely that non-trainable projection). dim=6 is still the older, larger, fixed-width

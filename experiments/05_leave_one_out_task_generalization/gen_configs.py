@@ -8,7 +8,7 @@ held-out category's zero-shot score alongside the 13 in-distribution ones, from 
 training run -- no separate eval script needed (see base.yaml and this experiment's README).
 
 hyper_head.num_tasks stays 18 for frozentd regardless of which category is held out -- it's
-sized off the fixed global TASK_CATEGORY_INDEX registry (models/hypermodel_lightning.py), not
+sized off the fixed global TASK_CATEGORY_INDEX registry (models/embedding.py), not
 off how many categories a given leaf trains on.
 
 Short names (for filenames/experiment_name) are derived mechanically -- strip the "1d_" prefix

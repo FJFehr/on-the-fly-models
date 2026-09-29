@@ -1,50 +1,7 @@
-# Base config for the 06_data_efficiency_ablation_hypernetwork "joint, no hypernetwork" baseline.
-#
-# Third arm alongside 06_data_efficiency_ablation_hypernetwork (hypernetwork) and 06_data_efficiency_ablation_individual
-# (fully-isolated per-task individual): one shared backbone trained jointly
-# across all 14 task categories -- direct_supervised, no weight generation --
-# with vs. without a task-identity embedding. Added 2026-09-10, reusing
-# experiment 1's own direct_supervised + task_encoding.use_task_embedding
-# mechanism verbatim (01_multitask_capacity/configs/td_dim4.yaml /
-# notd_dim4.yaml) -- this was flagged as a future "Phase 3, doesn't exist
-# yet" in 06_data_efficiency_ablation_hypernetwork's README, but the mechanism already exists in
-# experiment 1, just not previously reused here.
-#
-# Purpose: isolate what the hypernetwork's weight *generation* buys over
-# plain task-id *conditioning* of a shared model, at each data level.
-# joint_td vs. hyper frozen_td is the sharpest pair -- same task signal,
-# differing only in generate-weights vs. condition-on-task-id. joint_notd is
-# the shared-but-signal-free floor (this is exactly experiment 1's own
-# capacity-cliff finding, now repeated across data levels instead of just at
-# full data).
-#
-# Architecture: 2026-09-10, sized to the hypernetwork's own total *parameter
-# budget* (~11.4K/~11.3K, frozen_td/notd) rather than matched to its dim=4
-# *target* -- the target's own params (a few hundred) aren't what a
-# no-hypernetwork baseline should be sized against, or the comparison
-# conflates "no weight generation" with "far less capacity." Uses
-# experiment 1's own already-validated dim=14 "~10K-param scaffold"
-# (rope_canon_looped_transformer, hidden_dim=14/n_loops=1, 9,508 (notd) /
-# 9,688 (td) params, task_encoding.embedding_dim=10) verbatim --
-# 01_multitask_capacity/configs/td_dim14.yaml / notd_dim14.yaml -- rather
-# than picking a new, unvalidated size.
-#
-# Data-reduction mechanism: identical stratified/nested variants_per_base_task
-# sampling as the other two arms (data_modules/arc1d_direct.py's
-# _stratified_variants_per_base_task, same data_seed=42, same
-# data/arc_1d_looped_augmented dataset) -- grouped per (category, base task),
-# so it extends naturally to this arm's multi-category task_categories list.
-#
-# Compute budget: 2026-09-14, unified onto experiment 1's own td_dim14/notd_dim14 recipe
-# exactly -- max_steps=8000, learning_rate=0.0005, no gradient clipping (01 has none;
-# an earlier version of this file used max_steps=2000/learning_rate=0.001/
-# gradient_clip_val=10.0, matching 06_data_efficiency_ablation_hypernetwork/06_data_efficiency_ablation_individual's own then-budget
-# instead of this arm's actual reference -- caught alongside the same discrepancy in
-# 06_data_efficiency_ablation_individual's own base.yaml, see its "2026-09-14 unification" note). Compute
-# is still held fixed across every data level within this arm -- just recalibrated to 01's
-# own validated 8000-step recipe instead of an untested smaller one.
-#
-# Self-contained (no _base_ of its own), matching every sibling base.yaml.
+# Experiment 6, joint arm: experiment 1's joint dim-14 recipe at reduced training data. See ../README.md.
+# variants_per_base_task / base_tasks_per_category are set per level by the cell_*.yaml configs.
+# evaluate_on: final scores the weights training ended with (saved as final_model.ckpt).
+
 project_name: 06_data_efficiency_ablation_joint
 entity: fjfehr
 output_dir: outputs
@@ -57,8 +14,6 @@ data: arc_1d_direct
 data_dir: data/arc_1d_looped_augmented
 model: direct
 primary_metric: val_loss
-# Evaluate the weights training ended with (saved as final_model.ckpt), as for every
-# published result of this experiment; best_model.ckpt/last.ckpt are kept as well.
 evaluate_on: final
 stop_on_perfect_val_exact_match: false
 num_workers: 1
@@ -124,21 +79,10 @@ prediction_task: multiclass
 num_classes: 10
 padding_idx: 10
 
-# variants_per_base_task is a placeholder here, overridden per leaf (see
-# cell_{td,notd}_v*.yaml).
 variants_per_base_task: null
-# base_tasks_per_category is a placeholder here too, overridden per t{N} leaf
-# (added 2026-09-15 for the sub-40-base-tasks-per-category axis -- how many
-# distinct base tasks/category to use, at variants_per_base_task=1 always,
-# going below the v1 floor's ~40 base tasks; see
-# data_modules/arc1d_direct.py's _stratified_base_tasks_per_category). null =
-# no reduction (all ~40 base tasks/category), same as leaving it unset --
-# every existing cell_*_v*/full leaf above is unaffected by this addition.
 base_tasks_per_category: null
 data_seed: 42
 
-# use_task_embedding is a placeholder here, overridden per leaf: true (td) /
-# false (notd).
 task_encoding:
   embedding_dim: 10
   use_sinusoidal_pe: false

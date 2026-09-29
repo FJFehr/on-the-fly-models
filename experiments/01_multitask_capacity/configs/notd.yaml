@@ -1,10 +1,5 @@
-# Experiment 2a: joint 14-task training, NO task embedding ("notd").
-#
-# Single model (RoPE + Canon Transformer, dim=10, Muon) trained jointly across all
-# 14 task categories at once - no per-task model, no task-identity signal.
-# Reference point: the individually-trained 14-task mean (0.986). If
-# this joint run falls well short of that, it's evidence a single fixed
-# weight set can't hold all 14 tasks at once.
+# Joint training on all 14 categories, no task identity, hidden_dim 10.
+
 _base_: experiments/01_multitask_capacity/configs/base.yaml
 experiment_name: joint_notd_dim10
 project_name: 01_multitask_capacity
