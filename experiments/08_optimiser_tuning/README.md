@@ -82,6 +82,65 @@ GPUS=0,1,2,3 JOBS_PER_GPU=2 bash experiments/08_optimiser_tuning/run.sh   # 225 
 ARM=adamw bash experiments/08_optimiser_tuning/run.sh           # one arm only
 ```
 
+## Plots
+
+```bash
+uv run python experiments/08_optimiser_tuning/plot_all.py --outputs-dir outputs
+```
+
+Writes `outputs/results/08_optimiser_tuning/results.csv` (one row per run) and two figures in
+`outputs/figures/08_optimiser_tuning/`: `muon_val_loss` (mean val_loss per Muon cell, one
+panel per weight decay) and `marginals` (the best Muon cell at each value of each setting, and
+AdamW's val_loss against its learning rate).
+
 ## Findings
 
-Pending: verdicts for H1 to H4 once the runs finish.
+All 225 runs finished. Means ± s.d. over seeds.
+
+**The Muon grid is flat: its ranking is seed noise.** Across the 60 Muon cells, the variance
+of the cell means (0.00158) equals what 3 seeds of pure noise would give (within-cell
+variance / 3 = 0.00155). The median within-cell s.d. is 0.058, as large as the whole spread of
+cell means, so the "best" Muon cell (Muon 0.005, Adam group 3e-4, weight decay 0.1:
+0.132 ± 0.064) is the luckiest of 60 draws, not a better recipe. One-way ANOVA per setting over
+all 180 Muon runs: Muon learning rate p = 0.56 (no effect over a 20x range), Adam-group
+learning rate p = 0.017 (1e-4 and 3e-4 slightly better than 5e-4 and 1e-3), weight decay
+p = 0.019 (0.1 slightly better than 0). Seed 3 is worse than seeds 1 and 2 across the whole
+grid (mean 0.257 vs 0.195 and 0.204).
+
+**AdamW has a clear, interior optimum.** Learning rate dominates (ANOVA p = 3e-23): val_loss
+falls from 0.55 at 1e-4 to 0.12 at 3e-3, then rises again at 1e-2. Weight decay has no effect
+(p = 1.0). The best cells, AdamW 3e-3 with weight decay 0 or 0.01, agree closely.
+
+| Recipe | Runs | val_loss | val exact match | test accuracy | test exact match |
+|---|---:|---:|---:|---:|---:|
+| Muon, experiment 2's recipe | 3 | 0.209 ± 0.018 | 0.578 ± 0.027 | 0.947 ± 0.003 | 0.554 ± 0.015 |
+| Muon, all 60 cells pooled | 180 | 0.219 ± 0.068 | 0.540 ± 0.083 | 0.939 ± 0.019 | 0.528 ± 0.082 |
+| AdamW 3e-3, weight decay 0 or 0.01 | 6 | 0.102 ± 0.017 | 0.606 ± 0.021 | 0.961 ± 0.004 | 0.599 ± 0.022 |
+
+Only 5 of the 180 Muon runs reach a val_loss below the tuned AdamW mean. The sanity cell
+matches experiment 2 (0.209 ± 0.018 here vs 0.209 ± 0.008), so dropping the learning-rate floor
+changed nothing.
+
+| # | Verdict | Evidence |
+|---|---|---|
+| H1 | **Refuted** | there is no Muon optimum to find: the Muon learning rate has no measurable effect between 0.002 and 0.04 (p = 0.56). Experiment 2's recipe sits at the grid's median; no cell beats it by more than seed noise |
+| H2 | **Refuted** | the Muon learning rate does not matter more than the Adam-group one; neither matters much, and only the Adam-group learning rate shows a (small) effect |
+| H3 | **Refuted** | 0.1 is not worse; for Muon it is slightly better than 0 (0.200 vs 0.235 mean val_loss, p = 0.019). For AdamW weight decay has no effect |
+| H4 | **Refuted** | tuned AdamW beats Muon on every metric: val_loss 0.102 ± 0.017 vs 0.209 ± 0.018 (experiment 2's Muon recipe), test exact match 0.599 ± 0.022 vs 0.554 ± 0.015. Experiment 1's Muon advantage does not carry over to the hypernetwork once AdamW is tuned |
+| H5 | not tested | arm C deferred |
+
+Two caveats. These are 3 seeds, and seed noise is large for both optimisers (median
+within-cell s.d. 0.058 for Muon, 0.045 for AdamW). Selection was on `notd` only; whether the
+AdamW recipe also wins with task identity is what arm C would test.
+
+### Open follow-ups
+
+- Confirm with 5 seeds: AdamW at 2e-3, 3e-3 and 5e-3 against Muon at experiment 2's recipe.
+- Arm C: the same comparison on `frozen_td`, before any change to the recipe used by
+  experiments 2 to 7.
+- Why Muon's results depend so much on the seed, and why seed 3 is worse everywhere.
+
+## Cost
+
+225 runs, median 30.7 minutes per run (A40 on torrnode13 and 15, Quadro RTX 6000 on torrnode7,
+where runs took about 44 minutes), 125 GPU-hours in total.
