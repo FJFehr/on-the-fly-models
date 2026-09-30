@@ -123,18 +123,81 @@ PYTHONPATH=. uv run python experiments/07_task_identity_ablation/plot_all.py
 
 ## Result
 
-Not run yet.
+All 295 runs finished; 5 seeds per cell. Checks: `notd`'s compositional score (75.5% token
+accuracy, 1.0% exact match) matches experiment 4, and the retrained `frozentd_latent`
+leave-one-out runs match experiment 5's `frozen_td` in distribution (99.7%).
+
+**In distribution** (experiment 2 setup, test query, mean ± s.d.):
+
+| Arm | Trainable / total params | Token accuracy | Exact match |
+|---|---:|---:|---:|
+| `notd` | 10,156 / 11,360 | 95.2 ± 0.8% | 57.4 ± 5.1% |
+| `frozentd_latent` | 10,156 / 11,432 | 99.6 ± 0.1% | 93.0 ± 2.4% |
+| `learnedtd_latent` | 10,228 / 11,432 | 99.8 ± 0.1% | **96.5 ± 0.7%** |
+| `frozentd_input` | 10,156 / 11,432 | 99.7 ± 0.1% | 95.1 ± 2.0% |
+| `learnedtd_input` | 10,228 / 11,432 | 99.8 ± 0.1% | 96.2 ± 1.2% |
+
+**Leave-one-out** (held-out category with a zero task vector, macro mean over 14 categories;
+"drop" is in-distribution minus held-out token accuracy):
+
+| Arm | Held-out token accuracy | Held-out exact match | Drop | Ahead of `notd` |
+|---|---:|---:|---:|---:|
+| `notd` | **81.6%** | **10.2%** | 14.9 | |
+| `frozentd_latent` | 79.1% | 0.6% | 20.6 | 3 of 14 |
+| `learnedtd_latent` | 77.3% | 1.1% | 22.5 | 3 of 14 |
+| `frozentd_input` | 74.1% | 0.0% | 25.7 | 2 of 14 |
+| `learnedtd_input` | 73.1% | 0.8% | 26.7 | 1 of 14 |
+
+With a zero vector instead of experiment 5's untrained random column, `frozentd_latent`
+rises from 67.5% to 79.1% held-out, but stays behind `notd`.
+
+**Compositional** (10 composite categories, token accuracy, mean ± s.d.; exact match is at or
+below 6% for every arm):
+
+| Arm | Summed components (multi-hot) | Averaged components |
+|---|---:|---:|
+| `notd` | **75.5 ± 1.1%** | |
+| `frozentd_latent` | 63.2 ± 7.4% | 67.8 ± 4.0% |
+| `learnedtd_latent` | 66.4 ± 4.3% | 70.5 ± 3.3% |
+| `frozentd_input` | 61.0 ± 2.7% | 60.9 ± 9.4% |
+| `learnedtd_input` | 68.8 ± 2.6% | 68.0 ± 3.5% |
+
+**Clustering** (validation set, 5-fold linear probe accuracy / silhouette, mean over seeds;
+chance for the probe is 1/14 ≈ 7%):
+
+| Arm | `support` | `support_no_id` | `weights` |
+|---|---|---|---|
+| `notd` | 0.61 / 0.22 | **0.61 / 0.22** | 0.75 / 0.24 |
+| `frozentd_latent` | 0.25 / −0.07 | 0.25 / −0.07 | 1.00 / 0.93 |
+| `learnedtd_latent` | 0.16 / −0.19 | 0.16 / −0.19 | 1.00 / 0.88 |
+| `frozentd_input` | 0.94 / 0.83 | 0.20 / −0.27 | 0.99 / 0.84 |
+| `learnedtd_input` | 0.93 / 0.79 | 0.22 / −0.24 | 0.96 / 0.80 |
+
+`support_no_id` is the decisive column: it is what the encoder makes of the support examples
+alone. Only `notd`'s encoder organises tasks by what the examples show. Every arm with a task
+ID, wherever it is placed, has an encoder that barely separates the categories from the
+examples: the task clusters in `support` (input placement) and `weights` come from the ID.
+
+Figures: `loo_per_category`, `clusters_<space>_tsne_seed1` (one panel per arm) and
+`task_embedding_similarity_seed1` in `outputs/figures/07_task_identity_ablation/`.
+
+### Verdicts
 
 | | Verdict |
 |---|---|
-| H1 | |
-| H2 | |
-| H3 | |
-| Shortcut | |
+| H1: learned latent = frozen latent | **Mostly supported.** Held-out (77.3% vs 79.1%, ahead in 3 of 14), compositional and clustering differences are within the seed s.d. In distribution, learned has higher exact match (96.5 ± 0.7% vs 93.0 ± 2.4%), so learning the offsets is not entirely free. The learned table does organise itself: the move variants become similar to each other, as do the two pattern-copy categories |
+| H2: frozen input aligns the latent space, so it generalises better | **Refuted.** The encoder output clusters by task only while the ID is in it (probe 0.94); from the examples alone it is near chance (0.20, below `frozentd_latent`'s 0.25). Held-out (74.1% vs 79.1%, ahead in 2 of 14) and compositional accuracy are lower than latent placement |
+| H3: learned input is better than frozen input | **Inconclusive.** Held-out is a tie (73.1% vs 74.1%, ahead in 7 of 14). Compositional with summed components is higher (68.8% vs 61.0%), but no better than `learnedtd_latent` with averaged ones. The 72 extra parameters therefore buy no clear gain, and the parameter-matched control is not needed |
+| Shortcut alternative | **Supported.** Every task-ID arm lets the encoder rely on the ID instead of the examples, and input placement does this most: the largest in-distribution to held-out drops (25.7 and 26.7 points) and the least example-driven encoder. Task identity helps in distribution and costs generalisation, wherever it enters |
 
 ## Cost
 
-Estimated, from experiments 2 and 5 on A40s:
-- in-distribution: 15 runs × 24 min ≈ 6 GPU-hours;
-- leave-one-out: 280 runs × 23 min ≈ 107 GPU-hours;
-- evaluation (compositional and representations): under 1 GPU-hour.
+Measured on A40s, from each run's `compute.json` (two leave-one-out jobs shared a GPU, and the
+in-distribution runs shared their GPUs with those, so runs are slower than in experiments 2
+and 5):
+
+| Sweep | Runs | Median minutes per run | A40 GPU-hours |
+|---|---:|---:|---:|
+| In-distribution | 15 | 54.5 | 13 |
+| Leave-one-out | 280 | 31.7 | 156 |
+| Compositional and representations | evaluation only | | under 1 |
