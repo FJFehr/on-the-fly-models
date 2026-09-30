@@ -22,7 +22,7 @@ from training.config import build_runtime_config_dict, load_config
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT = json.loads((ROOT / "tests/fixtures/structure_snapshot.json").read_text())
 # Experiments added after the snapshot was taken, so they have no pre-refactor entry.
-POST_REFACTOR_EXPERIMENTS = ("07_task_identity_ablation",)
+POST_REFACTOR_EXPERIMENTS = ("07_task_identity_ablation", "08_optimiser_tuning")
 
 
 def build(config_path: str):
